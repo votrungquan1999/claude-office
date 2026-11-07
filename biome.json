@@ -38,17 +38,15 @@
   },
   "overrides": [
     {
-      "includes": ["src/components/ui/**"],
+      "includes": ["src/office/**"],
       "linter": {
         "rules": {
-          "a11y": {
-            "noLabelWithoutControl": "off"
+          "style": {
+            "noNonNullAssertion": "off",
+            "useNodejsImportProtocol": "off"
           },
-          "security": {
-            "noDangerouslySetInnerHtml": "off"
-          },
-          "suspicious": {
-            "noArrayIndexKey": "off"
+          "complexity": {
+            "useOptionalChain": "off"
           }
         }
       }

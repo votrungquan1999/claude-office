@@ -3,7 +3,7 @@
  * build dir. Playwright starts the web server before globalSetup, so this wrapper owns the database
  * too. Run with `node --import tsx e2e/serve.ts`.
  */
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import type { MongoMemoryReplSet } from "mongodb-memory-server";
@@ -72,6 +72,14 @@ try {
   if (!process.env.MONGOMS_SYSTEM_BINARY && existsSync(HOMEBREW_MONGOD)) {
     process.env.MONGOMS_SYSTEM_BINARY = HOMEBREW_MONGOD;
   }
+  // The browser loads these indexes; they are generated, not committed.
+  execFileSync(
+    process.execPath,
+    ["--import", "tsx", "scripts/build-office-assets.ts"],
+    {
+      stdio: "inherit",
+    },
+  );
   replSet = await createReplSet();
 
   // Every variable the app reads is set explicitly, so a developer's exports can't leak in.

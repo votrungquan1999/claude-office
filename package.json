@@ -14,7 +14,11 @@
     "test:run": "vitest run",
     "lint": "biome check .",
     "format": "biome format --write .",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "assets": "tsx scripts/build-office-assets.ts",
+    "layout": "tsx scripts/generate-office-layout.ts",
+    "predev": "npm run assets",
+    "prebuild": "npm run assets"
   },
   "dependencies": {
     "better-auth": "1.5.4",

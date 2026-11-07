@@ -24,9 +24,13 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
     typeof query.error === "string" && REFUSED_CODES.has(query.error);
 
   return (
-    <main className="mx-auto grid min-h-svh max-w-sm content-center gap-4 p-4">
-      <h1 className="text-lg font-bold">Claude Office</h1>
-      {refused && <p role="alert">This Google account is not allowed</p>}
+    <main className="mx-auto grid h-dvh max-w-sm content-center gap-16 p-16">
+      <h1 className="text-xl">Claude Office</h1>
+      {refused && (
+        <p role="alert" className="pixel-panel p-8 text-sm">
+          This Google account is not allowed
+        </p>
+      )}
       <SignInButton returnPath={returnPath} />
     </main>
   );

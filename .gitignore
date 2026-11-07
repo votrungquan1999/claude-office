@@ -11,3 +11,5 @@ next-env.d.ts
 /test-results/
 /playwright-report/
 .DS_Store
+public/assets/asset-index.json
+public/assets/furniture-catalog.json

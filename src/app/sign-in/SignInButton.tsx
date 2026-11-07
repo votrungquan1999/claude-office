@@ -11,7 +11,7 @@ export function SignInButton({ returnPath }: { returnPath: string }) {
   return (
     <button
       type="button"
-      className="rounded border px-4 py-2"
+      className="pixel-panel px-16 py-8 hover:bg-btn-hover"
       onClick={() =>
         authClient.signIn.social({
           provider: "google",
