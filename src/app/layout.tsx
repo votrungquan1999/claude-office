@@ -8,6 +8,9 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  // iOS Safari ignores this; the canvas's `touch-none` is what stops page zoom there.
+  userScalable: false,
+  interactiveWidget: "resizes-content",
 };
 
 /**

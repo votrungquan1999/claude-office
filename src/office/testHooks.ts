@@ -30,6 +30,12 @@ interface OfficeTestHooks {
   /** Centre of a tile in CSS px relative to the canvas, through the renderer's own zoom and pan. */
   getTileCenter: (col: number, row: number) => { x: number; y: number } | null;
   selectAgent: (id: number) => void;
+  /** The id of the selected employee, or null when none is selected. */
+  getSelectedAgentId: () => number | null;
+  /** The office's size in tiles. */
+  getLayoutSize: () => { cols: number; rows: number };
+  getZoom: () => number;
+  getPan: () => { x: number; y: number };
 }
 
 declare global {
@@ -105,6 +111,13 @@ export function installTestHooks(view: TestHookView): void {
         y: projection.toScreenY((row + 0.5) * TILE_SIZE),
       };
     },
+    getLayoutSize: () => {
+      const { cols, rows } = view.getOfficeState().getLayout();
+      return { cols, rows };
+    },
+    getZoom: view.getZoom,
+    getPan: view.getPan,
+    getSelectedAgentId: () => view.getOfficeState().selectedAgentId,
     selectAgent: (id) => {
       view.getOfficeState().selectedAgentId = id;
     },

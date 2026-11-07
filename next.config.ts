@@ -26,6 +26,9 @@ const nextConfig: NextConfig = {
     ];
   },
 
+  // The dev badge floats over the bottom-left of the screen and swallows taps on the phone card bar in e2e runs.
+  ...(process.env.NEXT_PUBLIC_E2E ? { devIndicators: false as const } : {}),
+
   experimental: {
     // TypeScript 7 drops the JS compiler API Next reaches for by default; without this the dev server hangs.
     useTypeScriptCli: true,

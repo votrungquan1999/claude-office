@@ -31,21 +31,18 @@ function screenPointOf(page: Page, id: number) {
 
 /** Clicks the employee with this renderer id at its seat, as a real mouse click on the canvas. */
 export async function clickEmployee(page: Page, id: number): Promise<void> {
-  // The camera glides to a selected employee; click once it has stopped.
-  let point = await screenPointOf(page, id);
+  // The camera glides and employees wander, so one click can land on empty floor; tap again until the selection is the target.
+  const selected = () =>
+    page.evaluate(() => window.__officeTestHooks?.getSelectedAgentId());
   await expect
-    .poll(async () => {
-      const next = await screenPointOf(page, id);
-      const still =
-        Math.abs((next?.x ?? 0) - (point?.x ?? 1e9)) < 0.5 &&
-        Math.abs((next?.y ?? 0) - (point?.y ?? 1e9)) < 0.5;
-      point = next;
-      return still;
-    })
+    .poll(
+      async () => {
+        if ((await selected()) === id) return true;
+        const point = await screenPointOf(page, id);
+        if (point?.onCanvas) await page.mouse.click(point.x, point.y);
+        return (await selected()) === id;
+      },
+      { intervals: [100, 200, 400], timeout: 15_000 },
+    )
     .toBe(true);
-  if (!point?.onCanvas)
-    throw new Error(
-      `employee ${id} is not clickable: ${JSON.stringify(point)}`,
-    );
-  await page.mouse.click(point.x, point.y);
 }
