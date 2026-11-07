@@ -181,6 +181,7 @@ export function ToolOverlay({
                 style={{ left: screenX, top: screenY, pointerEvents: "none" }}
                 data-testid="agent-overlay"
                 data-agent-id={id}
+                data-offline={ch.macOffline ? "true" : undefined}
               />
             </Fragment>
           );
@@ -192,6 +193,8 @@ export function ToolOverlay({
         if (hasPermission) activityText = "Needs approval";
         else if (hasWaiting && ch.waitingAwaitingInput)
           activityText = WAITING_INPUT_ACTIVITY_TEXT;
+        // The Mac's last known state is stale, so the label says so instead.
+        if (ch.macOffline) activityText = "Mac offline";
         const isActive = ch.isActive;
 
         let dotColor: string | null = null;
@@ -212,6 +215,7 @@ export function ToolOverlay({
                 left: screenX,
                 top: screenY - (hasExtraLines ? 34 : 28),
                 pointerEvents: "none",
+                filter: ch.macOffline ? "grayscale(1)" : undefined,
                 opacity:
                   alwaysShowOverlay && !isSelected && !isHovered ? 0.75 : 1,
                 zIndex: isSelected
@@ -220,6 +224,7 @@ export function ToolOverlay({
               }}
               data-testid="agent-overlay"
               data-agent-id={id}
+              data-offline={ch.macOffline ? "true" : undefined}
             >
               <div className="flex items-center border-border px-8 pt-2 pb-4 gap-5 pixel-panel whitespace-nowrap max-w-2xs">
                 {dotColor && (

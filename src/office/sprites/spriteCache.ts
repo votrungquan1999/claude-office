@@ -45,6 +45,30 @@ export function getOutlineSprite(sprite: SpriteData): SpriteData {
   return outline;
 }
 
+const greyCache = new WeakMap<SpriteData, SpriteData>();
+
+/** The same sprite in greys, for an employee whose Mac is offline. */
+export function getGreySprite(sprite: SpriteData): SpriteData {
+  const cached = greyCache.get(sprite);
+  if (cached) return cached;
+  const grey = sprite.map((row) =>
+    row.map((pixel) => {
+      const match =
+        /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})?$/i.exec(pixel);
+      if (!match) return pixel;
+      const [r, g, b] = [match[1], match[2], match[3]].map((hex) =>
+        Number.parseInt(hex, 16),
+      );
+      const level = Math.round(0.299 * r + 0.587 * g + 0.114 * b)
+        .toString(16)
+        .padStart(2, "0");
+      return `#${level}${level}${level}${match[4] ?? ""}`;
+    }),
+  );
+  greyCache.set(sprite, grey);
+  return grey;
+}
+
 export function getCachedSprite(
   sprite: SpriteData,
   zoom: number,

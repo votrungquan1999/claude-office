@@ -160,4 +160,45 @@ describe("the office changes API", () => {
     expect(poll.sessions).toHaveLength(4);
     expect(byId(poll, "quiet")?.recentSteps).toHaveLength(1);
   });
+
+  it("lists every Mac's last sign of life on each answer, with the server's time", async () => {
+    // Given two Macs on record and nothing else
+    const machines = (await getDb()).collection("machines");
+    await machines.deleteMany({});
+    await machines.insertMany([
+      { machineId: "m1", machineName: "Air", lastSeenAt: new Date(T0) },
+      {
+        machineId: "m2",
+        machineName: "Mini",
+        lastSeenAt: new Date(T0 - 600_000),
+      },
+    ]);
+
+    // When the browser polls with a cursor that matches no session
+    const body = changesResponseSchema.parse(
+      await (
+        await GET(changesRequest(ownerHeaders, new Date(T0 + 3_600_000)))
+      ).json(),
+    );
+
+    // Then both Macs come back, and so does the server's own time
+    expect(body.sessions).toEqual([]);
+    expect(
+      [...body.machines].sort((a, b) => a.machineId.localeCompare(b.machineId)),
+    ).toEqual([
+      {
+        machineId: "m1",
+        machineName: "Air",
+        lastSeenAt: new Date(T0).toISOString(),
+      },
+      {
+        machineId: "m2",
+        machineName: "Mini",
+        lastSeenAt: new Date(T0 - 600_000).toISOString(),
+      },
+    ]);
+    expect(Math.abs(Date.parse(body.serverNow) - Date.now())).toBeLessThan(
+      10_000,
+    );
+  });
 });

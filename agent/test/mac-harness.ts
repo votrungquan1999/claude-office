@@ -18,6 +18,7 @@ export interface MacHarness {
   setUpMac(
     machineId: string,
     computerName: string,
+    options?: { beforeStart?: (fake: FakeHome) => void | Promise<void> },
   ): Promise<{ fake: FakeHome; agent: RunningAgent }>;
   /** What the owner's office API lists right now. */
   officeSessions(): Promise<SessionDto[]>;
@@ -37,16 +38,20 @@ export function useMacHarness(): MacHarness {
     ownerHeaders = (await sessionHeadersFor(OWNER)) ?? new Headers();
   });
   beforeEach(async () => {
-    await (await getDb()).collection("sessions").deleteMany({});
+    const db = await getDb();
+    await db.collection("sessions").deleteMany({});
+    await db.collection("machines").deleteMany({});
   });
   afterEach(async () => {
     for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
   });
 
   return {
-    async setUpMac(machineId, computerName) {
+    async setUpMac(machineId, computerName, options) {
       const fake = makeFakeHome(machineId);
       cleanups.push(() => fake.remove());
+      // Registry and transcript files that exist before the agent starts.
+      await options?.beforeStart?.(fake);
       const agent = await startAgent({
         home: fake.home,
         mongo: {
@@ -56,6 +61,8 @@ export function useMacHarness(): MacHarness {
         computerName,
         flushMs: IDLE_MS,
         reorderMs: IDLE_MS,
+        reconcileMs: IDLE_MS,
+        heartbeatMs: IDLE_MS,
         kanbanPollMs: 50,
       });
       cleanups.push(() => agent.stop());

@@ -10,6 +10,7 @@ import {
   ZOOM_MIN,
 } from "@/office/constants";
 import { OfficeState } from "@/office/engine/officeState";
+import { offlineMachineIds } from "@/office/offline";
 import { createSceneSync } from "@/office/sceneSync";
 import { installTestHooks } from "@/office/testHooks";
 import { dayStartOf, todaysDepartures } from "@/office/wentHome";
@@ -29,6 +30,7 @@ export function OfficeView() {
   const [sceneSync] = useState(() => createSceneSync(officeState));
   const [agentIds, setAgentIds] = useState<number[]>([]);
   const [sessions, setSessions] = useState<SessionMap>(new Map());
+  const [offlineIds, setOfflineIds] = useState<ReadonlySet<string>>(new Set());
   const [now, setNow] = useState(() => new Date());
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [zoom, setZoom] = useState(() =>
@@ -60,12 +62,16 @@ export function OfficeView() {
       .then((response) => response.json())
       .then((body) => {
         if (cancelled) return;
-        const merged = mergeSessions(
-          new Map(),
-          changesResponseSchema.parse(body).sessions,
-        );
+        const answer = changesResponseSchema.parse(body);
+        const merged = mergeSessions(new Map(), answer.sessions);
+        // Judged against the server's clock: the phone's may be minutes off.
+        const offline = offlineMachineIds(answer.machines, answer.serverNow);
         setSessions(merged);
-        sceneSync.apply([...merged.values()], { firstLoad: true });
+        setOfflineIds(offline);
+        sceneSync.apply([...merged.values()], {
+          firstLoad: true,
+          offlineMachineIds: offline,
+        });
         setAgentIds(sceneSync.agentIds());
       });
     return () => {
@@ -134,6 +140,7 @@ export function OfficeView() {
       />
       <DetailsPanel
         session={selectedKey ? (sessions.get(selectedKey) ?? null) : null}
+        offlineMachineIds={offlineIds}
         onClose={() => {
           setSelectedKey(null);
           officeState.selectedAgentId = null;

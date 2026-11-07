@@ -53,7 +53,11 @@ import {
   hasCarpetSprites,
 } from "../sprites/carpetTiles";
 import { getPetSprites } from "../sprites/petSpriteData";
-import { getCachedSprite, getOutlineSprite } from "../sprites/spriteCache";
+import {
+  getCachedSprite,
+  getGreySprite,
+  getOutlineSprite,
+} from "../sprites/spriteCache";
 import {
   BUBBLE_HEART_SPRITE,
   getCharacterSprites,
@@ -409,7 +413,11 @@ export function renderScene(
   // Characters
   for (const ch of characters) {
     const sprites = getCharacterSprites(ch.palette, ch.hueShift);
-    const spriteData = getCharacterSprite(ch, sprites);
+    const colourSprite = getCharacterSprite(ch, sprites);
+    // Employees of an offline Mac are drawn grey so stale state is obvious at a glance.
+    const spriteData = ch.macOffline
+      ? getGreySprite(colourSprite)
+      : colourSprite;
     const cached = getCachedSprite(spriteData, zoom);
     // Sitting offset: shift character down when seated so they visually sit in the chair
     const sittingOffset =

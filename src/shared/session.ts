@@ -48,9 +48,20 @@ export const sessionDtoSchema = z.object({
 
 export type SessionDto = z.infer<typeof sessionDtoSchema>;
 
+/** A Mac's last sign of life, stamped by the database clock. */
+export const machineDtoSchema = z.object({
+  machineId: z.string(),
+  machineName: z.string(),
+  lastSeenAt: z.string(),
+});
+
+export type MachineDto = z.infer<typeof machineDtoSchema>;
+
 /** The office API's answer to "what changed since". */
 export const changesResponseSchema = z.object({
   sessions: z.array(sessionDtoSchema),
+  /** Every Mac, on every answer: a Mac going quiet changes none of its sessions. */
+  machines: z.array(machineDtoSchema),
   cursor: z.string(),
   serverNow: z.string(),
 });

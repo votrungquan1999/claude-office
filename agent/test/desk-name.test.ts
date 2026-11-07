@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { useLiveProcesses } from "./live-process";
 import { useMacHarness } from "./mac-harness";
 import { pause, runHook } from "./run-hook";
 
 describe("a desk is named after the session", () => {
   const { setUpMac, officeSessions } = useMacHarness();
+  const processes = useLiveProcesses();
 
   it("uses the first real message cut short, skipping slash commands, and keeps it when later prompts come", async () => {
     // Given three sessions, one of which never gets a prompt (registry name only)
@@ -86,6 +88,34 @@ describe("a desk is named after the session", () => {
     fake.removeKanban("s1");
     await expect.poll(deskName, { timeout: 5000 }).toBe("Start of the work");
   }, 30_000);
+
+  it("shows a name given with /rename after the session appeared, when nothing else names the desk", async () => {
+    // Given a session with a registry name and no prompt, already shown
+    const { fake, agent } = await setUpMac("machine-air", "Quan's MacBook Air");
+    const live = await processes.live();
+    fake.addSession({
+      sessionId: "s1",
+      cwd: "/work/a",
+      name: "Old name",
+      pid: live.pid,
+      procStart: live.procStart,
+    });
+    await runHook(fake.home, {
+      hook_event_name: "SessionStart",
+      session_id: "s1",
+      cwd: "/work/a",
+    });
+    await agent.flush();
+    expect((await officeSessions())[0]?.deskName).toBe("Old name");
+
+    // When the owner renames the session and the agent next checks the registry
+    fake.updateSession("s1", { name: "New name" });
+    await agent.reconcile();
+    await agent.flush();
+
+    // Then the desk shows the new name
+    expect((await officeSessions())[0]?.deskName).toBe("New name");
+  });
 
   it("drops the desk name when the card goes away and nothing else can name the desk", async () => {
     // Given a session whose only name comes from its card (command first, no registry name)

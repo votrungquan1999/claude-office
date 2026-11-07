@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { HookEvent } from "../src/shared/hook-events";
 import type { SessionState } from "../src/shared/session-state";
-import { initialStateMemory, reduceState } from "./session-state";
+import {
+  applyRegistryStatus,
+  initialStateMemory,
+  reduceState,
+} from "./session-state";
 
 /** Feeds events in order and returns the state after each one. */
 function states(events: Array<Partial<HookEvent>>): SessionState[] {
@@ -308,5 +312,22 @@ describe("session state rules", () => {
         { hook_event_name: "SessionStart", source: "resume" },
       ]),
     ).toEqual(["thinking", "working", "working", "thinking", "waiting"]);
+  });
+
+  it("treats a busy registry status after a permission request as the dialog being approved", () => {
+    let memory = initialStateMemory();
+    for (const event of [
+      { hook_event_name: "UserPromptSubmit" },
+      pre("a", { tool_name: "Bash" }),
+      { hook_event_name: "PermissionRequest", tool_name: "Bash" },
+    ]) {
+      memory = reduceState(memory, {
+        session_id: "s1",
+        hookTs: 1,
+        ...event,
+      } as HookEvent);
+    }
+    expect(memory.state).toBe("needsPermission");
+    expect(applyRegistryStatus(memory, "busy").state).toBe("working");
   });
 });

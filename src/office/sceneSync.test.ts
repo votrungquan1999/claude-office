@@ -400,4 +400,38 @@ describe("scene sync", () => {
       ).toEqual(["m1/a", "m1/b"]);
     });
   });
+
+  it("marks the employees of an offline Mac and clears the mark when the Mac is back", () => {
+    // Given employees on two Macs
+    const office = loadOffice();
+    const sync = createSceneSync(office);
+    const sessions = [
+      session("m1", "Air", "a", "/Users/q/api"),
+      session("m2", "Mini", "b", "/Users/q/docs"),
+    ];
+    const offlineByMachine = () =>
+      Object.fromEntries(
+        office
+          .getCharacters()
+          .map((ch) => [
+            sync.sessionKeyOf(ch.id)?.split("/")[0],
+            ch.macOffline === true,
+          ]),
+      );
+
+    // When the Mini is offline
+    sync.apply(sessions, {
+      firstLoad: true,
+      offlineMachineIds: new Set(["m2"]),
+    });
+
+    // Then only its employee is marked
+    expect(offlineByMachine()).toEqual({ m1: false, m2: true });
+
+    // When nothing is offline any more
+    sync.apply(sessions, { offlineMachineIds: new Set() });
+
+    // Then no one is marked
+    expect(offlineByMachine()).toEqual({ m1: false, m2: false });
+  });
 });

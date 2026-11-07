@@ -14,7 +14,10 @@ export interface SceneSyncOptions {
 
 export interface SceneSync {
   /** Brings the scene in line with the given sessions; replaying the same sessions changes nothing. */
-  apply(sessions: SessionDto[], options?: { firstLoad?: boolean }): void;
+  apply(
+    sessions: SessionDto[],
+    options?: { firstLoad?: boolean; offlineMachineIds?: ReadonlySet<string> },
+  ): void;
   /** Finishes moves whose state has held long enough; call it on the poll clock. */
   tick(): void;
   /** The "machineId/sessionId" key of the session behind a renderer id. */
@@ -132,8 +135,17 @@ export function createSceneSync(
     employee.pending = undefined;
   }
 
+  let offline: ReadonlySet<string> = new Set();
+
+  /** Flags the employee when its Mac has stopped sending heartbeats. */
+  function markOffline(id: number, session: SessionDto): void {
+    const character = office.characters.get(id);
+    if (character) character.macOffline = offline.has(session.machineId);
+  }
+
   return {
-    apply(sessions, { firstLoad = false } = {}) {
+    apply(sessions, { firstLoad = false, offlineMachineIds } = {}) {
+      offline = offlineMachineIds ?? offline;
       for (const session of sessions) {
         const key = sessionKey(session);
         const place = `${session.machineName} / ${folderName(session.cwd)}`;
@@ -160,11 +172,13 @@ export function createSceneSync(
           office.addAgent(id, palette, hueShift, seat, firstLoad, label);
           if (!seat) standInRoom(id, room, true);
           showState(id, session.state);
+          markOffline(id, session);
           continue;
         }
         const character = office.characters.get(employee.id);
         if (character) character.directoryName = label;
         showState(employee.id, session.state);
+        markOffline(employee.id, session);
         if (room === employee.room) {
           employee.pending = undefined;
           continue;

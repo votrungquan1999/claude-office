@@ -2,46 +2,9 @@ import { readFileSync } from "node:fs";
 import { expect, type Page, test } from "@playwright/test";
 import { MongoClient, ObjectId } from "mongodb";
 import { E2E_DB, E2E_MONGO_URI_FILE } from "./constants";
-import { signInAsOwner } from "./helpers";
+import { clickEmployee, signInAsOwner } from "./helpers";
 
 test.use({ viewport: { width: 1600, height: 1200 }, hasTouch: false });
-
-/** Where an employee is on screen right now, through the renderer's own zoom and pan. */
-function screenPointOf(page: Page, id: number) {
-  return page.evaluate((employeeId) => {
-    const hooks = window.__officeTestHooks;
-    const employee = hooks?.getCharacters().find((ch) => ch.id === employeeId);
-    const canvas = document.querySelector('[data-testid="office-canvas"]');
-    const at =
-      employee && hooks?.getTileCenter(employee.tileCol, employee.tileRow);
-    if (!at || !canvas) return null;
-    const box = canvas.getBoundingClientRect();
-    const x = box.x + at.x;
-    const y = box.y + at.y;
-    return { x, y, onCanvas: document.elementFromPoint(x, y) === canvas };
-  }, id);
-}
-
-/** Clicks the employee with this renderer id at its seat, as a real mouse click on the canvas. */
-async function clickEmployee(page: Page, id: number): Promise<void> {
-  // The camera glides to a selected employee; click once it has stopped.
-  let point = await screenPointOf(page, id);
-  await expect
-    .poll(async () => {
-      const next = await screenPointOf(page, id);
-      const still =
-        Math.abs((next?.x ?? 0) - (point?.x ?? 1e9)) < 0.5 &&
-        Math.abs((next?.y ?? 0) - (point?.y ?? 1e9)) < 0.5;
-      point = next;
-      return still;
-    })
-    .toBe(true);
-  if (!point?.onCanvas)
-    throw new Error(
-      `employee ${id} is not clickable: ${JSON.stringify(point)}`,
-    );
-  await page.mouse.click(point.x, point.y);
-}
 
 function bubbleOf(page: Page, id: number) {
   return page.evaluate(

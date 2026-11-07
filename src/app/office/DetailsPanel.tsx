@@ -4,6 +4,7 @@ import { StepsList } from "./StepsList";
 
 interface DetailsPanelProps {
   session: SessionDto | null;
+  offlineMachineIds: ReadonlySet<string>;
   onClose: () => void;
 }
 
@@ -16,7 +17,11 @@ function folderName(cwd: string): string {
  * @param props - The selected session and the close handler.
  * @returns The panel, or nothing when no employee is selected.
  */
-export function DetailsPanel({ session, onClose }: DetailsPanelProps) {
+export function DetailsPanel({
+  session,
+  offlineMachineIds,
+  onClose,
+}: DetailsPanelProps) {
   if (!session) return null;
   // An ended session has nothing left to control, so it gets no link and no "off" message.
   const ended = session.state === "wentHome";
@@ -34,7 +39,10 @@ export function DetailsPanel({ session, onClose }: DetailsPanelProps) {
           Close
         </button>
       </div>
-      <p>{session.machineName}</p>
+      <p>
+        {session.machineName}
+        {!ended && offlineMachineIds.has(session.machineId) && " (Mac offline)"}
+      </p>
       <p className="break-all">{session.cwd}</p>
       {session.currentTodo && (
         <p data-testid="current-todo">{session.currentTodo}</p>

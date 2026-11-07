@@ -25,6 +25,12 @@ interface SessionRow {
   changedAt: Date;
 }
 
+interface MachineRow {
+  machineId: string;
+  machineName: string;
+  lastSeenAt: Date;
+}
+
 /**
  * Converts a stored session to what the browser gets; ended sessions carry no steps.
  * @param row - The stored session.
@@ -102,12 +108,22 @@ export async function GET(request: NextRequest) {
     .find(filter)
     .sort({ changedAt: 1 })
     .toArray();
+  // A handful of documents, so they ride along on every answer.
+  const machines = await db
+    .collection<MachineRow>("machines")
+    .find({})
+    .toArray();
   // The cursor never moves back, even when only overlap rows came back.
   const newest = rows.at(-1)?.changedAt;
   const cursor =
     newest && (!since || newest > since) ? newest : (since ?? new Date());
   const body: ChangesResponse = {
     sessions: rows.map(toDto),
+    machines: machines.map((machine) => ({
+      machineId: machine.machineId,
+      machineName: machine.machineName,
+      lastSeenAt: machine.lastSeenAt.toISOString(),
+    })),
     cursor: cursor.toISOString(),
     serverNow: new Date().toISOString(),
   };

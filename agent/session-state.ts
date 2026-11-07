@@ -185,3 +185,54 @@ function reduceSubagent(memory: StateMemory, event: HookEvent): StateMemory {
       return memory;
   }
 }
+
+/**
+ * Applies an event stamped before one already applied: only a close changes anything, so a straggler never moves the room back.
+ * @param memory - The memory so far.
+ * @param event - The late event.
+ * @returns The memory with the event's own tool or dialog closed; the base and every other open tool are kept.
+ */
+export function reduceLate(memory: StateMemory, event: HookEvent): StateMemory {
+  switch (event.hook_event_name) {
+    case "PostToolUse":
+    case "PostToolUseFailure":
+      return derive({
+        ...memory,
+        ...finishTool(memory, event.tool_use_id),
+        dialogs: closeDialog(memory.dialogs, event.tool_name, false),
+      });
+    case "PermissionDenied":
+      return derive({
+        ...memory,
+        dialogs: closeDialog(memory.dialogs, event.tool_name, true),
+      });
+    default:
+      return memory;
+  }
+}
+
+/**
+ * Brings a session's state in line with the registry's status.
+ * @param memory - What the hooks established so far.
+ * @param status - Claude Code's own status for the session.
+ * @returns The new memory; `busy` never demotes a state the hooks know better.
+ */
+export function applyRegistryStatus(
+  memory: StateMemory,
+  status: "idle" | "busy" | "waiting",
+): StateMemory {
+  switch (status) {
+    case "idle":
+      return initialStateMemory();
+    case "waiting":
+      return derive({
+        ...memory,
+        dialogs: memory.dialogs.length > 0 ? memory.dialogs : [{}],
+      });
+    case "busy":
+      // Busy after a dialog opened means the owner answered it.
+      return memory.state === "waiting" || memory.dialogs.length > 0
+        ? derive({ ...memory, base: "thinking", dialogs: [] })
+        : memory;
+  }
+}

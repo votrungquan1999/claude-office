@@ -12,7 +12,9 @@ import {
   readMachineId,
   writeAgentFile,
 } from "./config";
+import { startHeartbeat } from "./heartbeat";
 import { startKanbanWatch } from "./kanban-watch";
+import { reconcileSessions, seedRunningSessions } from "./reconcile";
 import { startListener } from "./server";
 import { SessionTracker } from "./tracker";
 import { SessionWriter } from "./writer";
@@ -28,12 +30,20 @@ export interface AgentOptions {
   /** How often the AI-Kanban folder is re-read, as a backstop for missed file events. */
   kanbanPollMs?: number;
   maxOpsPerSecond?: number;
+  /** How often running processes are checked against the registry. */
+  reconcileMs?: number;
+  /** How often the Mac says it is still here. */
+  heartbeatMs?: number;
   log?: (message: string) => void;
 }
 
 export interface RunningAgent {
   port: number;
   flush(): Promise<void>;
+  /** Checks every tracked session against the registry and the process table now. */
+  reconcile(): Promise<void>;
+  /** Stamps this Mac's last-seen time now. */
+  heartbeat(): Promise<void>;
   stop(): Promise<void>;
 }
 
@@ -81,6 +91,7 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
   await ensureIndexes(db);
 
   const now = options.now ?? Date.now;
+  const log = options.log ?? ((message: string) => console.error(message));
   const writer = new SessionWriter(
     db.collection("sessions"),
     db.collection("steps"),
@@ -88,7 +99,7 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
       flushMs: options.flushMs ?? 1000,
       maxOpsPerSecond: options.maxOpsPerSecond ?? 20,
       now,
-      log: options.log ?? ((message) => console.error(message)),
+      log,
     },
   );
   const tracker = new SessionTracker({
@@ -106,6 +117,37 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
     onCard: (sessionId, card) => tracker.setCard(sessionId, card),
   });
 
+  const heartbeat = startHeartbeat({
+    machines: db.collection("machines"),
+    machineId,
+    machineName,
+    intervalMs: options.heartbeatMs ?? 60_000,
+    log,
+  });
+  await heartbeat.beat();
+
+  // Before the listener opens, so no hook event races the seed.
+  await seedRunningSessions({
+    home,
+    machineId,
+    sessions: db.collection("sessions"),
+    tracker,
+    now,
+  });
+
+  const reconcile = () => reconcileSessions(home, tracker);
+  const reconcileTimer = setInterval(
+    () =>
+      // A failed pass (for example `ps` unavailable) is retried at the next tick.
+      void reconcile().catch((error: unknown) =>
+        log(
+          `reconcile failed: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+      ),
+    options.reconcileMs ?? 5000,
+  );
+  reconcileTimer.unref();
+
   const token = randomBytes(24).toString("hex");
   const listener = await startListener(token, (body) => tracker.ingest(body));
   writeAgentFile(home, { pid: process.pid, port: listener.port, token });
@@ -113,10 +155,14 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
   return {
     port: listener.port,
     flush: () => tracker.flush(),
+    reconcile,
+    heartbeat: heartbeat.beat,
     async stop() {
       rmSync(join(officeDir(home), "agent.json"), { force: true });
       await listener.close();
       kanban.stop();
+      clearInterval(reconcileTimer);
+      heartbeat.stop();
       tracker.stop();
       writer.stop();
       await client.close();

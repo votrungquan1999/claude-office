@@ -24,6 +24,7 @@ interface OfficeTestHooks {
     state: string;
     seatId: string | null;
     isActive: boolean;
+    macOffline: boolean;
     bubbleType: "permission" | "waiting" | null;
   }>;
   /** Centre of a tile in CSS px relative to the canvas, through the renderer's own zoom and pan. */
@@ -84,6 +85,7 @@ export function installTestHooks(view: TestHookView): void {
           state: ch.state,
           seatId: ch.seatId,
           isActive: ch.isActive,
+          macOffline: ch.macOffline === true,
           bubbleType: ch.bubbleType,
         })),
     getTileCenter: (col, row) => {
