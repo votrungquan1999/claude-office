@@ -1,11 +1,9 @@
-import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { rmSync } from "node:fs";
-import { hostname } from "node:os";
 import { join } from "node:path";
-import { promisify } from "node:util";
 import { MongoClient } from "mongodb";
 import { ensureIndexes } from "../src/db/indexes";
+import { readComputerName } from "./computer-name";
 import {
   officeDir,
   readAgentFile,
@@ -47,18 +45,6 @@ export interface RunningAgent {
   stop(): Promise<void>;
 }
 
-const run = promisify(execFile);
-
-async function defaultComputerName(): Promise<string> {
-  try {
-    const { stdout } = await run("scutil", ["--get", "ComputerName"]);
-    if (stdout.trim()) return stdout.trim();
-  } catch {
-    // No scutil off macOS; the short host name is the fallback.
-  }
-  return hostname().split(".")[0];
-}
-
 function isAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
@@ -83,7 +69,7 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
   }
   // Both read once: `~/.claude.json` is large and neither changes while the agent runs.
   const machineId = readMachineId(home);
-  const machineName = options.computerName ?? (await defaultComputerName());
+  const machineName = options.computerName ?? (await readComputerName());
 
   const client = new MongoClient(options.mongo.uri);
   await client.connect();

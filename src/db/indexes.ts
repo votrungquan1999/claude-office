@@ -33,4 +33,10 @@ export async function ensureIndexes(db: Db): Promise<void> {
     _id: -1,
   });
   await steps.createIndex({ expireAt: 1 }, { expireAfterSeconds: 0 });
+  const connectCodes = db.collection("connectCodes");
+  // Unique so a poll secret and a displayed code each name exactly one request.
+  await connectCodes.createIndex({ secretHash: 1 }, { unique: true });
+  await connectCodes.createIndex({ userCode: 1 }, { unique: true });
+  // Cleanup only; routes check `expiresAt` themselves because the TTL sweep runs once a minute.
+  await connectCodes.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 }

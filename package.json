@@ -18,7 +18,8 @@
     "assets": "tsx scripts/build-office-assets.ts",
     "layout": "tsx scripts/generate-office-layout.ts",
     "predev": "npm run assets",
-    "prebuild": "npm run assets"
+    "prebuild": "npm run assets",
+    "setup": "node --import tsx agent/setup/index.ts"
   },
   "dependencies": {
     "better-auth": "1.5.4",
