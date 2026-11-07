@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Forwards a reduced copy of each Claude Code hook event to the local office agent. Plain JS, no
 // dependencies, so node starts fast; it cannot import the TypeScript allowlist in src/shared.
+import { execFileSync } from "node:child_process";
 import { readFileSync, realpathSync } from "node:fs";
 import http from "node:http";
 import os from "node:os";
@@ -9,6 +10,7 @@ import { fileURLToPath } from "node:url";
 
 const REQUEST_TIMEOUT_MS = 1000;
 const PROMPT_MAX = 500;
+const HARD_EXIT_MS = 1500;
 
 const STRING_FIELDS = [
   "hook_event_name",
@@ -104,6 +106,21 @@ export function reduceEvent(data, hookTs, env) {
   return event;
 }
 
+/** `ps -o lstart` of a pid in the C locale with spaces collapsed; undefined when ps cannot say. */
+function startOf(pid) {
+  try {
+    const text = execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], {
+      encoding: "utf8",
+      env: { ...process.env, LC_ALL: "C" },
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 500,
+    });
+    return text.replace(/\s+/g, " ").trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** The agent's address, or undefined when it is not running. */
 function readAgent() {
   const file = path.join(os.homedir(), ".claude-office", "agent.json");
@@ -119,6 +136,11 @@ function readAgent() {
     process.kill(agent.pid, 0);
   } catch {
     return undefined;
+  }
+  // A reused pid must not receive the bearer token and the prompt text.
+  if (typeof agent.procStart === "string") {
+    const current = startOf(agent.pid);
+    if (current !== undefined && current !== agent.procStart) return undefined;
   }
   return agent;
 }
@@ -167,5 +189,10 @@ if (
   process.argv[1] &&
   realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
-  main().finally(() => process.exit(0));
+  // Claude Code enforces no timeout on async hooks; a ref'd timer ends a hung stdin or agent fast.
+  setTimeout(() => process.exit(0), HARD_EXIT_MS);
+  // Real error boundary: whatever fails, the session must see exit 0 and no output.
+  main()
+    .catch(() => {})
+    .finally(() => process.exit(0));
 }
