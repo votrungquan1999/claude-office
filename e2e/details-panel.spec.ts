@@ -70,6 +70,7 @@ test("clicking an employee opens its details with a Remote Control link, or says
       ...base,
       machineId: "m1",
       sessionId: "s1",
+      deskName: "Light the lantern",
       cwd: "/Users/q/projects/lantern",
       state: "waiting",
       bridgeSessionId: "cse_abc",
@@ -113,6 +114,7 @@ test("clicking an employee opens its details with a Remote Control link, or says
     await clickEmployee(page, 1);
 
     // Then the details show its machine and folder, with a link that opens Remote Control in a new tab
+    await expect(panel).toContainText("Light the lantern");
     await expect(panel).toContainText("Studio Mac");
     await expect(panel).toContainText("/Users/q/projects/lantern");
     const link = panel.getByTestId("remote-control-link");

@@ -2,6 +2,7 @@ import type { SessionDto } from "@/shared/session";
 import { sessionKey } from "@/shared/session";
 import { TILE_SIZE } from "./constants";
 import type { OfficeState } from "./engine/officeState";
+import { ROOM_OF_STATE, Room } from "./rooms";
 import { getLoadedCharacterCount } from "./sprites/spriteData";
 
 export interface SceneSyncOptions {
@@ -135,10 +136,13 @@ export function createSceneSync(
     apply(sessions, { firstLoad = false } = {}) {
       for (const session of sessions) {
         const key = sessionKey(session);
-        const label = `${session.machineName} / ${folderName(session.cwd)}`;
-        // Each non-home state has a room of the same name.
-        const room = session.state;
+        const place = `${session.machineName} / ${folderName(session.cwd)}`;
+        const label = session.deskName
+          ? `${session.deskName} · ${place}`
+          : place;
         const employee = employees.get(key);
+        const room =
+          ROOM_OF_STATE[session.state] ?? employee?.room ?? Room.Waiting;
         if (!employee) {
           const id = nextId++;
           employees.set(key, { id, room });

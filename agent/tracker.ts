@@ -1,4 +1,6 @@
+import { firstRealMessage, resolveDeskName } from "../src/shared/desk-name";
 import { type HookEvent, hookEventSchema } from "../src/shared/hook-events";
+import type { KanbanCard } from "./kanban-watch";
 import { findRegistryEntry } from "./registry";
 import {
   initialStateMemory,
@@ -25,6 +27,8 @@ interface Tracked {
   bridgeHookTs: number;
   startedAt?: number;
   interactive: boolean;
+  firstMessage?: string;
+  registryName?: string;
   memory: StateMemory;
   endedAt?: number;
   endedHookTs?: number;
@@ -36,6 +40,7 @@ interface Tracked {
  */
 export class SessionTracker {
   private readonly sessions = new Map<string, Tracked>();
+  private readonly cards = new Map<string, KanbanCard>();
 
   constructor(private readonly options: TrackerOptions) {}
 
@@ -55,6 +60,18 @@ export class SessionTracker {
       this.options.reorderMs,
     );
     tracked.timer.unref();
+  }
+
+  /**
+   * Records the AI-Kanban card of a session (or its removal) and republishes the session.
+   * @param sessionId - The session the card belongs to.
+   * @param card - The card, or undefined when its file is gone.
+   */
+  setCard(sessionId: string, card: KanbanCard | undefined): void {
+    if (card) this.cards.set(sessionId, card);
+    else this.cards.delete(sessionId);
+    const tracked = this.sessions.get(sessionId);
+    if (tracked) this.publish(sessionId, tracked);
   }
 
   /** Applies every buffered event now and waits for the writes to land. */
@@ -112,6 +129,9 @@ export class SessionTracker {
       tracked.bridgeSessionId = event.bridgeSessionId;
       tracked.bridgeHookTs = event.hookTs;
     }
+    if (event.hook_event_name === "UserPromptSubmit" && !tracked.firstMessage) {
+      tracked.firstMessage = firstRealMessage(event.prompt ?? "");
+    }
     tracked.memory = reduceState(tracked.memory, event);
     if (event.hook_event_name === "SessionEnd") {
       tracked.endedAt = this.options.now();
@@ -126,9 +146,17 @@ export class SessionTracker {
       if (entry?.kind !== "interactive") return;
       tracked.interactive = true;
       tracked.startedAt = entry.startedAt ?? tracked.startedAt;
+      tracked.registryName = entry.name;
     }
     if (!tracked.cwd || tracked.startedAt === undefined) return;
     const { machineId, machineName, writer } = this.options;
+    const card = this.cards.get(sessionId);
+    const deskName = resolveDeskName({
+      cardSummary: card?.summary,
+      cardTitle: card?.title,
+      firstMessage: tracked.firstMessage,
+      registryName: tracked.registryName,
+    });
     writer.submit({
       machineId,
       machineName,
@@ -136,6 +164,7 @@ export class SessionTracker {
       cwd: tracked.cwd,
       state: tracked.endedAt === undefined ? tracked.memory.state : "wentHome",
       startedAt: new Date(tracked.startedAt),
+      ...(deskName ? { deskName } : {}),
       ...(tracked.bridgeSessionId
         ? { bridgeSessionId: tracked.bridgeSessionId }
         : {}),

@@ -56,6 +56,7 @@ export function useMacHarness(): MacHarness {
         computerName,
         flushMs: IDLE_MS,
         reorderMs: IDLE_MS,
+        kanbanPollMs: 50,
       });
       cleanups.push(() => agent.stop());
       return { fake, agent };

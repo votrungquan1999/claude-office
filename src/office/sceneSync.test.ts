@@ -123,6 +123,34 @@ describe("scene sync", () => {
     expect(merged.get("m2/a")?.cwd).toBe("/other");
   });
 
+  it("labels an employee with the desk name ahead of machine and folder, and follows a rename", () => {
+    // Given a session with a desk name
+    const office = loadOffice();
+    const sync = createSceneSync(office);
+    const named = {
+      ...session("m1", "Mac mini", "a", "/Users/q/docs"),
+      deskName: "Write the report",
+    };
+    sync.apply([named], { firstLoad: true });
+    expect(office.getCharacters()[0].directoryName).toBe(
+      "Write the report · Mac mini / docs",
+    );
+
+    // When the desk is renamed
+    sync.apply([
+      {
+        ...named,
+        deskName: "Card title",
+        changedAt: "2026-11-08T10:01:00.000Z",
+      },
+    ]);
+
+    // Then the label follows
+    expect(office.getCharacters()[0].directoryName).toBe(
+      "Card title · Mac mini / docs",
+    );
+  });
+
   describe("rooms", () => {
     /** The room an employee's seat is in. */
     function roomOf(office: OfficeState, sessionIndex: number): string | null {

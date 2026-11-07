@@ -24,7 +24,9 @@ export function DetailsPanel({ session, onClose }: DetailsPanelProps) {
       className="absolute top-2 left-2 z-20 max-h-[calc(100%-1rem)] max-w-xs overflow-y-auto border-2 border-border bg-bg p-2 text-sm"
     >
       <div className="flex items-start justify-between gap-2">
-        <h2 className="font-bold">{folderName(session.cwd)}</h2>
+        <h2 className="font-bold">
+          {session.deskName ?? folderName(session.cwd)}
+        </h2>
         <button type="button" onClick={onClose}>
           Close
         </button>

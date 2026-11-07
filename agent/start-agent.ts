@@ -12,6 +12,7 @@ import {
   readMachineId,
   writeAgentFile,
 } from "./config";
+import { startKanbanWatch } from "./kanban-watch";
 import { startListener } from "./server";
 import { SessionTracker } from "./tracker";
 import { SessionWriter } from "./writer";
@@ -24,6 +25,8 @@ export interface AgentOptions {
   now?: () => number;
   flushMs?: number;
   reorderMs?: number;
+  /** How often the AI-Kanban folder is re-read, as a backstop for missed file events. */
+  kanbanPollMs?: number;
   maxOpsPerSecond?: number;
   log?: (message: string) => void;
 }
@@ -93,6 +96,12 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
     writer,
   });
 
+  const kanban = startKanbanWatch({
+    dir: join(home, ".claude", "kanban-session-state"),
+    pollMs: options.kanbanPollMs ?? 5000,
+    onCard: (sessionId, card) => tracker.setCard(sessionId, card),
+  });
+
   const token = randomBytes(24).toString("hex");
   const listener = await startListener(token, (body) => tracker.ingest(body));
   writeAgentFile(home, { pid: process.pid, port: listener.port, token });
@@ -103,6 +112,7 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
     async stop() {
       rmSync(join(officeDir(home), "agent.json"), { force: true });
       await listener.close();
+      kanban.stop();
       tracker.stop();
       writer.stop();
       await client.close();

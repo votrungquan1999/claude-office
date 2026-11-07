@@ -12,6 +12,7 @@ export interface SessionDoc {
   startedAt: Date;
   endedAt?: Date;
   bridgeSessionId?: string;
+  deskName?: string;
 }
 
 export interface WriterOptions {

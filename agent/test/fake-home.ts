@@ -13,6 +13,9 @@ export interface FakeHome {
   home: string;
   /** Writes a `~/.claude/sessions/<pid>.json` registry entry for a made-up running session. */
   addSession(session: FakeSession): void;
+  /** Writes `~/.claude/kanban-session-state/<sessionId>.json`; a string is written as-is (to fake a half-written file). */
+  writeKanban(sessionId: string, content: object | string): void;
+  removeKanban(sessionId: string): void;
   remove(): void;
 }
 
@@ -27,6 +30,7 @@ export function makeFakeHome(machineId: string): FakeHome {
   const home = mkdtempSync(join(tmpdir(), "claude-office-home-"));
   const sessionsDir = join(home, ".claude", "sessions");
   mkdirSync(sessionsDir, { recursive: true });
+  const kanbanDir = join(home, ".claude", "kanban-session-state");
   writeFileSync(
     join(home, ".claude.json"),
     JSON.stringify({ machineID: machineId }),
@@ -49,6 +53,16 @@ export function makeFakeHome(machineId: string): FakeHome {
           name,
         }),
       );
+    },
+    writeKanban(sessionId, content) {
+      mkdirSync(kanbanDir, { recursive: true });
+      writeFileSync(
+        join(kanbanDir, `${sessionId}.json`),
+        typeof content === "string" ? content : JSON.stringify(content),
+      );
+    },
+    removeKanban(sessionId) {
+      rmSync(join(kanbanDir, `${sessionId}.json`), { force: true });
     },
     remove() {
       rmSync(home, { recursive: true, force: true });

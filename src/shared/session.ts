@@ -10,6 +10,8 @@ export const sessionDtoSchema = z.object({
   state: z.enum(SESSION_STATES),
   startedAt: z.string(),
   endedAt: z.string().optional(),
+  /** Name on the desk; absent only when nothing is known yet. */
+  deskName: z.string().optional(),
   /** Remote Control id; present only while Remote Control was connected. */
   bridgeSessionId: z.string().optional(),
   changedAt: z.string(),

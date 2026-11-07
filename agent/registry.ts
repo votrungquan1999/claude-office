@@ -5,6 +5,7 @@ import { z } from "zod";
 const registryEntrySchema = z.object({
   sessionId: z.string(),
   kind: z.string().optional(),
+  name: z.string().optional(),
   startedAt: z.number().optional(),
 });
 
