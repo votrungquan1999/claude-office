@@ -1,0 +1,13 @@
+tmp/
+node_modules/
+.next/
+.next-e2e/
+.e2e/
+.env
+.env.*
+!.env.example
+next-env.d.ts
+*.tsbuildinfo
+/test-results/
+/playwright-report/
+.DS_Store

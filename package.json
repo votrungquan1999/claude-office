@@ -1,0 +1,44 @@
+{
+  "name": "claude-office",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A pixel-art office that shows every running Claude Code session.",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test:run": "vitest run",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "better-auth": "1.5.4",
+    "mongodb": "^7.8.0",
+    "next": "^16.4.5",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.6.6",
+    "@playwright/test": "~1.62.1",
+    "@tailwindcss/postcss": "^4.3.5",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "jsdom": "^31.0.0",
+    "mongodb-memory-server": "^11.3.0",
+    "postcss": "^8.5.32",
+    "tailwindcss": "^4.3.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.12"
+  }
+}
