@@ -1,9 +1,12 @@
 import { execFile } from "node:child_process";
 import { homedir } from "node:os";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { z } from "zod";
 import { readComputerName } from "../computer-name";
 import { connectMac } from "./connect";
+import { installHooks } from "./install-hooks";
 
 const run = promisify(execFile);
 
@@ -23,6 +26,12 @@ async function main(): Promise<void> {
     openUrl: async (url) => {
       await run("open", [url]);
     },
+    print: (line) => console.log(line),
+  });
+  installHooks({
+    home: homedir(),
+    // This file lives two folders below the checkout's root.
+    repoRoot: resolve(dirname(fileURLToPath(import.meta.url)), "../.."),
     print: (line) => console.log(line),
   });
 }
