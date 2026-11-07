@@ -10,7 +10,7 @@ export default defineConfig({
     environment: "node",
     globals: true,
     setupFiles: ["./vitest.setup.ts"],
-    include: ["src/**/*.test.{ts,tsx}"],
+    include: ["src/**/*.test.{ts,tsx}", "agent/**/*.test.ts"],
     // MongoMemoryReplSet.create() in beforeAll can exceed the 10 s default.
     hookTimeout: 60_000,
   },

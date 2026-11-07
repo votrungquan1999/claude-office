@@ -10,7 +10,10 @@ import {
   ZOOM_MIN,
 } from "@/office/constants";
 import { OfficeState } from "@/office/engine/officeState";
+import { createSceneSync } from "@/office/sceneSync";
 import { installTestHooks } from "@/office/testHooks";
+import { changesResponseSchema } from "@/shared/session";
+import { mergeSessions, type SessionMap } from "./officeStore";
 import { RoomSigns } from "./RoomSigns";
 
 /**
@@ -20,6 +23,9 @@ import { RoomSigns } from "./RoomSigns";
 export function OfficeView() {
   const [officeState] = useState(() => new OfficeState());
   const [loaded, setLoaded] = useState(false);
+  const [sceneSync] = useState(() => createSceneSync(officeState));
+  const [agentIds, setAgentIds] = useState<number[]>([]);
+  const sessionsRef = useRef<SessionMap>(new Map());
   const [zoom, setZoom] = useState(() =>
     Math.max(
       ZOOM_MIN,
@@ -38,6 +44,24 @@ export function OfficeView() {
     // Layout goes in last inside the loader; the signs read it once this flips.
     void loadOfficeAssets(officeState).then(() => setLoaded(true));
   }, [officeState]);
+
+  useEffect(() => {
+    // Employees need the layout's seats, so sessions load only after the assets.
+    if (!loaded) return;
+    let cancelled = false;
+    void fetch("/api/office/changes")
+      .then((response) => response.json())
+      .then((body) => {
+        if (cancelled) return;
+        const { sessions } = changesResponseSchema.parse(body);
+        sessionsRef.current = mergeSessions(sessionsRef.current, sessions);
+        sceneSync.apply([...sessionsRef.current.values()], { firstLoad: true });
+        setAgentIds(sceneSync.agentIds());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [loaded, sceneSync]);
 
   useEffect(() => {
     if (!process.env.NEXT_PUBLIC_E2E) return;
@@ -68,7 +92,7 @@ export function OfficeView() {
           />
           <ToolOverlay
             officeState={officeState}
-            agents={[]}
+            agents={agentIds}
             activity={{}}
             containerRef={containerRef}
             zoom={zoom}

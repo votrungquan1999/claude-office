@@ -1,0 +1,70 @@
+import { describe, expect, it } from "vitest";
+import { hookEventSchema } from "@/shared/hook-events";
+import { reduceEvent } from "../../hooks/claude-office-hook.mjs";
+
+const SECRET = "rm -rf /secret-command";
+
+describe("the hook's field allowlist", () => {
+  it("drops command text, tool output and error text, and matches what the agent's schema accepts", () => {
+    // Given raw payloads that carry sensitive fields beside the allowed ones
+    const bash = {
+      hook_event_name: "PostToolUse",
+      session_id: "s1",
+      cwd: "/work",
+      tool_name: "Bash",
+      tool_use_id: "t1",
+      tool_input: { command: SECRET, description: "Clean the build folder" },
+      tool_response: { stdout: SECRET },
+      error: SECRET,
+      message: SECRET,
+      last_assistant_message: SECRET,
+      permission_suggestions: [SECRET],
+      duration_ms: 12,
+    };
+    const submit = {
+      hook_event_name: "UserPromptSubmit",
+      session_id: "s1",
+      prompt: "p".repeat(600),
+    };
+    const fetchPage = {
+      hook_event_name: "PreToolUse",
+      session_id: "s1",
+      tool_name: "WebFetch",
+      tool_input: {
+        url: "https://docs.example.com/a/b?token=abc",
+        prompt: SECRET,
+      },
+    };
+    const read = {
+      hook_event_name: "PreToolUse",
+      session_id: "s1",
+      tool_name: "Read",
+      tool_input: { file_path: "/Users/q/secret-dir/notes.md" },
+    };
+
+    // When the hook reduces them and the agent parses the result
+    const reduced = [bash, fetchPage, read, submit].map((payload) =>
+      reduceEvent(payload, 1000, {
+        CLAUDE_CODE_BRIDGE_SESSION_ID: "session_x",
+      }),
+    );
+    const parsed = reduced.map((event) => hookEventSchema.parse(event));
+
+    // Then nothing sensitive survives, only the reduced input stays, and both sides agree
+    expect(JSON.stringify(reduced)).not.toContain(SECRET);
+    expect(JSON.stringify(reduced)).not.toContain("secret-dir");
+    expect(JSON.stringify(reduced)).not.toContain("token=abc");
+    expect(reduced.map((event) => event.tool_input)).toEqual([
+      { description: "Clean the build folder" },
+      { domain: "docs.example.com" },
+      { file_name: "notes.md" },
+      undefined,
+    ]);
+    expect(reduced[3].prompt).toHaveLength(500);
+    expect(reduced[0]).toMatchObject({
+      hookTs: 1000,
+      bridgeSessionId: "session_x",
+    });
+    expect(parsed).toEqual(reduced);
+  });
+});
