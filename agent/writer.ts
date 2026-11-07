@@ -29,6 +29,8 @@ export interface SessionDoc {
   deskName?: string;
   runningSteps?: Array<{ text: string; startedAt: Date }>;
   currentTodo?: string | null;
+  /** Whether the session ever got a prompt; sessions that never did stay out of the went-home list. */
+  hadPrompt?: boolean;
 }
 
 export interface WriterOptions {

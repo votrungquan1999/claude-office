@@ -41,6 +41,8 @@ export const sessionDtoSchema = z.object({
   runningSteps: z.array(runningStepDtoSchema).optional(),
   /** The in-progress to-do line, when the session has one. */
   currentTodo: z.string().optional(),
+  /** Whether the session ever got a prompt; one that never did is left out of the went-home list. */
+  hadPrompt: z.boolean().optional(),
   changedAt: z.string(),
 });
 

@@ -30,6 +30,7 @@ interface Tracked {
   startedAt?: number;
   interactive: boolean;
   firstMessage?: string;
+  hadPrompt: boolean;
   registryName?: string;
   memory: StateMemory;
   steps: StepMemory;
@@ -97,6 +98,7 @@ export class SessionTracker {
         cwdHookTs: -Infinity,
         bridgeHookTs: -Infinity,
         interactive: false,
+        hadPrompt: false,
         memory: initialStateMemory(),
         steps: initialStepMemory(),
         unwritten: [],
@@ -136,6 +138,7 @@ export class SessionTracker {
       tracked.bridgeSessionId = event.bridgeSessionId;
       tracked.bridgeHookTs = event.hookTs;
     }
+    if (event.hook_event_name === "UserPromptSubmit") tracked.hadPrompt = true;
     if (event.hook_event_name === "UserPromptSubmit" && !tracked.firstMessage) {
       tracked.firstMessage = firstRealMessage(event.prompt ?? "");
     }
@@ -196,6 +199,7 @@ export class SessionTracker {
           startedAt: new Date(step.startedAt),
         })),
         currentTodo: tracked.steps.todo,
+        hadPrompt: tracked.hadPrompt,
       },
       steps,
     );

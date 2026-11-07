@@ -348,4 +348,56 @@ describe("scene sync", () => {
       expect(roomOf(office, 0)).toBe("thinking");
     });
   });
+
+  describe("went-home sessions", () => {
+    it("removes the employee and frees its seat when a session goes home, never adds one for an ended session, and brings it back on resume", () => {
+      // Given two live employees
+      const office = loadOffice();
+      const sync = createSceneSync(office);
+      const a = session("m1", "Mac", "a", "/a", "2026-11-08T10:00:00.000Z");
+      const b = session("m1", "Mac", "b", "/b", "2026-11-08T10:00:00.000Z");
+      sync.apply([a, b], { firstLoad: true });
+      const seatOfA = office.getCharacters()[0].seatId as string;
+      const goneKey = sync.sessionKeyOf(sync.agentIds()[0]);
+      expect(goneKey).toBe("m1/a");
+
+      // When the first session goes home and the renderer finishes its despawn
+      const home = (id: SessionDto): SessionDto => ({
+        ...id,
+        state: "wentHome",
+        endedAt: "2026-11-08T11:00:00.000Z",
+        changedAt: "2026-11-08T11:00:00.000Z",
+      });
+      sync.apply([home(a)]);
+      for (let step = 0; step < 100; step++) office.update(0.1);
+
+      // Then only the second employee is left, the seat is free, and the key mapping is gone
+      expect(office.getCharacters()).toHaveLength(1);
+      expect(office.seats.get(seatOfA)?.assigned).toBe(false);
+      expect(sync.agentIds()).toHaveLength(1);
+      expect(sync.sessionKeyOf(1)).toBeUndefined();
+
+      // When an ended session is applied on first load and in a later poll
+      const c = session("m1", "Mac", "c", "/c", "2026-11-08T10:00:00.000Z");
+      sync.apply([home(c)], { firstLoad: true });
+      sync.apply([home(c)]);
+
+      // Then nobody is added for it
+      expect(office.getCharacters()).toHaveLength(1);
+
+      // When the first session is resumed right after going home
+      sync.apply([
+        { ...a, state: "thinking", changedAt: "2026-11-08T12:00:00.000Z" },
+      ]);
+
+      // Then it is an employee again
+      expect(office.getCharacters()).toHaveLength(2);
+      expect(
+        sync
+          .agentIds()
+          .map((id) => sync.sessionKeyOf(id))
+          .sort(),
+      ).toEqual(["m1/a", "m1/b"]);
+    });
+  });
 });

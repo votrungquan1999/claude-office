@@ -141,6 +141,14 @@ export function createSceneSync(
           ? `${session.deskName} · ${place}`
           : place;
         const employee = employees.get(key);
+        if (session.state === "wentHome") {
+          // The renderer finishes the despawn on its own; a resume later gets a fresh id, so it never meets the leaver.
+          if (employee) {
+            office.removeAgent(employee.id);
+            employees.delete(key);
+          }
+          continue;
+        }
         const room =
           ROOM_OF_STATE[session.state] ?? employee?.room ?? Room.Waiting;
         if (!employee) {

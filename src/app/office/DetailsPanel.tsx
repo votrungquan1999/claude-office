@@ -18,6 +18,8 @@ function folderName(cwd: string): string {
  */
 export function DetailsPanel({ session, onClose }: DetailsPanelProps) {
   if (!session) return null;
+  // An ended session has nothing left to control, so it gets no link and no "off" message.
+  const ended = session.state === "wentHome";
   const remoteControl = remoteControlUrl(session.bridgeSessionId);
   return (
     <aside
@@ -38,7 +40,7 @@ export function DetailsPanel({ session, onClose }: DetailsPanelProps) {
         <p data-testid="current-todo">{session.currentTodo}</p>
       )}
       <StepsList key={sessionKey(session)} session={session} />
-      {remoteControl ? (
+      {ended ? null : remoteControl ? (
         <a
           data-testid="remote-control-link"
           href={remoteControl}

@@ -21,10 +21,17 @@ interface SessionRow {
   recentSteps?: Array<Omit<StepDto, "startedAt"> & { startedAt: Date }>;
   runningSteps?: Array<{ text: string; startedAt: Date }>;
   currentTodo?: string | null;
+  hadPrompt?: boolean;
   changedAt: Date;
 }
 
+/**
+ * Converts a stored session to what the browser gets; ended sessions carry no steps.
+ * @param row - The stored session.
+ * @returns The session as sent.
+ */
 function toDto(row: SessionRow): SessionDto {
+  const live = !row.endedAt;
   return {
     machineId: row.machineId,
     machineName: row.machineName,
@@ -43,7 +50,7 @@ function toDto(row: SessionRow): SessionDto {
           })),
         }
       : {}),
-    ...(row.runningSteps?.length
+    ...(live && row.runningSteps?.length
       ? {
           runningSteps: row.runningSteps.map((step) => ({
             ...step,
@@ -51,7 +58,8 @@ function toDto(row: SessionRow): SessionDto {
           })),
         }
       : {}),
-    ...(row.currentTodo ? { currentTodo: row.currentTodo } : {}),
+    ...(live && row.currentTodo ? { currentTodo: row.currentTodo } : {}),
+    ...(row.hadPrompt === undefined ? {} : { hadPrompt: row.hadPrompt }),
     changedAt: row.changedAt.toISOString(),
   };
 }
@@ -71,11 +79,24 @@ export async function GET(request: NextRequest) {
   if (since && Number.isNaN(since.getTime())) {
     return Response.json({ error: "invalid since" }, { status: 400 });
   }
+  const dayStartParam = request.nextUrl.searchParams.get("dayStart");
+  const dayStart = dayStartParam ? new Date(dayStartParam) : undefined;
+  if (dayStart && Number.isNaN(dayStart.getTime())) {
+    return Response.json({ error: "invalid dayStart" }, { status: 400 });
+  }
   const db = await getDb();
-  // No cursor: the live sessions. With one: every change, ended sessions included so the browser can drop them.
+  // No cursor: the live sessions, plus today's departures when the browser says when its day began.
+  // With one: every change, ended sessions included so the browser can drop them.
   const filter = since
     ? { changedAt: { $gte: new Date(since.getTime() - CHANGES_OVERLAP_MS) } }
-    : { endedAt: { $exists: false } };
+    : {
+        $or: [
+          { endedAt: { $exists: false } },
+          ...(dayStart
+            ? [{ endedAt: { $gte: dayStart }, hadPrompt: true }]
+            : []),
+        ],
+      };
   const rows = await db
     .collection<SessionRow>("sessions")
     .find(filter)

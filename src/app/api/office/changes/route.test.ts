@@ -10,9 +10,14 @@ import { GET } from "./route";
 const OWNER = "owner@example.com";
 const T0 = Date.parse("2026-11-08T10:00:00.000Z");
 
-function changesRequest(headers: Headers, since?: Date): NextRequest {
+function changesRequest(
+  headers: Headers,
+  since?: Date,
+  dayStart?: Date,
+): NextRequest {
   const url = new URL("http://localhost:4710/api/office/changes");
   if (since) url.searchParams.set("since", since.toISOString());
+  if (dayStart) url.searchParams.set("dayStart", dayStart.toISOString());
   return new NextRequest(url, { headers });
 }
 
@@ -85,5 +90,74 @@ describe("the office changes API", () => {
     // Then the list is empty and the cursor stays where it was
     expect(quiet.sessions).toEqual([]);
     expect(quiet.cursor).toBe(later.toISOString());
+  });
+
+  it("on first load returns live sessions plus those that ended since the browser's day start and had a prompt, with their recent steps", async () => {
+    // Given a live session, one that ended today, one that ended yesterday, and one that ended today without a prompt
+    const dayStart = new Date(T0 - 3_600_000);
+    const step = {
+      id: "a".repeat(24),
+      text: "Read a.ts",
+      startedAt: new Date(T0),
+      status: "ok",
+    };
+    const base = {
+      machineId: "m1",
+      machineName: "Mac",
+      cwd: "/work",
+      startedAt: new Date(T0 - 86_400_000 * 2),
+      changedAt: new Date(T0),
+      recentSteps: [step],
+    };
+    await (await getDb()).collection("sessions").insertMany([
+      { ...base, sessionId: "live", state: "working" },
+      {
+        ...base,
+        sessionId: "today",
+        state: "wentHome",
+        hadPrompt: true,
+        endedAt: new Date(T0 - 60_000),
+      },
+      {
+        ...base,
+        sessionId: "yesterday",
+        state: "wentHome",
+        hadPrompt: true,
+        endedAt: new Date(dayStart.getTime() - 60_000),
+      },
+      {
+        ...base,
+        sessionId: "quiet",
+        state: "wentHome",
+        hadPrompt: false,
+        endedAt: new Date(T0 - 60_000),
+      },
+    ]);
+
+    // When the browser loads the office, and when it polls for changes
+    const first = changesResponseSchema.parse(
+      await (
+        await GET(changesRequest(ownerHeaders, undefined, dayStart))
+      ).json(),
+    );
+    const poll = changesResponseSchema.parse(
+      await (
+        await GET(changesRequest(ownerHeaders, new Date(T0 - 1_000)))
+      ).json(),
+    );
+
+    // Then the first load has the live one and today's prompted departure, and ended ones keep their recent steps
+    expect(first.sessions.map((s) => s.sessionId).sort()).toEqual([
+      "live",
+      "today",
+    ]);
+    const byId = (body: typeof first, id: string) =>
+      body.sessions.find((s) => s.sessionId === id);
+    expect(byId(first, "live")?.recentSteps).toHaveLength(1);
+    expect(byId(first, "today")?.recentSteps).toHaveLength(1);
+    expect(byId(first, "today")?.hadPrompt).toBe(true);
+    // And a poll lists every ended one too
+    expect(poll.sessions).toHaveLength(4);
+    expect(byId(poll, "quiet")?.recentSteps).toHaveLength(1);
   });
 });
