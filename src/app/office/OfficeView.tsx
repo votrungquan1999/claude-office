@@ -14,10 +14,12 @@ import { offlineMachineIds } from "@/office/offline";
 import { createSceneSync } from "@/office/sceneSync";
 import { installTestHooks } from "@/office/testHooks";
 import { dayStartOf, todaysDepartures } from "@/office/wentHome";
-import { changesResponseSchema, sessionKey } from "@/shared/session";
+import { type ChangesResponse, sessionKey } from "@/shared/session";
+import { ConnectionStatus } from "./ConnectionStatus";
 import { DetailsPanel } from "./DetailsPanel";
 import { mergeSessions, type SessionMap } from "./officeStore";
 import { RoomSigns } from "./RoomSigns";
+import { useOfficeChanges } from "./useOfficeChanges";
 import { WentHomeList } from "./WentHomeList";
 
 /**
@@ -46,38 +48,40 @@ export function OfficeView() {
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
   const containerRef = useRef<HTMLDivElement>(null);
+  const sessionsRef = useRef<SessionMap>(new Map());
+  // The browser's own midnight decides which departures count as today.
+  const [dayStart] = useState(() => dayStartOf(new Date()).toISOString());
+
+  /** Folds one answer into the sessions and the scene. */
+  const onAnswer = (answer: ChangesResponse, firstLoad: boolean) => {
+    const merged = mergeSessions(
+      firstLoad ? new Map() : sessionsRef.current,
+      answer.sessions,
+    );
+    sessionsRef.current = merged;
+    // Judged against the server's clock: the phone's may be minutes off.
+    const offline = offlineMachineIds(answer.machines, answer.serverNow);
+    setSessions(merged);
+    setOfflineIds(offline);
+    sceneSync.apply([...merged.values()], {
+      firstLoad,
+      offlineMachineIds: offline,
+    });
+    setAgentIds(sceneSync.agentIds());
+  };
+
+  // Employees need the layout's seats, so polling starts only after the assets.
+  const { lastUpdatedAt, connectionLost } = useOfficeChanges({
+    enabled: loaded,
+    dayStart,
+    onAnswer,
+    onUnauthorized: () => window.location.assign("/sign-in?next=%2F"),
+  });
 
   useEffect(() => {
     // Layout goes in last inside the loader; the signs read it once this flips.
     void loadOfficeAssets(officeState).then(() => setLoaded(true));
   }, [officeState]);
-
-  useEffect(() => {
-    // Employees need the layout's seats, so sessions load only after the assets.
-    if (!loaded) return;
-    let cancelled = false;
-    // The browser's own midnight decides which departures count as today.
-    const dayStart = dayStartOf(new Date()).toISOString();
-    void fetch(`/api/office/changes?dayStart=${encodeURIComponent(dayStart)}`)
-      .then((response) => response.json())
-      .then((body) => {
-        if (cancelled) return;
-        const answer = changesResponseSchema.parse(body);
-        const merged = mergeSessions(new Map(), answer.sessions);
-        // Judged against the server's clock: the phone's may be minutes off.
-        const offline = offlineMachineIds(answer.machines, answer.serverNow);
-        setSessions(merged);
-        setOfflineIds(offline);
-        sceneSync.apply([...merged.values()], {
-          firstLoad: true,
-          offlineMachineIds: offline,
-        });
-        setAgentIds(sceneSync.agentIds());
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [loaded, sceneSync]);
 
   useEffect(() => {
     // A state flip is only acted on once it has held for the smoothing window, even when no poll follows.
@@ -134,6 +138,11 @@ export function OfficeView() {
           />
         </>
       )}
+      <ConnectionStatus
+        lastUpdatedAt={lastUpdatedAt}
+        connectionLost={connectionLost}
+        now={now.getTime()}
+      />
       <WentHomeList
         departures={todaysDepartures([...sessions.values()], now)}
         onSelect={(session) => setSelectedKey(sessionKey(session))}
