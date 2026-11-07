@@ -16,6 +16,8 @@ export interface SceneSync {
   apply(sessions: SessionDto[], options?: { firstLoad?: boolean }): void;
   /** Finishes moves whose state has held long enough; call it on the poll clock. */
   tick(): void;
+  /** The "machineId/sessionId" key of the session behind a renderer id. */
+  sessionKeyOf(id: number): string | undefined;
   /** The renderer ids of every employee, in arrival order. */
   agentIds(): number[];
 }
@@ -164,6 +166,8 @@ export function createSceneSync(
     tick() {
       for (const employee of employees.values()) moveIfSettled(employee);
     },
+    sessionKeyOf: (id) =>
+      [...employees.entries()].find(([, employee]) => employee.id === id)?.[0],
     agentIds: () => [...employees.values()].map((employee) => employee.id),
   };
 }

@@ -1,60 +1,13 @@
-import { NextRequest } from "next/server";
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { GET as getChanges } from "@/app/api/office/changes/route";
-import { getDb } from "@/db/mongo";
-import { changesResponseSchema, type SessionDto } from "@/shared/session";
-import { sessionHeadersFor } from "@/test/owner-session";
-import { useTestAuth } from "@/test/use-test-auth";
-import { useTestMongo } from "@/test/use-test-mongo";
-import { startAgent } from "../start-agent";
-import { makeFakeHome } from "./fake-home";
+import { describe, expect, it } from "vitest";
+import { useMacHarness } from "./mac-harness";
 import { runHook } from "./run-hook";
 
-const OWNER = "owner@example.com";
-// Large windows: nothing flushes on its own; each step calls flush() instead of waiting.
-const IDLE_MS = 600_000;
-
 describe("an employee moves to the room matching its session", () => {
-  useTestMongo();
-  useTestAuth(OWNER);
-
-  const cleanups: Array<() => Promise<void> | void> = [];
-  let ownerHeaders: Headers;
-
-  beforeAll(async () => {
-    ownerHeaders = (await sessionHeadersFor(OWNER)) ?? new Headers();
-  });
-  beforeEach(async () => {
-    await (await getDb()).collection("sessions").deleteMany({});
-  });
-  afterEach(async () => {
-    for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
-  });
-
-  async function officeSessions(): Promise<SessionDto[]> {
-    const response = await getChanges(
-      new NextRequest("http://localhost:4710/api/office/changes", {
-        headers: ownerHeaders,
-      }),
-    );
-    return changesResponseSchema.parse(await response.json()).sessions;
-  }
+  const { setUpMac, officeSessions } = useMacHarness();
 
   it("follows a turn: waiting, thinking, working, needs permission, thinking, waiting", async () => {
     // Given a Mac with one interactive session
-    const fake = makeFakeHome("machine-air");
-    cleanups.push(() => fake.remove());
-    const agent = await startAgent({
-      home: fake.home,
-      mongo: {
-        uri: process.env.MONGODB_URI ?? "",
-        db: process.env.MONGODB_DB ?? "",
-      },
-      computerName: "Quan's MacBook Air",
-      flushMs: IDLE_MS,
-      reorderMs: IDLE_MS,
-    });
-    cleanups.push(() => agent.stop());
+    const { fake, agent } = await setUpMac("machine-air", "Quan's MacBook Air");
     fake.addSession({ sessionId: "s1", cwd: "/work/app" });
 
     /** Sends one event through the real hook and returns the state the office shows. */

@@ -1,63 +1,9 @@
-import { NextRequest } from "next/server";
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { GET as getChanges } from "@/app/api/office/changes/route";
-import { getDb } from "@/db/mongo";
-import { changesResponseSchema, type SessionDto } from "@/shared/session";
-import { sessionHeadersFor } from "@/test/owner-session";
-import { useTestAuth } from "@/test/use-test-auth";
-import { useTestMongo } from "@/test/use-test-mongo";
-import { type RunningAgent, startAgent } from "../start-agent";
-import { type FakeHome, makeFakeHome } from "./fake-home";
+import { describe, expect, it } from "vitest";
+import { useMacHarness } from "./mac-harness";
 import { pause, runHook, startHook } from "./run-hook";
 
-const OWNER = "owner@example.com";
-// Large windows: nothing flushes on its own; each test calls flush() instead of waiting.
-const IDLE_MS = 600_000;
-
 describe("running Claude sessions appear in the office", () => {
-  useTestMongo();
-
-  const cleanups: Array<() => Promise<void> | void> = [];
-  let ownerHeaders: Headers;
-
-  useTestAuth(OWNER);
-
-  beforeAll(async () => {
-    ownerHeaders = (await sessionHeadersFor(OWNER)) ?? new Headers();
-  });
-  beforeEach(async () => {
-    await (await getDb()).collection("sessions").deleteMany({});
-  });
-  afterEach(async () => {
-    for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
-  });
-
-  /** A Mac: a fake home plus its agent running in-process against the test database. */
-  async function setUpMac(machineId: string, computerName: string) {
-    const fake: FakeHome = makeFakeHome(machineId);
-    cleanups.push(() => fake.remove());
-    const agent: RunningAgent = await startAgent({
-      home: fake.home,
-      mongo: {
-        uri: process.env.MONGODB_URI ?? "",
-        db: process.env.MONGODB_DB ?? "",
-      },
-      computerName,
-      flushMs: IDLE_MS,
-      reorderMs: IDLE_MS,
-    });
-    cleanups.push(() => agent.stop());
-    return { fake, agent };
-  }
-
-  async function officeSessions(): Promise<SessionDto[]> {
-    const response = await getChanges(
-      new NextRequest("http://localhost:4710/api/office/changes", {
-        headers: ownerHeaders,
-      }),
-    );
-    return changesResponseSchema.parse(await response.json()).sessions;
-  }
+  const { setUpMac, officeSessions } = useMacHarness();
 
   it("shows each Mac's session with the machine name and the folder, and the folder follows cd", async () => {
     // Given two Macs, each running one interactive session

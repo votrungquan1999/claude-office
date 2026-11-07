@@ -27,11 +27,6 @@ interface OfficeCanvasProps {
   panRef: React.MutableRefObject<{ x: number; y: number }>;
   /** Whether the canvas draws its own area overlay and labels. */
   showAreas: boolean;
-  /** Mobile two-step tap: the first tap on a character selects it (camera
-   *  follow + status label), and only a second tap on the already-selected
-   *  character fires onClick (opens its terminal). Desktop keeps single-click
-   *  focus with tap-again-to-deselect. */
-  tapSelectsFirst?: boolean;
 }
 
 export function OfficeCanvas({
@@ -41,7 +36,6 @@ export function OfficeCanvas({
   onZoomChange,
   panRef,
   showAreas,
-  tapSelectsFirst = false,
 }: OfficeCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -289,28 +283,10 @@ export function OfficeCanvas({
 
       const hitId = officeState.getCharacterAt(pos.worldX, pos.worldY);
       if (hitId !== null) {
-        // Dismiss any active bubble on click
-        officeState.dismissBubble(hitId);
-        // Two-step (mobile): first tap selects + follows so the status label
-        // shows; only a repeat tap on the same character opens its terminal.
-        // Deselection is tapping empty floor, as ever.
-        if (tapSelectsFirst) {
-          if (officeState.selectedAgentId === hitId) {
-            onClick(hitId);
-          } else {
-            officeState.selectedAgentId = hitId;
-            officeState.cameraFollowId = hitId;
-          }
-          return;
-        }
-        // Toggle selection: click same agent deselects, different agent selects
-        if (officeState.selectedAgentId === hitId) {
-          officeState.selectedAgentId = null;
-          officeState.cameraFollowId = null;
-        } else {
-          officeState.selectedAgentId = hitId;
-          officeState.cameraFollowId = hitId;
-        }
+        // The permission bubble stays until the dialog closes; clicking only selects.
+        // Re-clicking the selected employee keeps it selected so its panel stays open.
+        officeState.selectedAgentId = hitId;
+        officeState.cameraFollowId = hitId;
         onClick(hitId);
         return;
       }
@@ -331,7 +307,7 @@ export function OfficeCanvas({
       officeState.selectedAgentId = null;
       officeState.cameraFollowId = null;
     },
-    [officeState, onClick, screenToWorld, tapSelectsFirst],
+    [officeState, onClick, screenToWorld],
   );
 
   const handleClick = useCallback(

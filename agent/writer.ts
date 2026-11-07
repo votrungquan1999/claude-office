@@ -11,6 +11,7 @@ export interface SessionDoc {
   state: SessionState;
   startedAt: Date;
   endedAt?: Date;
+  bridgeSessionId?: string;
 }
 
 export interface WriterOptions {

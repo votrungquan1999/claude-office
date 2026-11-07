@@ -15,6 +15,7 @@ interface SessionRow {
   state: SessionDto["state"];
   startedAt: Date;
   endedAt?: Date;
+  bridgeSessionId?: string;
   changedAt: Date;
 }
 
@@ -27,6 +28,7 @@ function toDto(row: SessionRow): SessionDto {
     state: row.state,
     startedAt: row.startedAt.toISOString(),
     ...(row.endedAt ? { endedAt: row.endedAt.toISOString() } : {}),
+    ...(row.bridgeSessionId ? { bridgeSessionId: row.bridgeSessionId } : {}),
     changedAt: row.changedAt.toISOString(),
   };
 }

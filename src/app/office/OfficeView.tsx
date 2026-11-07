@@ -13,6 +13,7 @@ import { OfficeState } from "@/office/engine/officeState";
 import { createSceneSync } from "@/office/sceneSync";
 import { installTestHooks } from "@/office/testHooks";
 import { changesResponseSchema } from "@/shared/session";
+import { DetailsPanel } from "./DetailsPanel";
 import { mergeSessions, type SessionMap } from "./officeStore";
 import { RoomSigns } from "./RoomSigns";
 
@@ -25,7 +26,8 @@ export function OfficeView() {
   const [loaded, setLoaded] = useState(false);
   const [sceneSync] = useState(() => createSceneSync(officeState));
   const [agentIds, setAgentIds] = useState<number[]>([]);
-  const sessionsRef = useRef<SessionMap>(new Map());
+  const [sessions, setSessions] = useState<SessionMap>(new Map());
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [zoom, setZoom] = useState(() =>
     Math.max(
       ZOOM_MIN,
@@ -53,9 +55,12 @@ export function OfficeView() {
       .then((response) => response.json())
       .then((body) => {
         if (cancelled) return;
-        const { sessions } = changesResponseSchema.parse(body);
-        sessionsRef.current = mergeSessions(sessionsRef.current, sessions);
-        sceneSync.apply([...sessionsRef.current.values()], { firstLoad: true });
+        const merged = mergeSessions(
+          new Map(),
+          changesResponseSchema.parse(body).sessions,
+        );
+        setSessions(merged);
+        sceneSync.apply([...merged.values()], { firstLoad: true });
         setAgentIds(sceneSync.agentIds());
       });
     return () => {
@@ -82,7 +87,7 @@ export function OfficeView() {
     <div ref={containerRef} className="relative h-full w-full overflow-hidden">
       <OfficeCanvas
         officeState={officeState}
-        onClick={() => {}}
+        onClick={(id) => setSelectedKey(sceneSync.sessionKeyOf(id) ?? null)}
         zoom={zoom}
         onZoomChange={setZoom}
         panRef={panRef}
@@ -107,6 +112,13 @@ export function OfficeView() {
           />
         </>
       )}
+      <DetailsPanel
+        session={selectedKey ? (sessions.get(selectedKey) ?? null) : null}
+        onClose={() => {
+          setSelectedKey(null);
+          officeState.selectedAgentId = null;
+        }}
+      />
     </div>
   );
 }

@@ -21,6 +21,8 @@ interface Tracked {
   timer?: NodeJS.Timeout;
   cwd?: string;
   cwdHookTs: number;
+  bridgeSessionId?: string;
+  bridgeHookTs: number;
   startedAt?: number;
   interactive: boolean;
   memory: StateMemory;
@@ -71,6 +73,7 @@ export class SessionTracker {
       tracked = {
         buffer: [],
         cwdHookTs: -Infinity,
+        bridgeHookTs: -Infinity,
         interactive: false,
         memory: initialStateMemory(),
       };
@@ -104,6 +107,11 @@ export class SessionTracker {
       tracked.cwd = event.cwd;
       tracked.cwdHookTs = event.hookTs;
     }
+    // The id is only in the hook's env while Remote Control is connected, so the newest event decides, absent included.
+    if (event.hookTs >= tracked.bridgeHookTs) {
+      tracked.bridgeSessionId = event.bridgeSessionId;
+      tracked.bridgeHookTs = event.hookTs;
+    }
     tracked.memory = reduceState(tracked.memory, event);
     if (event.hook_event_name === "SessionEnd") {
       tracked.endedAt = this.options.now();
@@ -128,6 +136,9 @@ export class SessionTracker {
       cwd: tracked.cwd,
       state: tracked.endedAt === undefined ? tracked.memory.state : "wentHome",
       startedAt: new Date(tracked.startedAt),
+      ...(tracked.bridgeSessionId
+        ? { bridgeSessionId: tracked.bridgeSessionId }
+        : {}),
       ...(tracked.endedAt === undefined
         ? {}
         : { endedAt: new Date(tracked.endedAt) }),
