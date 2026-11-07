@@ -1,0 +1,187 @@
+import type { HookEvent } from "../src/shared/hook-events";
+import type { SessionState } from "../src/shared/session-state";
+
+/** What the reducer remembers about a session between events. */
+export interface StateMemory {
+  /** The room the session belongs in, derived from the rest. */
+  state: SessionState;
+  /** Between tools: thinking during a turn, waiting otherwise. */
+  base: "thinking" | "waiting";
+  /** `tool_use_id`s of tools that started and have not finished. */
+  inFlight: string[];
+  /** Recently finished ids, so a Pre delivered after its own Post is ignored. */
+  closed: string[];
+  /** One entry per open dialog waiting for the owner; it names the tool when the event did. */
+  dialogs: Array<{ toolName?: string }>;
+}
+
+/** Notification types that mean a dialog is waiting for the owner. */
+const OWNER_DIALOGS = new Set([
+  "permission_prompt",
+  "elicitation_dialog",
+  "elicitation_url_dialog",
+  "agent_needs_input",
+]);
+
+function derive(memory: Omit<StateMemory, "state">): StateMemory {
+  const state: SessionState =
+    memory.dialogs.length > 0
+      ? "needsPermission"
+      : memory.inFlight.length > 0
+        ? "working"
+        : memory.base;
+  return { ...memory, state };
+}
+
+export function initialStateMemory(): StateMemory {
+  return derive({ base: "waiting", inFlight: [], closed: [], dialogs: [] });
+}
+
+/**
+ * Applies one event to a session's state memory.
+ * @param memory - The memory so far.
+ * @param event - The next event, in `hookTs` order.
+ * @returns The new memory.
+ */
+export function reduceState(
+  memory: StateMemory,
+  event: HookEvent,
+): StateMemory {
+  const id = event.tool_use_id;
+  if (event.agent_id) return reduceSubagent(memory, event);
+  switch (event.hook_event_name) {
+    case "SessionStart":
+      // Auto-compaction happens mid-turn; the turn carries on as it was.
+      return event.source === "compact" ? memory : initialStateMemory();
+    case "Stop":
+    case "StopFailure":
+      return initialStateMemory();
+    case "UserPromptSubmit":
+      return derive({
+        base: "thinking",
+        inFlight: [],
+        closed: [],
+        dialogs: [],
+      });
+    case "PreToolUse":
+      return derive({
+        base: "thinking",
+        closed: memory.closed,
+        inFlight: startTool(memory, id),
+        // A tool starting does not answer a dialog that names another tool; AskUserQuestion is itself a dialog.
+        dialogs:
+          event.tool_name === "AskUserQuestion"
+            ? [...memory.dialogs, { toolName: event.tool_name }]
+            : memory.dialogs.filter(({ toolName }) => toolName !== undefined),
+      });
+    case "PermissionRequest":
+    case "Elicitation":
+    case "Notification":
+      return reduceDialogOpen(memory, event);
+    case "PermissionDenied":
+    case "ElicitationResult":
+      return derive({
+        ...memory,
+        dialogs: closeDialog(memory.dialogs, event.tool_name, true),
+      });
+    case "PostToolUseFailure":
+      // An interrupt ends the turn with no Stop event, so nothing else will say it is over.
+      if (event.is_interrupt) return initialStateMemory();
+      return reduceFinished(memory, event);
+    case "PostToolUse":
+      return reduceFinished(memory, event);
+    default:
+      return memory;
+  }
+}
+
+/** Opens a dialog for an event that asks the owner something; other notifications change nothing. */
+function reduceDialogOpen(memory: StateMemory, event: HookEvent): StateMemory {
+  if (event.hook_event_name !== "Notification") {
+    return derive({
+      ...memory,
+      dialogs: [...memory.dialogs, { toolName: event.tool_name }],
+    });
+  }
+  if (OWNER_DIALOGS.has(event.notification_type ?? "")) {
+    // The notification of a dialog the request already named must not replace its tool name.
+    return memory.dialogs.length > 0
+      ? memory
+      : derive({ ...memory, dialogs: [{}] });
+  }
+  return event.notification_type === "elicitation_complete"
+    ? derive({
+        ...memory,
+        dialogs: closeDialog(memory.dialogs, undefined, true),
+      })
+    : memory;
+}
+
+const CLOSED_KEPT = 50;
+
+/** Removes one dialog: the one naming `toolName`, else (when `orUnnamed`) one that names no tool. */
+function closeDialog(
+  dialogs: StateMemory["dialogs"],
+  toolName: string | undefined,
+  orUnnamed: boolean,
+): StateMemory["dialogs"] {
+  let at = dialogs.findIndex((dialog) => dialog.toolName === toolName);
+  if (at < 0 && orUnnamed) at = dialogs.findIndex((d) => !d.toolName);
+  return at < 0 ? dialogs : dialogs.filter((_, index) => index !== at);
+}
+
+function startTool(memory: StateMemory, id: string | undefined): string[] {
+  return id && !memory.closed.includes(id)
+    ? [...memory.inFlight, id]
+    : memory.inFlight;
+}
+
+function finishTool(
+  memory: StateMemory,
+  id: string | undefined,
+): Pick<StateMemory, "inFlight" | "closed"> {
+  return {
+    inFlight: memory.inFlight.filter((open) => open !== id),
+    closed: id ? [...memory.closed, id].slice(-CLOSED_KEPT) : memory.closed,
+  };
+}
+
+/** A tool ended (success or failure): it leaves the in-flight set and closes its own dialog. */
+function reduceFinished(memory: StateMemory, event: HookEvent): StateMemory {
+  return derive({
+    base: "thinking",
+    ...finishTool(memory, event.tool_use_id),
+    dialogs: closeDialog(memory.dialogs, event.tool_name, false),
+  });
+}
+
+/** Subagent tools keep the parent working and a subagent's dialog blocks the parent; nothing else changes. */
+function reduceSubagent(memory: StateMemory, event: HookEvent): StateMemory {
+  if (memory.base === "waiting") return memory;
+  const id = event.tool_use_id;
+  switch (event.hook_event_name) {
+    case "PermissionRequest":
+    case "Notification":
+      return reduceDialogOpen(memory, event);
+    case "PreToolUse":
+      return id
+        ? derive({ ...memory, inFlight: startTool(memory, id) })
+        : memory;
+    case "PostToolUse":
+    case "PostToolUseFailure":
+      return id
+        ? derive({
+            ...memory,
+            ...finishTool(memory, id),
+            dialogs: closeDialog(memory.dialogs, event.tool_name, false),
+          })
+        : memory;
+    case "PermissionDenied":
+      return derive({
+        ...memory,
+        dialogs: closeDialog(memory.dialogs, event.tool_name, true),
+      });
+    default:
+      return memory;
+  }
+}

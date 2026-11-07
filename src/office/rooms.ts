@@ -1,3 +1,5 @@
+import type { SessionState } from "@/shared/session-state";
+
 /** The four rooms of the office; the values are the Area labels stored in the layout. */
 export enum Room {
   Working = "working",
@@ -20,4 +22,13 @@ export const ROOM_DISPLAY_NAMES: Record<Room, string> = {
   [Room.Thinking]: "Thinking",
   [Room.NeedsPermission]: "Needs permission",
   [Room.Waiting]: "Waiting",
+};
+
+/** The room each session state sends an employee to; a session that went home keeps its current room. */
+export const ROOM_OF_STATE: Record<SessionState, Room | null> = {
+  working: Room.Working,
+  thinking: Room.Thinking,
+  needsPermission: Room.NeedsPermission,
+  waiting: Room.Waiting,
+  wentHome: null,
 };

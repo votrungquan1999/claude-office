@@ -64,6 +64,12 @@ export function OfficeView() {
   }, [loaded, sceneSync]);
 
   useEffect(() => {
+    // A state flip is only acted on once it has held for the smoothing window, even when no poll follows.
+    const timer = setInterval(() => sceneSync.tick(), 500);
+    return () => clearInterval(timer);
+  }, [sceneSync]);
+
+  useEffect(() => {
     if (!process.env.NEXT_PUBLIC_E2E) return;
     installTestHooks({
       getOfficeState: () => officeState,

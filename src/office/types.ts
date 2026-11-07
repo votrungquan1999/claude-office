@@ -204,6 +204,8 @@ export interface Character {
   isActive: boolean;
   /** Assigned seat uid, or null if no seat */
   seatId: string | null;
+  /** Room a seatless employee stands in; wandering stays inside it. */
+  standingRoom?: string;
   /** Active speech bubble type, or null if none showing */
   bubbleType: "permission" | "waiting" | null;
   /** Only meaningful while bubbleType === 'waiting': true when the agent went

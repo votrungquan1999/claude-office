@@ -65,6 +65,11 @@ export class OfficeState {
   blockedTiles: Set<string>;
   furniture: FurnitureInstance[];
   walkableTiles: Array<{ col: number; row: number }>;
+  /** Walkable tiles per room label; rebuilt lazily after the layout changes. */
+  private walkableByRoom: Map<
+    string,
+    Array<{ col: number; row: number }>
+  > | null = null;
   characters: Map<number, Character> = new Map();
   pets: Pet[] = [];
   /** Accumulated time for furniture animation frame cycling */
@@ -136,6 +141,7 @@ export class OfficeState {
     this.blockedTiles = getBlockedTiles(this.layout.furniture);
     this.furniture = layoutToFurnitureInstances(this.layout.furniture);
     this.walkableTiles = getWalkableTiles(this.tileMap, this.blockedTiles);
+    this.walkableByRoom = null;
     // Pets are built last because they need walkableTiles populated for spawn.
     this.rebuildPetsFromLayout(this.layout);
   }
@@ -152,6 +158,7 @@ export class OfficeState {
     this.blockedTiles = getBlockedTiles(layout.furniture);
     this.rebuildFurnitureInstances();
     this.walkableTiles = getWalkableTiles(this.tileMap, this.blockedTiles);
+    this.walkableByRoom = null;
 
     // Shift character positions when grid expands left/up
     if (shift && (shift.col !== 0 || shift.row !== 0)) {
@@ -311,6 +318,24 @@ export class OfficeState {
       }
     }
     return out;
+  }
+
+  /** Where an idle employee may wander: its own room, or the whole office when it has none. */
+  private wanderTilesFor(ch: Character): Array<{ col: number; row: number }> {
+    const room = ch.seatId ? this.seatZone(ch.seatId) : ch.standingRoom;
+    if (!room) return this.walkableTiles;
+    if (!this.walkableByRoom) {
+      const { cols, areaTiles } = this.layout;
+      this.walkableByRoom = new Map();
+      for (const tile of this.walkableTiles) {
+        const label = areaTiles?.[tile.row * cols + tile.col];
+        if (!label) continue;
+        const tiles = this.walkableByRoom.get(label) ?? [];
+        tiles.push(tile);
+        this.walkableByRoom.set(label, tiles);
+      }
+    }
+    return this.walkableByRoom.get(room) ?? this.walkableTiles;
   }
 
   /** Find the area label assigned to a seat's tile, or null. Public for e2e
@@ -1247,7 +1272,7 @@ export class OfficeState {
         updateCharacter(
           ch,
           dt,
-          this.walkableTiles,
+          this.wanderTilesFor(ch),
           this.seats,
           this.tileMap,
           this.blockedTiles,

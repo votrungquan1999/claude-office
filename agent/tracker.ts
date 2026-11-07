@@ -1,5 +1,10 @@
 import { type HookEvent, hookEventSchema } from "../src/shared/hook-events";
 import { findRegistryEntry } from "./registry";
+import {
+  initialStateMemory,
+  reduceState,
+  type StateMemory,
+} from "./session-state";
 import type { SessionWriter } from "./writer";
 
 export interface TrackerOptions {
@@ -18,6 +23,7 @@ interface Tracked {
   cwdHookTs: number;
   startedAt?: number;
   interactive: boolean;
+  memory: StateMemory;
   endedAt?: number;
   endedHookTs?: number;
 }
@@ -62,7 +68,12 @@ export class SessionTracker {
   private track(sessionId: string): Tracked {
     let tracked = this.sessions.get(sessionId);
     if (!tracked) {
-      tracked = { buffer: [], cwdHookTs: -Infinity, interactive: false };
+      tracked = {
+        buffer: [],
+        cwdHookTs: -Infinity,
+        interactive: false,
+        memory: initialStateMemory(),
+      };
       this.sessions.set(sessionId, tracked);
     }
     return tracked;
@@ -93,6 +104,7 @@ export class SessionTracker {
       tracked.cwd = event.cwd;
       tracked.cwdHookTs = event.hookTs;
     }
+    tracked.memory = reduceState(tracked.memory, event);
     if (event.hook_event_name === "SessionEnd") {
       tracked.endedAt = this.options.now();
       tracked.endedHookTs = event.hookTs;
@@ -114,7 +126,7 @@ export class SessionTracker {
       machineName,
       sessionId,
       cwd: tracked.cwd,
-      state: tracked.endedAt === undefined ? "waiting" : "wentHome",
+      state: tracked.endedAt === undefined ? tracked.memory.state : "wentHome",
       startedAt: new Date(tracked.startedAt),
       ...(tracked.endedAt === undefined
         ? {}
