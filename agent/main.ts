@@ -1,14 +1,30 @@
 import { homedir } from "node:os";
-import { readConfig } from "./config";
+import { join } from "node:path";
+import { type AgentConfig, officeDir, readConfig } from "./config";
+import { capLogFile } from "./log-cap";
 import { type RunningAgent, startAgent } from "./start-agent";
 
 const CONFIG_POLL_MS = 5000;
+const MAX_LOG_BYTES = 5 * 1024 * 1024;
+
+/** Reads the saved connection; a file that cannot be parsed ends the agent with one clear line, not a crash loop. */
+function readConfigOrExit(home: string): AgentConfig | undefined {
+  try {
+    return readConfig(home);
+  } catch {
+    console.error(
+      "claude-office agent: ~/.claude-office/config.json is unreadable or incomplete; run npm run setup -- --reconnect",
+    );
+    process.exit(1);
+  }
+}
 
 /** Runs the agent for this user until it is stopped; the login job starts it. */
 async function main(): Promise<void> {
   const home = homedir();
+  capLogFile(join(officeDir(home), "logs", "agent.log"), MAX_LOG_BYTES);
   let announced = false;
-  let config = readConfig(home);
+  let config = readConfigOrExit(home);
   while (!config) {
     // Idle until setup has saved the connection, with one log line instead of a crash loop.
     if (!announced) {
@@ -18,7 +34,7 @@ async function main(): Promise<void> {
       announced = true;
     }
     await new Promise((resolve) => setTimeout(resolve, CONFIG_POLL_MS));
-    config = readConfig(home);
+    config = readConfigOrExit(home);
   }
 
   let agent: RunningAgent;
@@ -34,7 +50,7 @@ async function main(): Promise<void> {
       error.name === "MongoServerError" &&
       "codeName" in error &&
       error.codeName === "AuthenticationFailed"
-        ? "the database refused the saved login; re-run npm run setup"
+        ? "the database refused the saved login; re-run npm run setup -- --reconnect"
         : error instanceof Error
           ? error.message
           : String(error);

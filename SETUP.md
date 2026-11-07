@@ -26,7 +26,7 @@ Tell the owner, in plain words, to do this:
 - Check that the page names this Mac and shows the same code as the terminal. If the code differs, do not click: someone else made that link.
 - Click "Connect this Mac".
 
-When approved, the command saves the database connection to `~/.claude-office/config.json` (readable only by this user) and prints "Connected". It never prints the connection string. Running setup again asks for a new approval and replaces the saved connection.
+When approved, the command saves the database connection to `~/.claude-office/config.json` (readable only by this user) and prints "Connected". It never prints the connection string. Running setup again keeps a valid saved connection and skips this step; run `npm run setup -- --reconnect` to ask for a new approval and replace it.
 
 Use `CLAUDE_OFFICE_URL` to point setup at a different office address; the default is `https://office.quanvo.dev`.
 
@@ -46,4 +46,22 @@ Check it worked: `jq '.hooks | keys' ~/.claude/settings.json` should list `Sessi
 
 The hooks never slow or block Claude: they are async, always exit 0 and print nothing, even when the agent is not running.
 
-There is no uninstall command. To remove the office by hand: delete the entries whose command ends in `/claude-office/hooks/claude-office-hook.mjs` from `~/.claude/settings.json` (or restore the backup if nothing else changed since), delete the `~/.claude/claude-office` link (`rm ~/.claude/claude-office`; it is a link, so the repo is not touched), and delete `~/.claude/settings.json.backup-claude-office`.
+There is no uninstall command. To remove the office by hand: delete the entries whose command contains `/claude-office/hooks/claude-office-hook.mjs` from `~/.claude/settings.json` (or restore the backup if nothing else changed since), delete the `~/.claude/claude-office` link (`rm ~/.claude/claude-office`; it is a link, so the repo is not touched), and delete `~/.claude/settings.json.backup-claude-office`.
+
+## 5. Start the agent at login
+
+`npm run setup` does this last; nothing more to run. It writes `~/Library/LaunchAgents/dev.quanvo.claude-office.agent.plist` and loads it, so the agent starts when the owner logs in and macOS restarts it if it stops. The plist runs Homebrew's `node` (`/opt/homebrew/bin/node`, else `/usr/local/bin/node`, else the `node` that ran setup; it must be v24 or newer) with the repo folder reached through `~/.claude/claude-office`, and holds no secrets. Re-running setup reloads the job only when the plist changed. If nobody is logged in at the Mac's desktop (for example over SSH), setup keeps the plist and says so; ask the owner to log in at the desktop and run `npm run setup` again.
+
+The agent also exits by itself after about 5 minutes with no successful database write (for example after the Mac slept with a dead connection); the login job then starts a fresh one. Its log, `~/.claude-office/logs/agent.log`, is emptied at start when it passes 5 MB.
+
+Confirm it is running:
+
+- `launchctl print gui/$(id -u)/dev.quanvo.claude-office.agent | grep -E 'state|pid'` should show `state = running` and a pid.
+- `tail ~/.claude-office/logs/agent.log` should show no repeating errors. One line saying it is waiting for `~/.claude-office/config.json` means step 3 did not finish.
+- `~/.claude-office/agent.json` exists and its `pid` is alive: `kill -0 $(jq .pid ~/.claude-office/agent.json) && echo alive`.
+
+If the repo lives under `~/Documents`, macOS may ask the owner to let `node` access the Documents folder the first time the agent starts at login. Look in the log for `EPERM` or `Operation not permitted`; if present, tell the owner to open System Settings, Privacy & Security, Files and Folders (or Full Disk Access), allow `node`, and then run `launchctl kickstart gui/$(id -u)/dev.quanvo.claude-office.agent` or log out and in.
+
+Stop it for now: `launchctl bootout gui/$(id -u)/dev.quanvo.claude-office.agent` (it starts again at the next login, or when setup is run again).
+
+Remove it by hand: run that `bootout`, delete `~/Library/LaunchAgents/dev.quanvo.claude-office.agent.plist`, and optionally delete `~/.claude-office/` (config, address file and logs). Then remove the hooks and the link as described in step 4.

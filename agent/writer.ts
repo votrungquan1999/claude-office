@@ -43,6 +43,8 @@ export interface WriterOptions {
   retryMs?: number;
   /** Most finished steps held back for a database that cannot be reached; the oldest are dropped first. */
   maxQueuedSteps?: number;
+  /** Called after a write that stored everything it carried. */
+  onWriteOk?: () => void;
 }
 
 interface Slot {
@@ -286,6 +288,7 @@ export class SessionWriter {
           this.reportDown((failure[0] as PromiseRejectedResult).reason);
           return;
         }
+        this.options.onWriteOk?.();
         if (!this.down) return;
         this.down = false;
         for (const slot of this.slots.values()) {
