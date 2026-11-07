@@ -86,4 +86,31 @@ describe("a desk is named after the session", () => {
     fake.removeKanban("s1");
     await expect.poll(deskName, { timeout: 5000 }).toBe("Start of the work");
   }, 30_000);
+
+  it("drops the desk name when the card goes away and nothing else can name the desk", async () => {
+    // Given a session whose only name comes from its card (command first, no registry name)
+    const { fake, agent } = await setUpMac("machine-air", "Quan's MacBook Air");
+    fake.addSession({ sessionId: "s1", cwd: "/work/a", name: "" });
+    const send = (name: string, prompt?: string) =>
+      runHook(fake.home, {
+        hook_event_name: name,
+        session_id: "s1",
+        cwd: "/work/a",
+        ...(prompt ? { prompt } : {}),
+      });
+    await send("SessionStart");
+    await send("UserPromptSubmit", "/clear");
+    fake.writeKanban("s1", { cardId: "c1", summary: "Card A" });
+    const deskName = async () => {
+      await agent.flush();
+      return (await officeSessions())[0]?.deskName;
+    };
+    await expect.poll(deskName, { timeout: 5000 }).toBe("Card A");
+
+    // When the card file is removed
+    fake.removeKanban("s1");
+
+    // Then the desk has no name any more
+    await expect.poll(deskName, { timeout: 5000 }).toBeUndefined();
+  }, 30_000);
 });

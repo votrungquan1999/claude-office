@@ -2,6 +2,8 @@ import type { Collection } from "mongodb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type SessionDoc, SessionWriter } from "./writer";
 
+const NO_STEPS = { insertMany: vi.fn() } as unknown as Collection;
+
 function doc(cwd: string, sessionId = "s1"): SessionDoc {
   return {
     machineId: "m1",
@@ -28,12 +30,16 @@ describe("the session writer's write budget", () => {
   it("writes a session at once, then at most once per window without postponing a busy session forever", async () => {
     // Given a writer with a 1 s window over a collection that records its bulk writes
     const bulkWrite = vi.fn().mockResolvedValue({});
-    const writer = new SessionWriter({ bulkWrite } as unknown as Collection, {
-      flushMs: 1000,
-      maxOpsPerSecond: 100,
-      now: () => Date.now(),
-      log: () => {},
-    });
+    const writer = new SessionWriter(
+      { bulkWrite } as unknown as Collection,
+      NO_STEPS,
+      {
+        flushMs: 1000,
+        maxOpsPerSecond: 100,
+        now: () => Date.now(),
+        log: () => {},
+      },
+    );
 
     // When a session changes every 100 ms for 2.5 s
     writer.submit(doc("/a/0"));
@@ -56,12 +62,16 @@ describe("the session writer's write budget", () => {
   it("caps writes per second across sessions without dropping any", async () => {
     // Given a writer that allows 10 writes per second
     const bulkWrite = vi.fn().mockResolvedValue({});
-    const writer = new SessionWriter({ bulkWrite } as unknown as Collection, {
-      flushMs: 1000,
-      maxOpsPerSecond: 10,
-      now: () => Date.now(),
-      log: () => {},
-    });
+    const writer = new SessionWriter(
+      { bulkWrite } as unknown as Collection,
+      NO_STEPS,
+      {
+        flushMs: 1000,
+        maxOpsPerSecond: 10,
+        now: () => Date.now(),
+        log: () => {},
+      },
+    );
 
     // When 30 different sessions change in the same tick
     for (let n = 0; n < 30; n++) writer.submit(doc("/a", `s${n}`));
@@ -82,12 +92,16 @@ describe("the session writer's write budget", () => {
   it("skips a write when the snapshot is unchanged", async () => {
     // Given a session already written
     const bulkWrite = vi.fn().mockResolvedValue({});
-    const writer = new SessionWriter({ bulkWrite } as unknown as Collection, {
-      flushMs: 1000,
-      maxOpsPerSecond: 100,
-      now: () => Date.now(),
-      log: () => {},
-    });
+    const writer = new SessionWriter(
+      { bulkWrite } as unknown as Collection,
+      NO_STEPS,
+      {
+        flushMs: 1000,
+        maxOpsPerSecond: 100,
+        now: () => Date.now(),
+        log: () => {},
+      },
+    );
     writer.submit(doc("/a"));
     await vi.advanceTimersByTimeAsync(5000);
 

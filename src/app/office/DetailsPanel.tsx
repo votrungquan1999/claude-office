@@ -1,5 +1,6 @@
 import { remoteControlUrl } from "@/office/remoteControl";
-import type { SessionDto } from "@/shared/session";
+import { type SessionDto, sessionKey } from "@/shared/session";
+import { StepsList } from "./StepsList";
 
 interface DetailsPanelProps {
   session: SessionDto | null;
@@ -33,6 +34,10 @@ export function DetailsPanel({ session, onClose }: DetailsPanelProps) {
       </div>
       <p>{session.machineName}</p>
       <p className="break-all">{session.cwd}</p>
+      {session.currentTodo && (
+        <p data-testid="current-todo">{session.currentTodo}</p>
+      )}
+      <StepsList key={sessionKey(session)} session={session} />
       {remoteControl ? (
         <a
           data-testid="remote-control-link"

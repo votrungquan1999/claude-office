@@ -29,7 +29,7 @@ const STRING_FIELDS = [
  * Keeps only what step text needs from a tool's input; command text, file contents and the like are dropped.
  * @param {string | undefined} toolName
  * @param {unknown} input
- * @returns {Record<string, string> | undefined}
+ * @returns {Record<string, string | boolean> | undefined}
  */
 function reduceToolInput(toolName, input) {
   if (!input || typeof input !== "object") return undefined;
@@ -38,7 +38,10 @@ function reduceToolInput(toolName, input) {
   switch (toolName) {
     case "Bash":
     case "Agent":
-      reduced = { description: text(input.description) };
+      reduced = {
+        description: text(input.description),
+        run_in_background: input.run_in_background === true ? true : undefined,
+      };
       break;
     case "Read":
     case "Edit":

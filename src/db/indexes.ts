@@ -9,4 +9,15 @@ export async function ensureIndexes(db: Db): Promise<void> {
   // Unique so concurrent upserts from one Mac cannot duplicate a session.
   await sessions.createIndex({ machineId: 1, sessionId: 1 }, { unique: true });
   await sessions.createIndex({ changedAt: 1 });
+  // Ended sessions carry `expireAt`; live ones have none, so they are never expired.
+  await sessions.createIndex({ expireAt: 1 }, { expireAfterSeconds: 0 });
+  const steps = db.collection("steps");
+  // Serves "older steps of this session" paging, newest first.
+  await steps.createIndex({
+    machineId: 1,
+    sessionId: 1,
+    startedAt: -1,
+    _id: -1,
+  });
+  await steps.createIndex({ expireAt: 1 }, { expireAfterSeconds: 0 });
 }

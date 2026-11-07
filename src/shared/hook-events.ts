@@ -8,6 +8,7 @@ export const reducedToolInputSchema = z.object({
   query: z.string().optional(),
   domain: z.string().optional(),
   activeTodo: z.string().optional(),
+  run_in_background: z.boolean().optional(),
 });
 
 /**

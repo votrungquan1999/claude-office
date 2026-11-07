@@ -1,3 +1,4 @@
+import { ObjectId } from "mongodb";
 import { firstRealMessage, resolveDeskName } from "../src/shared/desk-name";
 import { type HookEvent, hookEventSchema } from "../src/shared/hook-events";
 import type { KanbanCard } from "./kanban-watch";
@@ -7,7 +8,8 @@ import {
   reduceState,
   type StateMemory,
 } from "./session-state";
-import type { SessionWriter } from "./writer";
+import { initialStepMemory, reduceSteps, type StepMemory } from "./steps";
+import type { SessionWriter, StepDoc } from "./writer";
 
 export interface TrackerOptions {
   home: string;
@@ -30,6 +32,9 @@ interface Tracked {
   firstMessage?: string;
   registryName?: string;
   memory: StateMemory;
+  steps: StepMemory;
+  /** Finished steps not yet handed to the writer. */
+  unwritten: StepDoc[];
   endedAt?: number;
   endedHookTs?: number;
 }
@@ -93,6 +98,8 @@ export class SessionTracker {
         bridgeHookTs: -Infinity,
         interactive: false,
         memory: initialStateMemory(),
+        steps: initialStepMemory(),
+        unwritten: [],
       };
       this.sessions.set(sessionId, tracked);
     }
@@ -133,6 +140,15 @@ export class SessionTracker {
       tracked.firstMessage = firstRealMessage(event.prompt ?? "");
     }
     tracked.memory = reduceState(tracked.memory, event);
+    for (const step of reduceSteps(tracked.steps, event)) {
+      tracked.unwritten.push({
+        _id: new ObjectId(),
+        machineId: this.options.machineId,
+        sessionId: event.session_id,
+        ...step,
+        startedAt: new Date(step.startedAt),
+      });
+    }
     if (event.hook_event_name === "SessionEnd") {
       tracked.endedAt = this.options.now();
       tracked.endedHookTs = event.hookTs;
@@ -157,20 +173,31 @@ export class SessionTracker {
       firstMessage: tracked.firstMessage,
       registryName: tracked.registryName,
     });
-    writer.submit({
-      machineId,
-      machineName,
-      sessionId,
-      cwd: tracked.cwd,
-      state: tracked.endedAt === undefined ? tracked.memory.state : "wentHome",
-      startedAt: new Date(tracked.startedAt),
-      ...(deskName ? { deskName } : {}),
-      ...(tracked.bridgeSessionId
-        ? { bridgeSessionId: tracked.bridgeSessionId }
-        : {}),
-      ...(tracked.endedAt === undefined
-        ? {}
-        : { endedAt: new Date(tracked.endedAt) }),
-    });
+    const steps = tracked.unwritten;
+    tracked.unwritten = [];
+    writer.submit(
+      {
+        machineId,
+        machineName,
+        sessionId,
+        cwd: tracked.cwd,
+        state:
+          tracked.endedAt === undefined ? tracked.memory.state : "wentHome",
+        startedAt: new Date(tracked.startedAt),
+        ...(deskName ? { deskName } : {}),
+        ...(tracked.bridgeSessionId
+          ? { bridgeSessionId: tracked.bridgeSessionId }
+          : {}),
+        ...(tracked.endedAt === undefined
+          ? {}
+          : { endedAt: new Date(tracked.endedAt) }),
+        runningSteps: [...tracked.steps.running.values()].map((step) => ({
+          text: step.text,
+          startedAt: new Date(step.startedAt),
+        })),
+        currentTodo: tracked.steps.todo,
+      },
+      steps,
+    );
   }
 }

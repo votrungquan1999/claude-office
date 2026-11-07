@@ -1,6 +1,28 @@
 import { z } from "zod";
 import { SESSION_STATES } from "./session-state";
 
+/** How a finished step ended. */
+export const STEP_STATUSES = ["ok", "failed", "denied", "stopped"] as const;
+
+/** One finished step in plain words; dates are ISO strings. */
+export const stepDtoSchema = z.object({
+  /** Shared by the session's recent list and the `steps` collection, so the two can be told apart. */
+  id: z.string(),
+  text: z.string(),
+  startedAt: z.string(),
+  /** Run time; absent when it could not be known (a step closed while still running). */
+  durationMs: z.number().optional(),
+  status: z.enum(STEP_STATUSES),
+});
+
+export type StepDto = z.infer<typeof stepDtoSchema>;
+
+/** A step that has started and not finished. */
+export const runningStepDtoSchema = z.object({
+  text: z.string(),
+  startedAt: z.string(),
+});
+
 /** A session as the office API sends it; dates are ISO strings. */
 export const sessionDtoSchema = z.object({
   machineId: z.string(),
@@ -14,6 +36,11 @@ export const sessionDtoSchema = z.object({
   deskName: z.string().optional(),
   /** Remote Control id; present only while Remote Control was connected. */
   bridgeSessionId: z.string().optional(),
+  /** The 5 latest-started finished steps, oldest first; omitted for ended sessions. */
+  recentSteps: z.array(stepDtoSchema).optional(),
+  runningSteps: z.array(runningStepDtoSchema).optional(),
+  /** The in-progress to-do line, when the session has one. */
+  currentTodo: z.string().optional(),
   changedAt: z.string(),
 });
 
@@ -41,3 +68,12 @@ export function sessionKey(
 ): string {
   return `${session.machineId}/${session.sessionId}`;
 }
+
+/** One page of a session's older steps, newest first. */
+export const stepsPageSchema = z.object({
+  steps: z.array(stepDtoSchema),
+  /** Pass as `before` for the next page; absent on the last page. */
+  next: z.string().optional(),
+});
+
+export type StepsPage = z.infer<typeof stepsPageSchema>;

@@ -1,6 +1,20 @@
-import type { AnyBulkWriteOperation, Collection } from "mongodb";
+import type {
+  AnyBulkWriteOperation,
+  Collection,
+  Document,
+  ObjectId,
+} from "mongodb";
+import type { StepDto } from "../src/shared/session";
 import { sessionKey } from "../src/shared/session";
 import type { SessionState } from "../src/shared/session-state";
+
+/** A finished step as stored in the `steps` collection (and, newest five, on the session). */
+export interface StepDoc extends Omit<StepDto, "id" | "startedAt"> {
+  _id: ObjectId;
+  machineId: string;
+  sessionId: string;
+  startedAt: Date;
+}
 
 /** A session as the agent stores it; `changedAt` is stamped by the database clock. */
 export interface SessionDoc {
@@ -13,6 +27,8 @@ export interface SessionDoc {
   endedAt?: Date;
   bridgeSessionId?: string;
   deskName?: string;
+  runningSteps?: Array<{ text: string; startedAt: Date }>;
+  currentTodo?: string | null;
 }
 
 export interface WriterOptions {
@@ -26,10 +42,13 @@ interface Slot {
   lastWriteAt?: number;
   latestJson?: string;
   pending?: SessionDoc;
+  /** Steps finished since this session was last queued; they go out with its next write. */
+  pendingSteps: StepDoc[];
   timer?: NodeJS.Timeout;
 }
 
 const EXPIRY_DAYS = 7;
+const RECENT_STEPS = 5;
 
 /**
  * Writes session snapshots with a per-session throttle (leading write, then at most one per
@@ -37,7 +56,7 @@ const EXPIRY_DAYS = 7;
  */
 export class SessionWriter {
   private readonly slots = new Map<string, Slot>();
-  private batch: SessionDoc[] = [];
+  private batch: Array<{ doc: SessionDoc; steps: StepDoc[] }> = [];
   private batchScheduled = false;
   private readonly writes = new Set<Promise<void>>();
   private tokens: number;
@@ -45,6 +64,7 @@ export class SessionWriter {
 
   constructor(
     private readonly sessions: Collection,
+    private readonly steps: Collection,
     private readonly options: WriterOptions,
   ) {
     this.tokens = options.maxOpsPerSecond;
@@ -54,13 +74,15 @@ export class SessionWriter {
   /**
    * Queues a snapshot; nothing is written when it equals the last one queued for that session.
    * @param doc - The session's current snapshot.
+   * @param steps - Steps finished since the last submit; they are never dropped as duplicates.
    */
-  submit(doc: SessionDoc): void {
+  submit(doc: SessionDoc, steps: StepDoc[] = []): void {
     const key = sessionKey(doc);
-    const slot = this.slots.get(key) ?? {};
+    const slot = this.slots.get(key) ?? { pendingSteps: [] };
     this.slots.set(key, slot);
+    slot.pendingSteps.push(...steps);
     const json = JSON.stringify(doc);
-    if (json === slot.latestJson) return;
+    if (json === slot.latestJson && slot.pendingSteps.length === 0) return;
     slot.latestJson = json;
     slot.pending = doc;
     this.schedule(slot);
@@ -116,7 +138,8 @@ export class SessionWriter {
 
   private enqueue(slot: Slot): void {
     if (!slot.pending) return;
-    this.batch.push(slot.pending);
+    this.batch.push({ doc: slot.pending, steps: slot.pendingSteps });
+    slot.pendingSteps = [];
     slot.lastWriteAt = this.options.now();
     slot.pending = undefined;
     if (this.batchScheduled) return;
@@ -127,16 +150,28 @@ export class SessionWriter {
 
   private writeBatch(): void {
     this.batchScheduled = false;
-    const docs = this.batch;
+    const entries = this.batch;
     this.batch = [];
-    if (docs.length === 0) return;
-    const write = this.sessions
-      .bulkWrite(docs.map(toUpdate), { ordered: false })
+    if (entries.length === 0) return;
+    const expireAt = new Date(this.options.now() + EXPIRY_DAYS * 86_400_000);
+    const steps = entries.flatMap((entry) => entry.steps);
+    const write = Promise.all([
+      this.sessions.bulkWrite(
+        entries.map(({ doc, steps }) => toUpdate(doc, steps)),
+        { ordered: false },
+      ),
+      steps.length > 0
+        ? this.steps.insertMany(
+            steps.map((step) => ({ ...step, expireAt })),
+            { ordered: false },
+          )
+        : undefined,
+    ])
       .then(
         () => {},
         (error: unknown) => {
           // A failed write must be retried by the next change, so forget what was queued for it.
-          for (const doc of docs) {
+          for (const { doc } of entries) {
             const slot = this.slots.get(sessionKey(doc));
             if (slot) slot.latestJson = undefined;
           }
@@ -150,8 +185,15 @@ export class SessionWriter {
   }
 }
 
-function toUpdate(doc: SessionDoc): AnyBulkWriteOperation {
+function toUpdate(doc: SessionDoc, steps: StepDoc[]): AnyBulkWriteOperation {
   const { machineId, sessionId, startedAt, endedAt, ...rest } = doc;
+  // A session that no longer reports an id must lose the stored one, or the link points at a dead session.
+  const absent = [
+    ...(endedAt ? [] : ["endedAt", "expireAt"]),
+    ...(doc.bridgeSessionId ? [] : ["bridgeSessionId"]),
+    // A removed card with no fallback name must not leave its old title on the desk.
+    ...(doc.deskName ? [] : ["deskName"]),
+  ];
   return {
     updateOne: {
       filter: { machineId, sessionId },
@@ -168,9 +210,29 @@ function toUpdate(doc: SessionDoc): AnyBulkWriteOperation {
             : {}),
         },
         $setOnInsert: { startedAt },
-        ...(endedAt ? {} : { $unset: { endedAt: "", expireAt: "" } }),
-        $currentDate: { changedAt: true as const },
-      },
+        ...(absent.length
+          ? { $unset: Object.fromEntries(absent.map((key) => [key, ""])) }
+          : {}),
+        // The session keeps its five latest-started finished steps so the office poll stays one query.
+        ...(steps.length > 0
+          ? {
+              $push: {
+                recentSteps: {
+                  $each: steps.map(
+                    ({ _id, machineId, sessionId, ...step }) => ({
+                      id: _id.toHexString(),
+                      ...step,
+                    }),
+                  ),
+                  // Sorted by start, not arrival: parallel steps finish out of order.
+                  $sort: { startedAt: 1, id: 1 },
+                  $slice: -RECENT_STEPS,
+                },
+              },
+            }
+          : {}),
+        $currentDate: { changedAt: true },
+      } as Document,
       upsert: true,
     },
   };

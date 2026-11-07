@@ -81,12 +81,16 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
   await ensureIndexes(db);
 
   const now = options.now ?? Date.now;
-  const writer = new SessionWriter(db.collection("sessions"), {
-    flushMs: options.flushMs ?? 1000,
-    maxOpsPerSecond: options.maxOpsPerSecond ?? 20,
-    now,
-    log: options.log ?? ((message) => console.error(message)),
-  });
+  const writer = new SessionWriter(
+    db.collection("sessions"),
+    db.collection("steps"),
+    {
+      flushMs: options.flushMs ?? 1000,
+      maxOpsPerSecond: options.maxOpsPerSecond ?? 20,
+      now,
+      log: options.log ?? ((message) => console.error(message)),
+    },
+  );
   const tracker = new SessionTracker({
     home,
     machineId,

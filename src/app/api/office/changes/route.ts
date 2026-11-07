@@ -5,6 +5,7 @@ import {
   CHANGES_OVERLAP_MS,
   type ChangesResponse,
   type SessionDto,
+  type StepDto,
 } from "@/shared/session";
 
 interface SessionRow {
@@ -17,6 +18,9 @@ interface SessionRow {
   endedAt?: Date;
   bridgeSessionId?: string;
   deskName?: string;
+  recentSteps?: Array<Omit<StepDto, "startedAt"> & { startedAt: Date }>;
+  runningSteps?: Array<{ text: string; startedAt: Date }>;
+  currentTodo?: string | null;
   changedAt: Date;
 }
 
@@ -31,6 +35,23 @@ function toDto(row: SessionRow): SessionDto {
     ...(row.endedAt ? { endedAt: row.endedAt.toISOString() } : {}),
     ...(row.deskName ? { deskName: row.deskName } : {}),
     ...(row.bridgeSessionId ? { bridgeSessionId: row.bridgeSessionId } : {}),
+    ...(row.recentSteps?.length
+      ? {
+          recentSteps: row.recentSteps.map((step) => ({
+            ...step,
+            startedAt: step.startedAt.toISOString(),
+          })),
+        }
+      : {}),
+    ...(row.runningSteps?.length
+      ? {
+          runningSteps: row.runningSteps.map((step) => ({
+            ...step,
+            startedAt: step.startedAt.toISOString(),
+          })),
+        }
+      : {}),
+    ...(row.currentTodo ? { currentTodo: row.currentTodo } : {}),
     changedAt: row.changedAt.toISOString(),
   };
 }
