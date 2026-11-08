@@ -12,7 +12,11 @@ import { offlineMachineIds } from "@/office/offline";
 import { createSceneSync } from "@/office/sceneSync";
 import { installTestHooks } from "@/office/testHooks";
 import { dayStartOf, todaysDepartures } from "@/office/wentHome";
-import { type ChangesResponse, sessionKey } from "@/shared/session";
+import {
+  type ChangesResponse,
+  type SessionDto,
+  sessionKey,
+} from "@/shared/session";
 import { ConnectionStatus } from "./ConnectionStatus";
 import { DetailsPanel } from "./DetailsPanel";
 import { mergeSessions, type SessionMap } from "./officeStore";
@@ -27,6 +31,25 @@ import { WentHomeList } from "./WentHomeList";
  */
 function folderName(cwd: string): string {
   return cwd.split("/").filter(Boolean).at(-1) ?? cwd;
+}
+
+const STATUS_LINES = {
+  working: "Working",
+  thinking: "Thinking",
+  needsPermission: "Needs permission",
+  waiting: "Waiting",
+  wentHome: "Went home",
+} as const;
+
+/**
+ * The label's status line for a session.
+ * @param session - The session behind an employee.
+ * @returns Its office state in plain words; a working session adds the step it is on.
+ */
+function statusLine(session: SessionDto): string {
+  const line = STATUS_LINES[session.state];
+  const step = session.runningSteps?.at(-1)?.text;
+  return session.state === "working" && step ? `${line}: ${step}` : line;
 }
 
 /**
@@ -143,6 +166,13 @@ export function OfficeView() {
     ];
   });
 
+  const activity = Object.fromEntries(
+    agentIds.flatMap((id) => {
+      const session = sessions.get(sceneSync.sessionKeyOf(id) ?? "");
+      return session ? [[id, statusLine(session)]] : [];
+    }),
+  );
+
   return (
     <div className="flex h-full w-full flex-col">
       <div
@@ -171,7 +201,7 @@ export function OfficeView() {
             <ToolOverlay
               officeState={officeState}
               agents={agentIds}
-              activity={{}}
+              activity={activity}
               containerRef={containerRef}
               zoom={zoom}
               panRef={panRef}

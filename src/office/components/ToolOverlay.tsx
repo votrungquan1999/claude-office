@@ -21,13 +21,10 @@ import {
 } from "../sprites/spriteData";
 import { CharacterState } from "../types";
 
-/** Label shown while an employee waits on the owner's next message. */
-const WAITING_INPUT_ACTIVITY_TEXT = "Waiting for input";
-
 interface ToolOverlayProps {
   officeState: OfficeState;
   agents: number[];
-  /** Plain-words activity per character id; absent ids read "Idle". */
+  /** Plain-words status line per character id. */
   activity: Record<number, string>;
   containerRef: React.RefObject<HTMLDivElement | null>;
   zoom: number;
@@ -165,10 +162,7 @@ export function ToolOverlay({
 
         const hasWaiting = ch.bubbleType === "waiting";
         const hasPermission = ch.bubbleType === "permission";
-        let activityText = activity[id] ?? "Idle";
-        if (hasPermission) activityText = "Needs approval";
-        else if (hasWaiting && ch.waitingAwaitingInput)
-          activityText = WAITING_INPUT_ACTIVITY_TEXT;
+        let activityText = activity[id] ?? "";
         // The Mac's last known state is stale, so the label says so instead.
         if (ch.macOffline) activityText = "Mac offline";
         const isActive = ch.isActive;
@@ -211,6 +205,7 @@ export function ToolOverlay({
                   <span
                     className="overflow-hidden text-ellipsis block leading-none"
                     style={{ fontSize: "22px" }}
+                    data-testid="agent-status"
                   >
                     {activityText}
                   </span>

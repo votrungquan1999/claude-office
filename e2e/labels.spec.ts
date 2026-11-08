@@ -2,7 +2,12 @@ import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import { type Collection, MongoClient } from "mongodb";
 import { E2E_DB, E2E_MONGO_URI_FILE } from "./constants";
-import { hoverEmployee, signInAsOwner } from "./helpers";
+import {
+  employeeLabelled,
+  hoverEmployee,
+  signInAsOwner,
+  waitForEmployees,
+} from "./helpers";
 
 const base = {
   machineId: "m1",
@@ -94,5 +99,26 @@ test.describe("employee labels", () => {
       "data-agent-id",
       String(other),
     );
+  });
+
+  test("the status line follows the session's state, never the renderer's Idle", async ({
+    page,
+  }) => {
+    // Given the office with one employee per state
+    await page.goto("/");
+    await waitForEmployees(page, 4);
+
+    // When each is selected, then its status line names its state
+    const expected: Array<[string, string]> = [
+      ["Studio Mac / work", "Working: Editing foo.ts"],
+      ["Studio Mac / think", "Thinking"],
+      ["Studio Mac / perm", "Needs permission"],
+      ["Studio Mac / wait", "Waiting"],
+    ];
+    for (const [label, status] of expected) {
+      const id = await employeeLabelled(page, label);
+      await page.evaluate((i) => window.__officeTestHooks?.selectAgent(i), id);
+      await expect(page.getByTestId("agent-status")).toHaveText(status);
+    }
   });
 });
