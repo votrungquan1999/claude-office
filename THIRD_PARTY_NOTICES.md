@@ -12,4 +12,4 @@ The character sprites are based on [JIK-A-4, Metro City](https://jik-a-4.itch.io
 
 ## Furniture, floors, walls and font
 
-Pixel Agents does not state where these were sourced. This repository stays private until that is settled.
+They come bundled in Pixel Agents' public MIT-licensed repository, which does not state their original source.
