@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 
 const REQUEST_TIMEOUT_MS = 1000;
 const PROMPT_MAX = 500;
+const ANSWER_TAIL_MAX = 1000;
 const HARD_EXIT_MS = 1500;
 
 const STRING_FIELDS = [
@@ -102,11 +103,30 @@ export function reduceEvent(data, hookTs, env) {
     event.is_interrupt = data.is_interrupt;
   if (typeof data.prompt === "string")
     event.prompt = data.prompt.slice(0, PROMPT_MAX);
+  // Stop only: the end of the turn's last answer says whether it asked the owner something.
+  if (data.hook_event_name === "Stop") {
+    if (typeof data.stop_hook_active === "boolean")
+      event.stop_hook_active = data.stop_hook_active;
+    if (typeof data.last_assistant_message === "string")
+      event.last_assistant_message = answerTail(data.last_assistant_message);
+  }
   const bridge = env.CLAUDE_CODE_BRIDGE_SESSION_ID;
   if (bridge) event.bridgeSessionId = bridge;
   const toolInput = reduceToolInput(data.tool_name, data.tool_input);
   if (toolInput) event.tool_input = toolInput;
   return event;
+}
+
+/** The end of an answer; a cut that lands inside a code fence drops the fence's remainder so the closing fence is not read as an opening one. */
+function answerTail(text) {
+  if (text.length <= ANSWER_TAIL_MAX) return text;
+  const tail = text.slice(-ANSWER_TAIL_MAX);
+  // An odd number of fences in the dropped front means the tail starts inside a code block.
+  const droppedFences = text.slice(0, -ANSWER_TAIL_MAX).split("```").length - 1;
+  if (droppedFences % 2 === 0) return tail;
+  // No fence left in the tail: it is all code, so nothing of it is prose.
+  const at = tail.indexOf("```");
+  return at < 0 ? "" : tail.slice(at + 3);
 }
 
 /** `ps -o lstart` of a pid in the C locale in UTC with spaces collapsed; undefined when ps cannot say. */

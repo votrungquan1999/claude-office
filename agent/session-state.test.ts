@@ -330,4 +330,18 @@ describe("session state rules", () => {
     expect(memory.state).toBe("needsPermission");
     expect(applyRegistryStatus(memory, "busy").state).toBe("working");
   });
+
+  it("ends a turn the hooks saw start when the registry says idle", () => {
+    // Given a session the hooks left thinking
+    const memory = reduceState(initialStateMemory(), {
+      hook_event_name: "UserPromptSubmit",
+      session_id: "s1",
+      prompt: "go",
+      hookTs: 1,
+    } as HookEvent);
+    expect(memory.state).toBe("thinking");
+
+    // Then the registry's idle puts it in Idle
+    expect(applyRegistryStatus(memory, "idle").state).toBe("idle");
+  });
 });

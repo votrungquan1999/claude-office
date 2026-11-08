@@ -1,3 +1,4 @@
+import { asks } from "../src/shared/asks";
 import type { HookEvent } from "../src/shared/hook-events";
 import type { SessionState } from "../src/shared/session-state";
 
@@ -7,6 +8,8 @@ export interface StateMemory {
   state: SessionState;
   /** Between tools: thinking during a turn, waiting otherwise. */
   base: "thinking" | "waiting";
+  /** The turn that just ended asked the owner something; kept until the next prompt. */
+  asked: boolean;
   /** `tool_use_id`s of tools that started and have not finished. */
   inFlight: string[];
   /** Recently finished ids, so a Pre delivered after its own Post is ignored. */
@@ -30,13 +33,21 @@ function derive(memory: Omit<StateMemory, "state">): StateMemory {
       : memory.inFlight.length > 0
         ? "working"
         : memory.base === "waiting"
-          ? "idle"
+          ? memory.asked
+            ? "waitingForYou"
+            : "idle"
           : memory.base;
   return { ...memory, state };
 }
 
 export function initialStateMemory(): StateMemory {
-  return derive({ base: "waiting", inFlight: [], closed: [], dialogs: [] });
+  return derive({
+    base: "waiting",
+    asked: false,
+    inFlight: [],
+    closed: [],
+    dialogs: [],
+  });
 }
 
 /**
@@ -56,11 +67,19 @@ export function reduceState(
       // Auto-compaction happens mid-turn; the turn carries on as it was.
       return event.source === "compact" ? memory : initialStateMemory();
     case "Stop":
+      // A follow-up Stop (a Stop hook ran another turn) keeps a question the earlier Stop asked.
+      return derive({
+        ...initialStateMemory(),
+        asked:
+          asks(event.last_assistant_message) ||
+          (event.stop_hook_active === true && memory.asked),
+      });
     case "StopFailure":
       return initialStateMemory();
     case "UserPromptSubmit":
       return derive({
         base: "thinking",
+        asked: false,
         inFlight: [],
         closed: [],
         dialogs: [],
@@ -68,6 +87,7 @@ export function reduceState(
     case "PreToolUse":
       return derive({
         base: "thinking",
+        asked: memory.asked,
         closed: memory.closed,
         inFlight: startTool(memory, id),
         // A tool starting does not answer a dialog that names another tool; AskUserQuestion is itself a dialog.
@@ -152,6 +172,7 @@ function finishTool(
 function reduceFinished(memory: StateMemory, event: HookEvent): StateMemory {
   return derive({
     base: "thinking",
+    asked: memory.asked,
     ...finishTool(memory, event.tool_use_id),
     dialogs: closeDialog(memory.dialogs, event.tool_name, false),
   });
@@ -225,7 +246,10 @@ export function applyRegistryStatus(
 ): StateMemory {
   switch (status) {
     case "idle":
-      return initialStateMemory();
+      // After a turn ended, idle closes any dialog but keeps the question the turn asked.
+      return memory.base === "waiting"
+        ? derive({ ...memory, dialogs: [] })
+        : initialStateMemory();
     case "waiting":
       return derive({
         ...memory,

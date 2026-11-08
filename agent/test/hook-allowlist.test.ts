@@ -67,4 +67,38 @@ describe("the hook's field allowlist", () => {
     });
     expect(parsed).toEqual(reduced);
   });
+
+  it("forwards only the tail of a Stop's last answer and its follow-up marker, and no answer text on other events", () => {
+    // Given a Stop with a long answer, and a PostToolUse carrying the same field
+    const answer = `${"x".repeat(1500)}Want me to push?`;
+    const stop = {
+      hook_event_name: "Stop",
+      session_id: "s1",
+      stop_hook_active: true,
+      last_assistant_message: answer,
+    };
+    const post = {
+      hook_event_name: "PostToolUse",
+      session_id: "s1",
+      stop_hook_active: true,
+      last_assistant_message: answer,
+    };
+
+    // When the hook reduces them and the agent parses the result
+    const [reducedStop, reducedPost] = [stop, post].map((payload) =>
+      reduceEvent(payload, 1000, {}),
+    );
+
+    // Then the Stop keeps the last 1000 characters and the marker, and the agent accepts it
+    expect(reducedStop.stop_hook_active).toBe(true);
+    expect(reducedStop.last_assistant_message).toBe(answer.slice(-1000));
+    expect(String(reducedStop.last_assistant_message).endsWith("push?")).toBe(
+      true,
+    );
+    expect(hookEventSchema.parse(reducedStop)).toEqual(reducedStop);
+
+    // And other events carry neither field
+    expect(reducedPost).not.toHaveProperty("last_assistant_message");
+    expect(reducedPost).not.toHaveProperty("stop_hook_active");
+  });
 });

@@ -289,7 +289,16 @@ describe("shell command text never leaves the Mac", () => {
       expect(received.length).toBe(
         SENTINELS.length * hostileEvents("x").length,
       );
-      const wire = received.map((body) => JSON.stringify(body)).join("\n");
+      // Only a Stop forwards text (the turn's answer tail); strip that one field before the check
+      const wire = received
+        .map((body) => {
+          const { last_assistant_message: _answer, ...rest } = body as Record<
+            string,
+            unknown
+          >;
+          return JSON.stringify(rest);
+        })
+        .join("\n");
       expect(wire).toContain("Run the tests");
       for (const form of SENTINELS.flatMap(formsOf)) {
         expect(wire).not.toContain(form);

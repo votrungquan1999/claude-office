@@ -5,7 +5,7 @@ import { useMacHarness } from "./mac-harness";
 import { runHook } from "./run-hook";
 
 describe("a session whose process is gone goes home", () => {
-  const { setUpMac } = useMacHarness();
+  const { setUpMac, officeSessions } = useMacHarness();
   const processes = useLiveProcesses();
 
   it("sends home a session whose process died or whose pid now belongs to another process, and keeps one whose process is alive", async () => {
@@ -116,6 +116,133 @@ describe("a session whose process is gone goes home", () => {
     expect(await state("busy")).toBe("working");
     expect(await state("stale")).toBe("thinking");
   }, 60_000);
+  it("keeps Waiting for you when Claude Code's registry says idle after the turn ended with a question", async () => {
+    // Given a Mac with a running session whose turn ended with a question
+    const { fake, agent } = await setUpMac("machine-air", "Quan's MacBook Air");
+    const process_ = await processes.live();
+    fake.addSession({
+      sessionId: "asked",
+      cwd: "/work/asked",
+      pid: process_.pid,
+      procStart: process_.procStart,
+    });
+    const send = (event: Record<string, unknown>) =>
+      runHook(fake.home, {
+        session_id: "asked",
+        cwd: "/work/asked",
+        ...event,
+      });
+    await send({ hook_event_name: "SessionStart", source: "startup" });
+    await send({ hook_event_name: "UserPromptSubmit", prompt: "go" });
+    await send({
+      hook_event_name: "Stop",
+      stop_hook_active: false,
+      last_assistant_message: "Should I go ahead and merge it?",
+    });
+    await agent.flush();
+
+    // When the registry, written after the Stop, says idle and the Mac checks its sessions
+    fake.updateSession("asked", {
+      status: "idle",
+      statusUpdatedAt: Date.now() + 60_000,
+    });
+    await agent.reconcile();
+    await agent.flush();
+
+    // Then the session still waits for the owner
+    const stored = await (await getDb())
+      .collection("sessions")
+      .findOne({ sessionId: "asked" });
+    expect(stored?.state).toBe("waitingForYou");
+  }, 60_000);
+
+  it("ends Working on the registry's idle even when a state-neutral idle prompt notification arrived after it", async () => {
+    // Given a session mid-turn whose Stop was missed, and a registry idle stamped a moment after the last real event
+    const { fake, agent } = await setUpMac("machine-air", "Quan's MacBook Air");
+    const process_ = await processes.live();
+    fake.addSession({
+      sessionId: "neutral",
+      cwd: "/work/neutral",
+      pid: process_.pid,
+      procStart: process_.procStart,
+    });
+    const send = (event: Record<string, unknown>) =>
+      runHook(fake.home, {
+        session_id: "neutral",
+        cwd: "/work/neutral",
+        ...event,
+      });
+    await send({ hook_event_name: "SessionStart", source: "startup" });
+    await send({ hook_event_name: "UserPromptSubmit", prompt: "go" });
+    const idleAt = Date.now() + 150;
+
+    // When the idle prompt notification arrives after that stamp, then the registry check runs
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    await send({
+      hook_event_name: "Notification",
+      notification_type: "idle_prompt",
+    });
+    await agent.flush();
+    fake.updateSession("neutral", { status: "idle", statusUpdatedAt: idleAt });
+    await agent.reconcile();
+    await agent.flush();
+
+    // Then the session is idle, not Working forever
+    expect((await officeSessions())[0]?.state).toBe("idle");
+  }, 60_000);
+
+  it("drops a permission dialog the registry reported once the registry says idle, on a turn that did not ask", async () => {
+    // Given a Mac with a running session whose turn ended with a plain answer
+    const { fake, agent } = await setUpMac("machine-air", "Quan's MacBook Air");
+    const process_ = await processes.live();
+    fake.addSession({
+      sessionId: "plain",
+      cwd: "/work/plain",
+      pid: process_.pid,
+      procStart: process_.procStart,
+    });
+    const send = (event: Record<string, unknown>) =>
+      runHook(fake.home, {
+        session_id: "plain",
+        cwd: "/work/plain",
+        ...event,
+      });
+    await send({ hook_event_name: "SessionStart", source: "startup" });
+    await send({ hook_event_name: "UserPromptSubmit", prompt: "go" });
+    await send({
+      hook_event_name: "Stop",
+      stop_hook_active: false,
+      last_assistant_message: "Merged.",
+    });
+    await agent.flush();
+    const stored = async () =>
+      (
+        await (
+          await getDb()
+        )
+          .collection("sessions")
+          .findOne({ sessionId: "plain" })
+      )?.state;
+
+    // When the registry reports a permission dialog, then idle again, with no hook in between
+    fake.updateSession("plain", {
+      status: "waiting",
+      statusUpdatedAt: Date.now() + 60_000,
+    });
+    await agent.reconcile();
+    await agent.flush();
+    expect(await stored()).toBe("needsPermission");
+    fake.updateSession("plain", {
+      status: "idle",
+      statusUpdatedAt: Date.now() + 120_000,
+    });
+    await agent.reconcile();
+    await agent.flush();
+
+    // Then the session is idle, not stuck on Needs permission
+    expect(await stored()).toBe("idle");
+  }, 60_000);
+
   it("shows a session whose registry entry only appeared after its hooks, on the next periodic check", async () => {
     // Given a session whose hooks arrived before Claude Code listed it in the registry, so it is held back
     const { fake, agent } = await setUpMac("machine-air", "Quan's MacBook Air");

@@ -65,8 +65,10 @@ interface Tracked {
   endedHookTs?: number;
   /** Wall-clock time of the newest event received, for evicting held sessions. */
   lastActivityAt: number;
-  /** `hookTs` of the newest event applied; a registry status only overrides hooks older than itself. */
+  /** `hookTs` of the newest event applied, to tell stragglers. */
   lastHookTs: number;
+  /** `hookTs` of the newest event that changed the state; a registry status only overrides hooks older than itself. */
+  stateHookTs: number;
   /** The process behind the session, as the registry last recorded it. */
   process?: { pid?: number; procStart?: string };
 }
@@ -203,7 +205,7 @@ export class SessionTracker {
       // Claude Code's own status wins only when it is newer than anything the hooks said.
       if (
         entry?.status &&
-        (entry.statusUpdatedAt ?? -Infinity) > tracked.lastHookTs
+        (entry.statusUpdatedAt ?? -Infinity) > tracked.stateHookTs
       ) {
         tracked.memory = applyRegistryStatus(tracked.memory, entry.status);
         this.publish(sessionId, tracked);
@@ -239,6 +241,7 @@ export class SessionTracker {
         buffer: [],
         lastActivityAt: this.options.now(),
         lastHookTs: -Infinity,
+        stateHookTs: -Infinity,
         cwdHookTs: -Infinity,
         bridgeHookTs: -Infinity,
         interactive: false,
@@ -294,9 +297,14 @@ export class SessionTracker {
     if (event.hook_event_name === "UserPromptSubmit" && !tracked.firstMessage) {
       tracked.firstMessage = firstRealMessage(event.prompt ?? "");
     }
-    tracked.memory = late
+    const next = late
       ? reduceLate(tracked.memory, event)
       : reduceState(tracked.memory, event);
+    // An event that left the memory untouched (an idle prompt) must not outrank a newer registry status.
+    if (next !== tracked.memory) {
+      tracked.stateHookTs = Math.max(tracked.stateHookTs, event.hookTs);
+    }
+    tracked.memory = next;
     this.addSteps(tracked, event.session_id, reduceSteps(tracked.steps, event));
     if (event.hook_event_name === "SessionEnd") {
       tracked.endedAt = this.options.now();

@@ -32,6 +32,8 @@ Use `CLAUDE_OFFICE_URL` to point setup at a different office address; the defaul
 
 If it fails with "too many connect requests", wait a few minutes (open requests expire after 10 minutes) and run it again.
 
+After pulling a new version on a Mac, restart its agent so it runs the new code: `launchctl kickstart -k gui/$(id -u)/dev.quanvo.claude-office.agent`. The hooks run from this checkout through the `~/.claude/claude-office` link, so they update with it; run `npm run setup` again only if the checkout moved.
+
 ## 4. Install the hooks
 
 `npm run setup` does this right after connecting; nothing more to run. It:
