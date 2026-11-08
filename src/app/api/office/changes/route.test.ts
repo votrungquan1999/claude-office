@@ -67,6 +67,27 @@ describe("the office changes API", () => {
     ]);
   });
 
+  it("sends each repo tag with only its name and key", async () => {
+    // Given a stored session whose tag carries a field the browser must not get
+    await seedSession("tagged", new Date(T0));
+    await (await getDb()).collection("sessions").updateOne(
+      { sessionId: "tagged" },
+      {
+        $set: {
+          tags: [{ name: "api", key: "aaaaaaaaaaaa", path: "/Users/q/api" }],
+        },
+      },
+    );
+
+    // When the owner asks for the changes
+    const raw = await (await GET(changesRequest(ownerHeaders))).json();
+
+    // Then the tag reads back as name and key alone
+    expect(raw.sessions[0].tags).toEqual([
+      { name: "api", key: "aaaaaaaaaaaa" },
+    ]);
+  });
+
   it("answers only the owner", async () => {
     // Given a stored session
     await seedSession("s1", new Date(T0));

@@ -27,12 +27,13 @@ const STRING_FIELDS = [
 ];
 
 /**
- * Keeps only what step text needs from a tool's input; command text, file contents and the like are dropped.
+ * Keeps only what step text and repo tags need from a tool's input; command text, file contents and the like are dropped.
  * @param {string | undefined} toolName
  * @param {unknown} input
+ * @param {string | undefined} cwd - The session folder, which relative file paths resolve against.
  * @returns {Record<string, string | boolean> | undefined}
  */
-function reduceToolInput(toolName, input) {
+function reduceToolInput(toolName, input, cwd) {
   if (!input || typeof input !== "object") return undefined;
   const text = (value) => (typeof value === "string" ? value : undefined);
   let reduced;
@@ -47,10 +48,16 @@ function reduceToolInput(toolName, input) {
     case "Read":
     case "Edit":
     case "Write":
+    case "NotebookEdit": {
+      const file = text(input.file_path) ?? text(input.notebook_path);
       reduced = {
-        file_name: text(input.file_path) && path.basename(input.file_path),
+        // The folder stays on the Mac: the agent turns it into a repo name and drops it.
+        file_dir: file && path.dirname(path.resolve(cwd ?? "/", file)),
       };
+      if (toolName !== "NotebookEdit")
+        reduced.file_name = file && path.basename(file);
       break;
+    }
     case "Grep":
     case "Glob":
       reduced = { pattern: text(input.pattern) };
@@ -112,7 +119,11 @@ export function reduceEvent(data, hookTs, env) {
   }
   const bridge = env.CLAUDE_CODE_BRIDGE_SESSION_ID;
   if (bridge) event.bridgeSessionId = bridge;
-  const toolInput = reduceToolInput(data.tool_name, data.tool_input);
+  const toolInput = reduceToolInput(
+    data.tool_name,
+    data.tool_input,
+    typeof data.cwd === "string" ? data.cwd : undefined,
+  );
   if (toolInput) event.tool_input = toolInput;
   return event;
 }

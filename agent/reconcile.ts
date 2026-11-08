@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { Collection } from "mongodb";
 import { isRegistryReadable, listRegistry } from "./registry";
-import type { SessionTracker } from "./tracker";
+import type { SessionTracker, TagDoc } from "./tracker";
 import { readTranscriptSeed } from "./transcript";
 import { EXPIRY_DAYS } from "./writer";
 
@@ -85,7 +85,14 @@ export async function seedRunningSessions(options: SeedOptions): Promise<void> {
   const alive = listRegistry(home).filter(
     (entry) => entry.kind === "interactive" && isRunning(entry, table),
   );
-  tracker.seed(
+  // Tags a previous run stored, so a restart never shrinks them.
+  const stored = await sessions
+    .find(
+      { machineId, sessionId: { $in: alive.map((entry) => entry.sessionId) } },
+      { projection: { sessionId: 1, tags: 1 } },
+    )
+    .toArray();
+  await tracker.seed(
     alive.map((entry) => {
       const transcript = readTranscriptSeed(home, entry.sessionId);
       return {
@@ -99,6 +106,14 @@ export async function seedRunningSessions(options: SeedOptions): Promise<void> {
         firstMessage: transcript.firstMessage,
         hadPrompt: transcript.hadPrompt,
         asked: transcript.asked,
+        stepDirs: transcript.stepDirs,
+        tags: stored
+          .find((doc) => doc.sessionId === entry.sessionId)
+          ?.tags?.map(({ name, key, parent }: TagDoc) => ({
+            name,
+            key,
+            ...(parent !== undefined ? { parent } : {}),
+          })),
         bridgeSessionId: entry.bridgeSessionId ?? transcript.bridgeSessionId,
         process: { pid: entry.pid, procStart: entry.procStart },
       };

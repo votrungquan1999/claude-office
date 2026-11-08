@@ -1,3 +1,6 @@
+import { createHash } from "node:crypto";
+import { realpathSync } from "node:fs";
+import { basename, dirname } from "node:path";
 import { ObjectId } from "mongodb";
 import { firstRealMessage, resolveDeskName } from "../src/shared/desk-name";
 import { type HookEvent, hookEventSchema } from "../src/shared/hook-events";
@@ -8,6 +11,11 @@ import {
   isRegistryReadable,
   type RegistryEntry,
 } from "./registry";
+import {
+  RepoLookupError,
+  type RepoResolver,
+  type ResolvedRepo,
+} from "./repo-resolver";
 import {
   applyRegistryStatus,
   initialStateMemory,
@@ -39,6 +47,18 @@ export interface SeedSession {
   /** The newest turn, already ended, asked the owner something. */
   asked?: boolean;
   process?: { pid?: number; procStart?: string };
+  /** Repos the session worked in, as stored on a previous run (never shrinks). */
+  tags?: TagDoc[];
+  /** Folders its transcript says it worked in, resolved to repos before the session is published. */
+  stepDirs?: string[];
+}
+
+/** A repo tag as stored and sent: a display name, an opaque key and the parent folder's name, never a path. */
+export interface TagDoc {
+  name: string;
+  key: string;
+  /** Absent on tags stored before it existed. */
+  parent?: string;
 }
 
 export interface TrackerOptions {
@@ -50,6 +70,8 @@ export interface TrackerOptions {
   writer: SessionWriter;
   /** Records each start folder; absent in tests that do not need it. */
   folders?: FolderRecorder;
+  /** Finds the repo of a step folder; absent in tests that do not need tags. */
+  repos?: RepoResolver;
 }
 
 interface Tracked {
@@ -80,6 +102,21 @@ interface Tracked {
   stateHookTs: number;
   /** The process behind the session, as the registry last recorded it. */
   process?: { pid?: number; procStart?: string };
+  /** Repos worked in so far; only grows. */
+  tags: TagDoc[];
+}
+
+/**
+ * The real path of a folder, so it compares with the paths git reports.
+ * @param path - A folder, which may be gone.
+ * @returns The resolved path, or the input when it cannot be resolved.
+ */
+function realpathOrSelf(path: string): string {
+  try {
+    return realpathSync(path);
+  } catch {
+    return path;
+  }
 }
 
 /** Finished steps kept per session while nothing has been written; older ones are dropped. */
@@ -100,6 +137,9 @@ export type IsRunning = (process: {
 export class SessionTracker {
   private readonly sessions = new Map<string, Tracked>();
   private readonly cards = new Map<string, KanbanCard>();
+  /** Repo lookups still running; `flush` waits for them and `stop` drops them. */
+  private readonly pending = new Set<Promise<void>>();
+  private stopped = false;
 
   constructor(private readonly options: TrackerOptions) {}
 
@@ -137,8 +177,9 @@ export class SessionTracker {
   /**
    * Publishes sessions that were already running, which no hook event announced.
    * @param seeds - Interactive sessions that are alive.
+   * @returns Once their repo tags are resolved and the sessions are handed to the writer.
    */
-  seed(seeds: SeedSession[]): void {
+  async seed(seeds: SeedSession[]): Promise<void> {
     for (const seed of seeds) {
       const tracked = this.track(seed.sessionId);
       tracked.interactive = true;
@@ -155,7 +196,18 @@ export class SessionTracker {
         initialStateMemory(seed.asked && (seed.status ?? "idle") === "idle"),
         seed.status ?? "idle",
       );
-      this.publish(seed.sessionId, tracked);
+      tracked.tags = [...(seed.tags ?? [])];
+    }
+    // Tags are resolved before anything is published, so a restart never publishes tag-less sessions.
+    await Promise.all(
+      seeds.flatMap((seed) =>
+        (seed.stepDirs ?? []).map((dir) =>
+          this.lookUp(seed.sessionId, this.track(seed.sessionId), dir, false),
+        ),
+      ),
+    );
+    for (const seed of seeds) {
+      this.publish(seed.sessionId, this.track(seed.sessionId));
     }
   }
 
@@ -243,11 +295,15 @@ export class SessionTracker {
   /** Applies every buffered event now and waits for the writes to land. */
   async flush(): Promise<void> {
     for (const sessionId of this.sessions.keys()) this.drain(sessionId);
+    // Events applied while waiting can add lookups, so wait until none is left; each republishes its session.
+    while (this.pending.size > 0) await Promise.all([...this.pending]);
     await this.options.folders?.flush();
     await this.options.writer.flush();
   }
 
   stop(): void {
+    this.stopped = true;
+    this.pending.clear();
     for (const tracked of this.sessions.values()) clearTimeout(tracked.timer);
   }
 
@@ -266,6 +322,7 @@ export class SessionTracker {
         memory: initialStateMemory(),
         steps: initialStepMemory(),
         unwritten: [],
+        tags: [],
       };
       this.sessions.set(sessionId, tracked);
     }
@@ -311,6 +368,9 @@ export class SessionTracker {
       tracked.bridgeSessionId = event.bridgeSessionId;
       tracked.bridgeHookTs = event.hookTs;
     }
+    // Main thread and subagents both count: a subagent may work in its own worktree.
+    const stepDir = event.tool_input?.file_dir ?? event.cwd;
+    if (stepDir) this.lookUp(event.session_id, tracked, stepDir, true);
     if (event.hook_event_name === "UserPromptSubmit") tracked.hadPrompt = true;
     if (event.hook_event_name === "UserPromptSubmit" && !tracked.firstMessage) {
       tracked.firstMessage = firstRealMessage(event.prompt ?? "");
@@ -328,6 +388,55 @@ export class SessionTracker {
       tracked.endedAt = this.options.now();
       tracked.endedHookTs = event.hookTs;
     }
+  }
+
+  /**
+   * Finds the repo of a step folder and adds it to the session's tags unless it is, or wraps, the start folder's repo.
+   * @param sessionId - The session.
+   * @param tracked - Its state.
+   * @param dir - The step folder.
+   * @param republish - Whether a new tag publishes the session at once.
+   */
+  private lookUp(
+    sessionId: string,
+    tracked: Tracked,
+    dir: string,
+    republish: boolean,
+  ): Promise<void> {
+    const { repos } = this.options;
+    const task = (async () => {
+      if (!repos) return;
+      const start = tracked.startCwd ?? tracked.cwd;
+      let repo: ResolvedRepo | undefined;
+      let startRepo: ResolvedRepo | undefined;
+      const startReal = start ? realpathOrSelf(start) : undefined;
+      try {
+        repo = await repos.resolve(dir);
+        if (repo && startReal) startRepo = await repos.resolve(startReal);
+      } catch (error) {
+        // Git could not answer; tagging now could name the main checkout of the start folder's own repo, so a later event retries.
+        if (error instanceof RepoLookupError) return;
+        throw error;
+      }
+      if (!repo || !startReal) return;
+      if (startRepo?.path === repo.path) return;
+      if (startReal === repo.path || startReal.startsWith(`${repo.path}/`)) {
+        return;
+      }
+      const key = createHash("sha256")
+        .update(repo.path)
+        .digest("hex")
+        .slice(0, 12);
+      if (tracked.tags.some((tag) => tag.key === key)) return;
+      tracked.tags.push({
+        name: repo.name,
+        key,
+        parent: basename(dirname(repo.path)),
+      });
+      if (republish && !this.stopped) this.publish(sessionId, tracked);
+    })().finally(() => this.pending.delete(task));
+    this.pending.add(task);
+    return task;
   }
 
   private addSteps(
@@ -403,6 +512,7 @@ export class SessionTracker {
           startedAt: new Date(step.startedAt),
         })),
         currentTodo: tracked.steps.todo,
+        ...(tracked.tags.length ? { tags: tracked.tags } : {}),
         hadPrompt: tracked.hadPrompt,
       },
       steps,

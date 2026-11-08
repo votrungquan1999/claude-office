@@ -23,6 +23,7 @@ interface SessionRow {
   recentSteps?: Array<Omit<StepDto, "startedAt"> & { startedAt: Date }>;
   runningSteps?: Array<{ text: string; startedAt: Date }>;
   currentTodo?: string | null;
+  tags?: Array<{ name: string; key: string; parent?: string }>;
   hadPrompt?: boolean;
   changedAt: Date;
 }
@@ -75,6 +76,15 @@ function toDto(row: SessionRow): SessionDto {
         }
       : {}),
     ...(live && row.currentTodo ? { currentTodo: row.currentTodo } : {}),
+    ...(row.tags?.length
+      ? {
+          tags: row.tags.map(({ name, key, parent }) => ({
+            name,
+            key,
+            ...(parent !== undefined ? { parent } : {}),
+          })),
+        }
+      : {}),
     ...(row.hadPrompt === undefined ? {} : { hadPrompt: row.hadPrompt }),
     changedAt: row.changedAt.toISOString(),
   };

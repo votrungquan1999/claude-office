@@ -32,6 +32,8 @@ export interface SessionDoc {
   deskName?: string;
   runningSteps?: Array<{ text: string; startedAt: Date }>;
   currentTodo?: string | null;
+  /** Repos the session worked in; never shrinks. */
+  tags?: Array<{ name: string; key: string; parent?: string }>;
   /** Whether the session ever got a prompt; sessions that never did stay out of the went-home list. */
   hadPrompt?: boolean;
 }

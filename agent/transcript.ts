@@ -6,7 +6,7 @@ import {
   readdirSync,
   readSync,
 } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import { asks } from "../src/shared/asks";
 import { firstRealMessage } from "../src/shared/desk-name";
@@ -15,7 +15,7 @@ import { firstRealMessage } from "../src/shared/desk-name";
 const HEAD_BYTES = 256 * 1024;
 const TAIL_BYTES = 64 * 1024;
 
-// Only the fields the agent uses; records carry many more, and tool input is never among them.
+// Only the fields the agent uses; of a tool call's input, only the file path is read.
 const recordSchema = z.object({
   type: z.string().optional(),
   cwd: z.string().optional(),
@@ -32,7 +32,20 @@ const recordSchema = z.object({
       content: z
         .union([
           z.string(),
-          z.array(z.object({ type: z.string(), text: z.string().optional() })),
+          z.array(
+            z.object({
+              type: z.string(),
+              text: z.string().optional(),
+              // Only the folders of file tools are read from a tool call; command text is never parsed.
+              input: z
+                .object({
+                  file_path: z.string().optional(),
+                  notebook_path: z.string().optional(),
+                })
+                .optional()
+                .catch(undefined),
+            }),
+          ),
         ])
         .optional(),
     })
@@ -51,6 +64,8 @@ export interface TranscriptSeed {
   bridgeSessionId?: string;
   /** The newest turn ended by asking the owner something. */
   asked: boolean;
+  /** Folders its tool calls and records worked in; kept only to find their repos. */
+  stepDirs: string[];
 }
 
 /**
@@ -197,6 +212,26 @@ function turnAsked(tail: TranscriptRecord[]): boolean {
 }
 
 /**
+ * The distinct folders a session's records and file tool calls point at.
+ * @param records - Records of the transcript's two ends.
+ * @returns Record folders and the folders of tool-call file paths.
+ */
+function stepDirsOf(records: TranscriptRecord[]): string[] {
+  const dirs = new Set<string>();
+  for (const record of records) {
+    if (record.cwd) dirs.add(record.cwd);
+    const content = record.message?.content;
+    if (!Array.isArray(content)) continue;
+    for (const block of content) {
+      const file = block.input?.file_path ?? block.input?.notebook_path;
+      if (block.type === "tool_use" && file)
+        dirs.add(dirname(resolve(record.cwd ?? "/", file)));
+    }
+  }
+  return [...dirs];
+}
+
+/**
  * What a session's transcript says about it, from bounded reads of its head and tail.
  * @param home - The user's home folder.
  * @param sessionId - The session.
@@ -207,7 +242,7 @@ export function readTranscriptSeed(
   sessionId: string,
 ): TranscriptSeed {
   const path = transcriptPath(home, sessionId);
-  if (!path) return { hadPrompt: false, asked: false };
+  if (!path) return { hadPrompt: false, asked: false, stepDirs: [] };
   let head: TranscriptRecord[];
   let tail: TranscriptRecord[];
   try {
@@ -215,11 +250,12 @@ export function readTranscriptSeed(
     tail = readRecords(path, true);
   } catch {
     // Error boundary: an unreadable transcript only costs the desk name and folder hints, never the session.
-    return { hadPrompt: false, asked: false };
+    return { hadPrompt: false, asked: false, stepDirs: [] };
   }
   const prompts = head.flatMap(humanTexts);
   return {
     asked: turnAsked(tail),
+    stepDirs: stepDirsOf([...head, ...tail]),
     firstMessage: prompts
       .map((text) => firstRealMessage(text))
       .find((text) => text !== undefined),

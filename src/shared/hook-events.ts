@@ -1,9 +1,11 @@
 import { z } from "zod";
 
-/** The few `tool_input` keys step text needs; any other key (command, content, ...) is stripped on parse. */
+/** The few `tool_input` keys the agent needs (step text and a file step's folder); any other key is stripped on parse. */
 export const reducedToolInputSchema = z.object({
   description: z.string().optional(),
   file_name: z.string().optional(),
+  /** Folder of a file step; used on the Mac to find its repo, never stored. */
+  file_dir: z.string().optional(),
   pattern: z.string().optional(),
   query: z.string().optional(),
   domain: z.string().optional(),

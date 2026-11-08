@@ -1,6 +1,7 @@
 import type { CompanySessionInput, SessionCompany } from "@/shared/companies";
 import type { SessionDto } from "@/shared/session";
 import { sessionKey } from "@/shared/session";
+import { tagLabels } from "@/shared/tag-labels";
 import { TILE_SIZE } from "./constants";
 import type { OfficeState } from "./engine/officeState";
 import { ROOM_OF_STATE, Room } from "./rooms";
@@ -67,6 +68,19 @@ function lookOf(key: string): { palette: number; hueShift: number } {
 
 function folderName(cwd: string): string {
   return cwd.split("/").filter(Boolean).at(-1) ?? cwd;
+}
+
+/**
+ * The `#name` words for a session's repo tags.
+ * @param tags - The session's tags.
+ * @param labels - How the company writes each tag key, so a word reads like its filter chip.
+ * @returns One word per tag.
+ */
+function tagWords(
+  tags: SessionDto["tags"],
+  labels: ReadonlyMap<string, string>,
+): string[] {
+  return (tags ?? []).map(({ name, key }) => `#${labels.get(key) ?? name}`);
 }
 
 /**
@@ -177,6 +191,18 @@ export function createSceneSync(
       { firstLoad = false, offlineMachineIds, only, companyOf } = {},
     ) {
       offline = offlineMachineIds ?? offline;
+      // Per company, over the tags of its live sessions: the same set the tag filter's chips read.
+      const labelsByCompany = new Map<string | null, Map<string, string>>();
+      const byCompany = Map.groupBy(
+        sessions.filter((session) => session.state !== "wentHome"),
+        (session) => companyOf?.(session)?.companyKey ?? null,
+      );
+      for (const [companyKey, group] of byCompany) {
+        labelsByCompany.set(
+          companyKey,
+          tagLabels(group.flatMap((session) => session.tags ?? [])),
+        );
+      }
       if (only) {
         for (const [key, employee] of employees) {
           if (only.has(key)) continue;
@@ -192,7 +218,13 @@ export function createSceneSync(
         const where = placed
           ? (placed.project ?? placed.companyName)
           : folderName(session.cwd);
-        const place = `${session.machineName} / ${where}`;
+        const place = [
+          `${session.machineName} / ${where}`,
+          ...tagWords(
+            session.tags,
+            labelsByCompany.get(placed?.companyKey ?? null) ?? new Map(),
+          ),
+        ].join(" ");
         const label = session.deskName
           ? `${session.deskName} · ${place}`
           : place;

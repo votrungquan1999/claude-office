@@ -190,6 +190,95 @@ describe("scene sync", () => {
     ]);
   });
 
+  it("follows the place with a #name for each repo tag, telling same-named repos apart by their key", () => {
+    // Given a session with two repo tags, and one whose two repos share a name
+    const office = loadOffice();
+    const sync = createSceneSync(office);
+    const tagged = {
+      ...session("m1", "Mac", "a", "/Users/q/personal"),
+      tags: [
+        { name: "upredict-backend", key: "aaaaaaaaaaaa" },
+        { name: "ml", key: "bbbbbbbbbbbb" },
+      ],
+    };
+    const twins = {
+      ...session("m1", "Mac", "b", "/Users/q/work"),
+      tags: [
+        { name: "api", key: "1111aaaaaaaa" },
+        { name: "api", key: "2222bbbbbbbb" },
+      ],
+    };
+
+    // When they are applied
+    sync.apply([tagged, twins], { firstLoad: true });
+
+    // Then each label lists its tags after the place
+    expect(
+      office
+        .getCharacters()
+        .map((ch) => ch.directoryName)
+        .sort(),
+    ).toEqual([
+      "Mac / personal #upredict-backend #ml",
+      "Mac / work #api~1111 #api~2222",
+    ]);
+  });
+
+  it("tells same-named repos apart across the company's sessions, so a label reads like its chip", () => {
+    // Given two sessions of one company, each worked in a repo called api with a different key, and a third that went home with a third api
+    const office = loadOffice();
+    const sync = createSceneSync(office);
+    const first = {
+      ...session("m1", "Mac", "a", "/Users/q/personal"),
+      tags: [{ name: "api", key: "1111aaaaaaaa" }],
+    };
+    const second = {
+      ...session("m1", "Mac", "b", "/Users/q/personal"),
+      tags: [{ name: "api", key: "2222bbbbbbbb" }],
+    };
+    const gone = {
+      ...session("m1", "Mac", "c", "/Users/q/personal"),
+      state: "wentHome" as const,
+      tags: [{ name: "api", key: "1111cccccccc" }],
+    };
+
+    // When they are applied
+    sync.apply([first, second, gone], { firstLoad: true });
+
+    // Then each label carries its key's start, and the departed session's repo plays no part
+    expect(
+      office
+        .getCharacters()
+        .map((ch) => ch.directoryName)
+        .sort(),
+    ).toEqual(["Mac / personal #api~1111", "Mac / personal #api~2222"]);
+  });
+
+  it("writes same-named repos as parent/name on the label when their parent folders are known", () => {
+    // Given two sessions of one company in repos both called api, in different parent folders
+    const office = loadOffice();
+    const sync = createSceneSync(office);
+    const first = {
+      ...session("m1", "Mac", "a", "/Users/q/personal"),
+      tags: [{ name: "api", key: "1111aaaaaaaa", parent: "personal" }],
+    };
+    const second = {
+      ...session("m1", "Mac", "b", "/Users/q/personal"),
+      tags: [{ name: "api", key: "2222bbbbbbbb", parent: "work" }],
+    };
+
+    // When they are applied
+    sync.apply([first, second], { firstLoad: true });
+
+    // Then each label reads parent/name
+    expect(
+      office
+        .getCharacters()
+        .map((ch) => ch.directoryName)
+        .sort(),
+    ).toEqual(["Mac / personal #personal/api", "Mac / personal #work/api"]);
+  });
+
   describe("rooms", () => {
     /** The room an employee's seat is in. */
     function roomOf(office: OfficeState, sessionIndex: number): string | null {

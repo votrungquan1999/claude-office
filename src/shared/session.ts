@@ -24,6 +24,16 @@ export const runningStepDtoSchema = z.object({
   startedAt: z.string(),
 });
 
+/** A repo the session worked in: its display name and an opaque key that tells same-named repos apart. */
+export const tagDtoSchema = z.object({
+  name: z.string(),
+  key: z.string(),
+  /** The main repo's parent folder name, to tell same-named repos apart; absent on tags stored before it existed. */
+  parent: z.string().optional(),
+});
+
+export type TagDto = z.infer<typeof tagDtoSchema>;
+
 /** A session as the office API sends it; dates are ISO strings. */
 export const sessionDtoSchema = z.object({
   machineId: z.string(),
@@ -44,6 +54,8 @@ export const sessionDtoSchema = z.object({
   runningSteps: z.array(runningStepDtoSchema).optional(),
   /** The in-progress to-do line, when the session has one. */
   currentTodo: z.string().optional(),
+  /** Repos the session worked in; absent when none. */
+  tags: z.array(tagDtoSchema).optional(),
   /** Whether the session ever got a prompt; one that never did is left out of the went-home list. */
   hadPrompt: z.boolean().optional(),
   changedAt: z.string(),

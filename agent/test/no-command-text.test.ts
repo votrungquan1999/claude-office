@@ -317,6 +317,27 @@ describe("shell command text never leaves the Mac", () => {
     }
   }, 120_000);
 
+  it("never stores the folder a file step ran in, which the agent only uses to find the repo", async () => {
+    // Given a session mid-turn
+    const { send, agent } = await midTurn();
+    const folder = "SENTINEL_FOLDER_7f3a";
+
+    // When it edits a file inside a folder with that name
+    await send({
+      hook_event_name: "PostToolUse",
+      tool_name: "Edit",
+      tool_use_id: "f1",
+      tool_input: { file_path: `/work/app/${folder}/a.ts` },
+      duration_ms: 5,
+    });
+    await agent.flush();
+
+    // Then the step is stored by its file name and the folder is in no collection
+    const [session] = await officeSessions();
+    expect(session?.recentSteps?.map((s) => s.text)).toEqual(["Edit a.ts"]);
+    expect(await databaseDump()).not.toContain(folder);
+  }, 60_000);
+
   it("keeps command text out of the database even when an event skips the hook and goes straight to the agent", async () => {
     // Given a session mid-turn and the agent's address from its file
     const { agent, fake } = await midTurn();

@@ -50,14 +50,13 @@ describe("the hook's field allowlist", () => {
     );
     const parsed = reduced.map((event) => hookEventSchema.parse(event));
 
-    // Then nothing sensitive survives, only the reduced input stays, and both sides agree
+    // Then nothing sensitive survives, only the reduced input stays (a file step's folder goes to the local agent only), and both sides agree
     expect(JSON.stringify(reduced)).not.toContain(SECRET);
-    expect(JSON.stringify(reduced)).not.toContain("secret-dir");
     expect(JSON.stringify(reduced)).not.toContain("token=abc");
     expect(reduced.map((event) => event.tool_input)).toEqual([
       { description: "Clean the build folder" },
       { domain: "docs.example.com" },
-      { file_name: "notes.md" },
+      { file_name: "notes.md", file_dir: "/Users/q/secret-dir" },
       undefined,
     ]);
     expect(reduced[3].prompt).toHaveLength(500);
@@ -100,5 +99,38 @@ describe("the hook's field allowlist", () => {
     // And other events carry neither field
     expect(reducedPost).not.toHaveProperty("last_assistant_message");
     expect(reducedPost).not.toHaveProperty("stop_hook_active");
+  });
+
+  it("forwards the folder of a notebook edit and of a relative file path, resolved against the session folder", () => {
+    // Given a NotebookEdit and a Read with a relative path
+    const notebook = {
+      hook_event_name: "PreToolUse",
+      session_id: "s1",
+      cwd: "/work",
+      tool_name: "NotebookEdit",
+      tool_input: {
+        notebook_path: "/repos/ml/nb/a.ipynb",
+        new_source: "SECRET",
+      },
+    };
+    const relative = {
+      hook_event_name: "PreToolUse",
+      session_id: "s1",
+      cwd: "/work",
+      tool_name: "Read",
+      tool_input: { file_path: "docs/readme.md" },
+    };
+
+    // When the hook reduces them
+    const [reducedNotebook, reducedRelative] = [notebook, relative].map((p) =>
+      reduceEvent(p, 1000, {}),
+    );
+
+    // Then each carries its folder, and the notebook's source text is dropped
+    expect(reducedNotebook.tool_input).toEqual({ file_dir: "/repos/ml/nb" });
+    expect(reducedRelative.tool_input).toEqual({
+      file_dir: "/work/docs",
+      file_name: "readme.md",
+    });
   });
 });

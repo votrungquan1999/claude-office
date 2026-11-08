@@ -20,6 +20,7 @@ import {
   reconcileSessions,
   seedRunningSessions,
 } from "./reconcile";
+import { createRepoResolver } from "./repo-resolver";
 import { startListener } from "./server";
 import { SessionTracker } from "./tracker";
 import { createWriteWatchdog } from "./write-watchdog";
@@ -137,6 +138,7 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
     reorderMs: options.reorderMs ?? 200,
     now,
     writer,
+    repos: createRepoResolver(),
     folders: new FolderRecorder({
       folders: db.collection<FolderDocument>("folders"),
       machineId,
