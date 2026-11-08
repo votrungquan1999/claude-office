@@ -1,18 +1,42 @@
-# Claude Office
+<h1 align="center">Claude Office</h1>
 
-A watch-only pixel-art office that shows every interactive Claude Code session on your Macs.
+<p align="center">A pixel-art office that shows every Claude Code session on your Macs, live. Each session is an employee who walks between rooms as its state changes.</p>
 
-Each session is an employee who walks between four rooms as its state changes: Working, Thinking, Needs permission and Waiting.
+<p align="center">
+  <a href="https://github.com/votrungquan1999/claude-office/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/votrungquan1999/claude-office/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-blue.svg"></a>
+  <img alt="Node 24 or newer" src="https://img.shields.io/badge/node-%E2%89%A524-339933.svg">
+  <img alt="macOS agent" src="https://img.shields.io/badge/agent-macOS-lightgrey.svg">
+</p>
 
-What you see:
+<p align="center">
+  <img src="docs/images/office-walking.gif" alt="Employees walking between the Working, Needs permission, Waiting for you and Idle rooms" width="800">
+</p>
 
-- **Desk names:** each employee is labelled with the session's desk name, Mac and folder.
-- **Recent steps:** click or tap an employee for a details panel with its latest steps and an "Open in Remote Control" link when the session has one.
-- **Went home:** closed sessions leave the office and appear in a "Went home today" list.
-- **Phone layout:** the office can be panned and zoomed, with a strip of employee cards and bottom sheets.
-- **Sign-in:** Google only, and only one allowed account.
+## Features
 
-It only watches. It cannot message, stop or control a session.
+- **Four rooms:** Working, Needs permission, Waiting for you and Idle. An employee walks to the room that matches its session, and the room signs count who is where.
+- **Companies and projects:** the folders you start sessions in group into companies, one tab per company and Mac, each with four live counts and a badge when something needs you. A drawer lists every Mac and company and has a per-company on/off switch: switching a folder off makes its child folders companies, and sessions started in a switched-off folder go to one "Other" company per Mac.
+- **Repo tags:** each employee shows the repos it worked in, and you can filter a company's office by tag.
+- **Details panel:** click an employee for a pixel card with its state and how long it has been there, project and tags, the running step, the latest steps and a Remote Control button.
+- **Phone layout:** pan and zoom the office, with a company drawer and bottom sheets.
+- **Watch only:** it cannot message, stop or control a session. Sign-in is Google only, for one allowed account.
+
+<p align="center">
+  <img src="docs/images/office-desktop.png" alt="The office on a desktop, with the company strip above four rooms" width="800">
+</p>
+
+<p align="center">
+  <img src="docs/images/office-phone.png" alt="The office on a phone" height="420">
+  &nbsp;
+  <img src="docs/images/details-panel.png" alt="The details panel for a session that needs permission" height="420">
+</p>
+
+## Quick start
+
+1. **Deploy the web app.** Create a MongoDB database and a Google OAuth client, then set the environment variables on your host. See [Deploy the web app](#deploy-the-web-app).
+2. **Connect each Mac.** Clone this repo on the Mac and run setup with your office URL. See [Connect each Mac](#connect-each-mac), or [let Claude Code do it](#set-it-up-with-claude-code).
+3. **Open the office.** Sign in with the allowed Google account at your URL. Sessions appear as you start Claude Code.
 
 ## How it works
 
@@ -25,12 +49,21 @@ Claude Code hooks -> local agent (on each Mac) -> MongoDB <- web app <- your bro
 - **MongoDB:** the one shared database.
 - **Web app:** a Next.js app that reads MongoDB and polls for changes while the tab is visible.
 
-What never leaves the Mac:
+### What never leaves the Mac
 
 - The text of shell commands.
 - Tool output, error text and notification text.
 
-What is stored: the first message (cut to 60 characters), Bash and Agent descriptions, search patterns, web queries and domains, file names, the session's name and folder paths.
+What is stored: the first message (cut to 60 characters), Bash and Agent descriptions, search patterns, web queries and domains, file names, the session's name and folder paths, and the folder name of each repo a session worked in (shown as a tag), each with a short hashed key.
+
+One optional call leaves the Mac. When a session's first message is only a paste, the agent can ask Claude Haiku for a short desk name. It sends only the first part of that pasted message, once per session, straight to Anthropic, and only if you set your own Anthropic API key (`anthropicApiKey` in `~/.claude-office/config.json`, see [SETUP.md](SETUP.md#optional-name-paste-only-desks-with-an-anthropic-key)). At most 500 characters of the paste are sent. Without a key nothing is sent and the desk is named from the paste.
+
+## FAQ
+
+- **Does it work on Linux or Windows?** The web app runs anywhere Node runs, and you can open it from any browser. The agent that watches sessions uses launchd, so it needs macOS.
+- **Can it control my sessions?** No. It only watches. The Remote Control button opens the session's own Remote Control page when Claude Code provides one.
+- **Does it cost tokens?** No. It reads hook events and transcripts on your Mac and uses no model. The only exception is the optional desk-name call above, which needs your own key.
+- **What leaves my Mac?** See [What never leaves the Mac](#what-never-leaves-the-mac).
 
 ## Requirements
 
@@ -106,24 +139,13 @@ Set up Claude Office on this Mac. Read README.md and SETUP.md first.
 4. Verify the agent is running using the checks at the end of SETUP.md (step 5) and tell me the result.
 ```
 
-## Run locally for development
-
-Only needed if you want to work on the web app itself.
-
-- Copy `.env.example` to `.env.local` and fill it in. Keep `BETTER_AUTH_URL=http://localhost:3000`.
-- Your Google OAuth client must list `http://localhost:3000/api/auth/callback/google` as a redirect URI.
-- Run `npm run dev` and open http://localhost:3000. It reads and writes the database in `MONGODB_URI`.
-
-Checks:
-
-- `npm run test:run`: unit and integration tests.
-- `npm run test:e2e`: browser tests (Playwright).
-- `npm run lint`: Biome.
-- `npx tsc --noEmit`: type check.
-
 ## Uninstall
 
 There is no uninstall command. [SETUP.md](SETUP.md) lists what to remove by hand: the hook entries in `~/.claude/settings.json`, the `~/.claude/claude-office` link, the launchd job and `~/.claude-office/`.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for running the app locally, the checks and how the tests work.
 
 ## Credits and licences
 

@@ -1,0 +1,52 @@
+name: Bug report
+description: Something in Claude Office is wrong or broken.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead. A screenshot helps; hide anything private.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. Start Claude Code in a folder\n2. ..."
+  - type: input
+    id: app-version
+    attributes:
+      label: Claude Office app version
+      description: The `version` in package.json of your clone.
+      placeholder: 0.2.0
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: macOS 15.1
+    validations:
+      required: true
+  - type: input
+    id: node
+    attributes:
+      label: Node version
+      description: Output of `node --version`.
+      placeholder: v24.0.0
+    validations:
+      required: true
+  - type: input
+    id: claude-code
+    attributes:
+      label: Claude Code version
+      description: Output of `claude --version`.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Agent log
+      description: The last lines of the agent log under `~/.claude-office/` on the Mac. Remove folder names or anything else you do not want public.
+      render: text

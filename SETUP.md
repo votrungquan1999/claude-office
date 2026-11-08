@@ -86,6 +86,6 @@ A session whose first message is only pasted text shows "Pasted text" on its des
 
 Only needed to work on the web app itself; a Mac that just reports sessions never runs it.
 
-- Copy `.env.example` to `.env.local` and fill it from `bun run claude-office:env` in personal-infra, keeping `BETTER_AUTH_URL=http://localhost:3000`.
+- Copy `.env.example` to `.env.local` and fill in the values from [Deploy the web app](README.md#deploy-the-web-app), keeping `BETTER_AUTH_URL=http://localhost:3000`.
 - The Google OAuth client must list `http://localhost:3000/api/auth/callback/google` as an authorised redirect URI (next to the production one).
-- Run `npm run dev` and open http://localhost:3000. It reads and writes the same production database.
+- Run `npm run dev` and open http://localhost:3000. It reads and writes the database in `MONGODB_URI`; use a throwaway database.

@@ -1,6 +1,6 @@
 {
   "name": "claude-office",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "A pixel-art office that shows every running Claude Code session.",
   "type": "module",
@@ -13,8 +13,10 @@
     "start": "next start",
     "test:run": "vitest run",
     "lint": "biome check .",
+    "typecheck": "tsc --noEmit",
     "format": "biome format --write .",
     "test:e2e": "playwright test",
+    "capture": "tsx scripts/capture-readme-images.ts",
     "assets": "tsx scripts/build-office-assets.ts",
     "layout": "tsx scripts/generate-office-layout.ts",
     "predev": "npm run assets",
@@ -44,6 +46,7 @@
     "tailwindcss": "^4.3.5",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.12"
+    "vitest": "^4.1.12",
+    "yaml": "^2.9.1"
   }
 }
