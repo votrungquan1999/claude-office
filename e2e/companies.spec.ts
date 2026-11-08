@@ -211,3 +211,115 @@ test("clicking a company tab shows only that company's employees, went-home list
     await client.close();
   }
 });
+
+test("the drawer lists every Mac and company with four counts, greys the offline Mac, picks a company, and closes with Escape returning focus to its button", async ({
+  context,
+  page,
+}) => {
+  // Given an online Mac with a company that has nothing live, and an offline Mac with one session needing permission
+  const client = new MongoClient(
+    readFileSync(E2E_MONGO_URI_FILE, "utf8").trim(),
+  );
+  await client.connect();
+  const db = client.db(E2E_DB);
+  const now = Date.now();
+  await db.collection("machines").deleteMany({});
+  await db.collection("machines").insertMany([
+    { machineId: "air", machineName: "Air", lastSeenAt: new Date(now) },
+    {
+      machineId: "mini",
+      machineName: "Mini",
+      lastSeenAt: new Date(now - 600_000),
+    },
+  ]);
+  await seedFolders(db.collection("folders"), [
+    { machineId: "air", path: "/Users/q/personal" },
+    { machineId: "air", path: "/Users/q/workspace" },
+    { machineId: "air", path: "/Users/q/unused" },
+    { machineId: "mini", path: "/Users/q/lab" },
+  ]);
+  const row = (
+    machineId: string,
+    sessionId: string,
+    cwd: string,
+    state: string,
+  ) => ({
+    machineId,
+    machineName: machineId === "air" ? "Air" : "Mini",
+    sessionId,
+    cwd,
+    startCwd: cwd,
+    state,
+    deskName: sessionId,
+    startedAt: new Date(now - 2 * HOUR),
+    changedAt: new Date(now - 60_000),
+  });
+  const sessions = db.collection("sessions");
+  await sessions.deleteMany({});
+  await sessions.insertMany([
+    row("air", "p1", "/Users/q/personal/a", "idle"),
+    row("air", "w1", "/Users/q/workspace", "needsPermission"),
+    row("air", "w2", "/Users/q/workspace/x", "idle"),
+    row("mini", "l1", "/Users/q/lab", "needsPermission"),
+  ]);
+  await signInAsOwner(context);
+  const employees = () =>
+    page.evaluate(() => window.__officeTestHooks?.getCharacters().length);
+
+  try {
+    // Given the office is open on personal with a session's details showing
+    await page.goto("/");
+    await expect.poll(employees).toBe(1);
+    await page.getByTestId("agent-card").first().click();
+    await expect(page.getByTestId("details-panel")).toBeVisible();
+
+    // When the owner opens the drawer
+    const trigger = page.getByTestId("open-drawer");
+    await trigger.click();
+
+    // Then the details close and the dialog lists every company, including the unused one with zeros
+    const drawer = page.getByRole("dialog", { name: "All companies" });
+    await expect(drawer).toBeVisible();
+    await expect(page.getByTestId("details-panel")).toHaveCount(0);
+    const unused = drawer.getByTestId("drawer-company-unused");
+    await expect(unused.getByLabel("0 working")).toBeVisible();
+    await expect(unused.getByLabel("0 idle")).toBeVisible();
+
+    // And the offline Mac is greyed with its four counts, and the header counts what waits elsewhere
+    const mini = drawer.getByTestId("drawer-mac-mini");
+    await expect(mini).toHaveAttribute("data-offline", "true");
+    await expect(mini.getByLabel("1 needs permission")).toBeVisible();
+    await expect(drawer.getByTestId("elsewhere-need-you")).toHaveText(
+      "1 elsewhere need you",
+    );
+
+    // When the owner picks workspace
+    await drawer
+      .getByTestId("drawer-company-workspace")
+      .getByRole("button")
+      .click();
+
+    // Then the drawer closes and the office shows workspace, with focus back on the trigger
+    await expect(drawer).toHaveCount(0);
+    await expect(
+      page.locator('[data-company-name="workspace"]'),
+    ).toHaveAttribute("aria-current", "page");
+    // Workspace has two employees against personal's one, so the office really switched
+    await expect.poll(employees).toBe(2);
+    await expect(trigger).toBeFocused();
+
+    // When the owner reopens it and presses Escape
+    await trigger.click();
+    await expect(drawer).toBeVisible();
+    await page.keyboard.press("Escape");
+
+    // Then it closes and focus returns to the trigger
+    await expect(drawer).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+  } finally {
+    await seedFolders(db.collection("folders"), []);
+    await db.collection("machines").deleteMany({});
+    await sessions.deleteMany({});
+    await client.close();
+  }
+});

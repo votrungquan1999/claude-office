@@ -1,3 +1,4 @@
+import type { Ref } from "react";
 import type { CompanyCounts, MacOverview } from "@/shared/overview";
 
 export interface CompanyStripProps {
@@ -6,6 +7,10 @@ export interface CompanyStripProps {
   /** The viewed company; its tab shows even when nothing is live in it. */
   selectedKey: string | null;
   onSelect: (companyKey: string) => void;
+  /** Opens the drawer that lists every company. */
+  onOpenDrawer: () => void;
+  /** The drawer's trigger, so focus can return to it. */
+  drawerButtonRef?: Ref<HTMLButtonElement>;
 }
 
 interface CountSpec {
@@ -67,6 +72,8 @@ export function CompanyStrip({
   macs,
   selectedKey,
   onSelect,
+  onOpenDrawer,
+  drawerButtonRef,
 }: CompanyStripProps) {
   return (
     <nav
@@ -116,6 +123,16 @@ export function CompanyStrip({
           </div>
         );
       })}
+      <button
+        ref={drawerButtonRef}
+        type="button"
+        data-testid="open-drawer"
+        aria-haspopup="dialog"
+        onClick={onOpenDrawer}
+        className="ml-auto h-40 shrink-0 border-2 border-border bg-btn-bg px-10 text-sm hover:bg-btn-hover"
+      >
+        All companies
+      </button>
     </nav>
   );
 }

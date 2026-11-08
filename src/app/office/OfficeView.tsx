@@ -20,6 +20,7 @@ import {
   type SessionDto,
   sessionKey,
 } from "@/shared/session";
+import { CompanyDrawer } from "./CompanyDrawer";
 import { CompanyStrip } from "./CompanyStrip";
 import { ConnectionStatus } from "./ConnectionStatus";
 import { DetailsPanel } from "./DetailsPanel";
@@ -122,6 +123,8 @@ export function OfficeView() {
   const [machines, setMachines] = useState<MachineDto[]>([]);
   const [folders, setFolders] = useState<FolderDto[]>([]);
   const [companyKey, setCompanyKey] = useState<string | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const drawerButtonRef = useRef<HTMLButtonElement>(null);
   const [now, setNow] = useState(() => new Date());
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -197,6 +200,19 @@ export function OfficeView() {
     companyRef.current = picked;
     setCompanyKey(picked);
     showCompany(data, picked, { sitDown: firstLoad || changed });
+  };
+
+  /** Opens the company drawer; a details panel left open would sit under it, so it closes. */
+  const openDrawer = () => {
+    setSelectedKey(null);
+    officeState.selectedAgentId = null;
+    setDrawerOpen(true);
+  };
+
+  /** Closes the drawer and puts focus back on the button that opened it. */
+  const closeDrawer = () => {
+    setDrawerOpen(false);
+    drawerButtonRef.current?.focus();
   };
 
   /** Switches the office to another company at once. */
@@ -299,6 +315,8 @@ export function OfficeView() {
         macs={overview.macs}
         selectedKey={companyKey}
         onSelect={selectCompany}
+        onOpenDrawer={openDrawer}
+        drawerButtonRef={drawerButtonRef}
       />
       <div
         ref={containerRef}
@@ -344,6 +362,18 @@ export function OfficeView() {
           folded={isMobile}
           onSelect={(session) => setSelectedKey(sessionKey(session))}
         />
+        {drawerOpen && (
+          <CompanyDrawer
+            overview={overview}
+            selectedKey={companyKey}
+            sheet={isMobile}
+            onSelect={(key) => {
+              selectCompany(key);
+              closeDrawer();
+            }}
+            onClose={closeDrawer}
+          />
+        )}
         <DetailsPanel
           session={selectedKey ? (sessions.get(selectedKey) ?? null) : null}
           offlineMachineIds={offlineIds}

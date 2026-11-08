@@ -51,7 +51,14 @@ describe("the company strip", () => {
     ];
 
     // When the strip renders
-    render(<CompanyStrip macs={macs} selectedKey={null} onSelect={() => {}} />);
+    render(
+      <CompanyStrip
+        macs={macs}
+        selectedKey={null}
+        onSelect={() => {}}
+        onOpenDrawer={() => {}}
+      />,
+    );
 
     // Then only active companies get tabs, and a Mac without tabs gets no label
     const tabs = screen.getAllByTestId("company-tab");
@@ -98,6 +105,7 @@ describe("the company strip", () => {
         macs={macs}
         selectedKey={quiet.company.key}
         onSelect={() => {}}
+        onOpenDrawer={() => {}}
       />,
     );
 
@@ -105,7 +113,14 @@ describe("the company strip", () => {
     expect(screen.getAllByTestId("company-tab")).toHaveLength(1);
 
     // And with no Macs at all the strip is empty
-    rerender(<CompanyStrip macs={[]} selectedKey={null} onSelect={() => {}} />);
+    rerender(
+      <CompanyStrip
+        macs={[]}
+        selectedKey={null}
+        onSelect={() => {}}
+        onOpenDrawer={() => {}}
+      />,
+    );
     expect(screen.queryAllByTestId("company-tab")).toHaveLength(0);
     expect(screen.getByRole("navigation", { name: "Companies" })).toBeTruthy();
   });
