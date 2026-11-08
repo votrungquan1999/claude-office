@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import type { OfficeState } from "@/office/engine/officeState";
 import { overlayProjection } from "@/office/projection";
 import { ROOM_DISPLAY_NAMES, type Room } from "@/office/rooms";
-import { TILE_SIZE } from "@/office/types";
+import { TILE_SIZE, TileType } from "@/office/types";
 
 interface RoomSignsProps {
   officeState: OfficeState;
@@ -15,18 +15,20 @@ interface RoomSignsProps {
 
 interface RoomAnchor {
   room: Room;
-  /** World position of the sign: the room's horizontal centre, on its top row. */
+  /** World position of the sign: the centre of the room's own floor, on the wall row above its first floor row, so the sign stays off the seats. */
   worldX: number;
   worldY: number;
 }
 
 /**
- * Where each room's sign hangs, from the tiles the layout labels with that room.
+ * Where each room's sign hangs, from the tiles the layout labels with that room, leaving out doorway tiles that sit in a neighbouring room's wall row.
  * @param officeState - The scene holding the layout.
  * @returns One anchor per labelled room.
  */
-function roomAnchors(officeState: OfficeState): RoomAnchor[] {
+export function roomAnchors(officeState: OfficeState): RoomAnchor[] {
   const layout = officeState.getLayout();
+  const wall = (col: number, row: number) =>
+    layout.tiles[row * layout.cols + col] === TileType.WALL;
   const bounds = new Map<
     string,
     { minCol: number; maxCol: number; minRow: number }
@@ -35,6 +37,11 @@ function roomAnchors(officeState: OfficeState): RoomAnchor[] {
     if (!label) return;
     const col = index % layout.cols;
     const row = Math.floor(index / layout.cols);
+    // A doorway tile has walls on both sides, and a sign must not sit on one
+    const doorway =
+      (wall(col - 1, row) && wall(col + 1, row)) ||
+      (wall(col, row - 1) && wall(col, row + 1));
+    if (doorway) return;
     const seen = bounds.get(label);
     bounds.set(label, {
       minCol: Math.min(seen?.minCol ?? col, col),
@@ -45,7 +52,7 @@ function roomAnchors(officeState: OfficeState): RoomAnchor[] {
   return [...bounds.entries()].map(([label, b]) => ({
     room: label as Room,
     worldX: ((b.minCol + b.maxCol + 1) / 2) * TILE_SIZE,
-    worldY: b.minRow * TILE_SIZE,
+    worldY: (b.minRow - 1) * TILE_SIZE,
   }));
 }
 

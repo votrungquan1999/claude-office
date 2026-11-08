@@ -55,7 +55,7 @@ describe("a closed session goes home", () => {
     const resumed = await stored("s1");
 
     // Then it is back, with no end time or expiry
-    expect(resumed?.state).toBe("waiting");
+    expect(resumed?.state).toBe("idle");
     expect(resumed?.endedAt).toBeUndefined();
     expect(resumed?.expireAt).toBeUndefined();
     expect(resumed?.hadPrompt).toBe(true);
@@ -68,7 +68,7 @@ describe("a closed session goes home", () => {
 
     // Then the old one is home, the new one is waiting, and the unprompted one is flagged
     expect((await stored("s1"))?.state).toBe("wentHome");
-    expect((await stored("s2"))?.state).toBe("waiting");
+    expect((await stored("s2"))?.state).toBe("idle");
     expect((await stored("s3"))?.state).toBe("wentHome");
     expect((await stored("s3"))?.hadPrompt).toBe(false);
   }, 60_000);

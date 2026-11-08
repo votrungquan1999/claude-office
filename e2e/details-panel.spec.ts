@@ -20,7 +20,7 @@ test("clicking an employee opens its details with a Remote Control link, or says
   context,
   page,
 }) => {
-  // Given three sessions (one waiting with Remote Control, one waiting without, one needing permission)
+  // Given three sessions (one idle with Remote Control, one idle without, one needing permission)
   const client = new MongoClient(
     readFileSync(E2E_MONGO_URI_FILE, "utf8").trim(),
   );
@@ -35,7 +35,7 @@ test("clicking an employee opens its details with a Remote Control link, or says
       sessionId: "s1",
       deskName: "Light the lantern",
       cwd: "/Users/q/projects/lantern",
-      state: "waiting",
+      state: "idle",
       bridgeSessionId: "cse_abc",
       changedAt: new Date(1000),
     },
@@ -44,7 +44,7 @@ test("clicking an employee opens its details with a Remote Control link, or says
       machineId: "m1",
       sessionId: "s2",
       cwd: "/Users/q/projects/anvil",
-      state: "waiting",
+      state: "idle",
       changedAt: new Date(2000),
     },
     {
@@ -271,7 +271,7 @@ test.describe("on a short screen", () => {
       machineName: "Studio Mac",
       sessionId: "s1",
       cwd: "/Users/q/projects/lantern",
-      state: "waiting",
+      state: "idle",
       startedAt: new Date(t0),
       bridgeSessionId: "cse_abc",
       recentSteps: stored.slice(9).map(({ _id, ...step }) => ({
@@ -332,7 +332,13 @@ test("the state pill is coloured like the employee's room, and grey when it is n
   await client.connect();
   const sessions = client.db(E2E_DB).collection("sessions");
   await sessions.deleteMany({});
-  const states = ["working", "thinking", "needsPermission", "waiting"];
+  const states = [
+    "working",
+    "thinking",
+    "needsPermission",
+    "waitingForYou",
+    "idle",
+  ];
   await sessions.insertMany(
     states.map((state, i) => ({
       machineId: "m1",
@@ -352,13 +358,20 @@ test("the state pill is coloured like the employee's room, and grey when it is n
       .poll(() =>
         page.evaluate(() => window.__officeTestHooks?.getCharacters().length),
       )
-      .toBe(4);
+      .toBe(5);
     const panel = page.getByTestId("details-panel");
     const pill = panel.getByTestId("state-pill");
     const seen: Record<string, string> = {};
 
     // When the owner opens each employee
     for (const [i, state] of states.entries()) {
+      // A fresh page each time: the camera zooms in on a selected employee and would hide the others
+      if (i > 0) await page.reload();
+      await expect
+        .poll(() =>
+          page.evaluate(() => window.__officeTestHooks?.getCharacters().length),
+        )
+        .toBe(5);
       await clickEmployee(page, i + 1);
       await expect(panel.getByTestId("folder")).toHaveText(
         `~/projects/p${i + 1}`,
@@ -371,9 +384,10 @@ test("the state pill is coloured like the employee's room, and grey when it is n
     // Then each pill is worded and coloured for its room
     expect(seen).toEqual({
       working: "Working|rgb(55, 148, 255)",
-      thinking: "Thinking|rgb(155, 107, 255)",
+      thinking: "Thinking|rgb(55, 148, 255)",
       needsPermission: "Needs permission|rgb(196, 119, 44)",
-      waiting: "Waiting|rgb(79, 168, 74)",
+      waitingForYou: "Waiting for you|rgb(224, 176, 32)",
+      idle: "Idle|rgb(79, 168, 74)",
     });
   } finally {
     await sessions.deleteMany({});

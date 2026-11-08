@@ -13,7 +13,8 @@ interface SessionRow {
   machineName: string;
   sessionId: string;
   cwd: string;
-  state: SessionDto["state"];
+  /** `waiting` is the legacy name of the finished-turn state. */
+  state: SessionDto["state"] | "waiting";
   startedAt: Date;
   endedAt?: Date;
   bridgeSessionId?: string;
@@ -43,7 +44,7 @@ function toDto(row: SessionRow): SessionDto {
     machineName: row.machineName,
     sessionId: row.sessionId,
     cwd: row.cwd,
-    state: row.state,
+    state: row.state === "waiting" ? "idle" : row.state,
     startedAt: row.startedAt.toISOString(),
     ...(row.endedAt ? { endedAt: row.endedAt.toISOString() } : {}),
     ...(row.deskName ? { deskName: row.deskName } : {}),

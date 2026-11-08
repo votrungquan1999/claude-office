@@ -37,7 +37,8 @@ const STATUS_LINES = {
   working: "Working",
   thinking: "Thinking",
   needsPermission: "Needs permission",
-  waiting: "Waiting",
+  waitingForYou: "Waiting for you",
+  idle: "Idle",
   wentHome: "Went home",
 } as const;
 

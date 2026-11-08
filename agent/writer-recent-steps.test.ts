@@ -51,7 +51,7 @@ describe("a step retried after a lost reply", () => {
         machineName: "Mac",
         sessionId: "s1",
         cwd: "/work",
-        state: "waiting",
+        state: "idle",
         startedAt: new Date(0),
       },
       steps,

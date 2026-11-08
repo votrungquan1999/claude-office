@@ -70,9 +70,9 @@ describe("session state rules", () => {
       "working",
       "working",
       "working",
-      "waiting",
-      "waiting",
-      "waiting",
+      "idle",
+      "idle",
+      "idle",
     ]);
   });
 
@@ -138,7 +138,7 @@ describe("session state rules", () => {
     ).toEqual(["thinking", "needsPermission", "thinking"]);
   });
 
-  it("goes back to thinking after a failed tool, and to waiting after an interrupt or a failed turn", () => {
+  it("goes back to thinking after a failed tool, and to idle after an interrupt or a failed turn", () => {
     const turn = { hook_event_name: "UserPromptSubmit" };
     const failure = (id: string, extra: Partial<HookEvent> = {}) =>
       post(id, { hook_event_name: "PostToolUseFailure", ...extra });
@@ -149,10 +149,10 @@ describe("session state rules", () => {
     ]);
     expect(
       states([turn, pre("a"), pre("b"), failure("a", { is_interrupt: true })]),
-    ).toEqual(["thinking", "working", "working", "waiting"]);
+    ).toEqual(["thinking", "working", "working", "idle"]);
     expect(
       states([turn, pre("a"), { hook_event_name: "StopFailure" }]),
-    ).toEqual(["thinking", "working", "waiting"]);
+    ).toEqual(["thinking", "working", "idle"]);
   });
 
   it("ignores a Pre that arrives after its Post, and a late idle prompt once a new turn started", () => {
@@ -168,8 +168,8 @@ describe("session state rules", () => {
       "thinking",
     ]);
     expect(states([{ hook_event_name: "Stop" }, idle, turn, idle])).toEqual([
-      "waiting",
-      "waiting",
+      "idle",
+      "idle",
       "thinking",
       "thinking",
     ]);
@@ -311,7 +311,7 @@ describe("session state rules", () => {
         post("a", { tool_name: "Bash" }),
         { hook_event_name: "SessionStart", source: "resume" },
       ]),
-    ).toEqual(["thinking", "working", "working", "thinking", "waiting"]);
+    ).toEqual(["thinking", "working", "working", "thinking", "idle"]);
   });
 
   it("treats a busy registry status after a permission request as the dialog being approved", () => {

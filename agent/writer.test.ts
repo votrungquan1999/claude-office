@@ -10,7 +10,7 @@ function doc(cwd: string, sessionId = "s1"): SessionDoc {
     machineName: "Mac",
     sessionId,
     cwd,
-    state: "waiting",
+    state: "idle",
     startedAt: new Date(0),
   };
 }

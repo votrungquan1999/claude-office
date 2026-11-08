@@ -22,13 +22,17 @@ function changesRequest(
 }
 
 /** Writes a session straight into the database with a chosen change stamp. */
-async function seedSession(sessionId: string, changedAt: Date): Promise<void> {
+async function seedSession(
+  sessionId: string,
+  changedAt: Date,
+  state = "idle",
+): Promise<void> {
   await (await getDb()).collection("sessions").insertOne({
     machineId: "m1",
     machineName: "Mac",
     sessionId,
     cwd: "/work",
-    state: "waiting",
+    state,
     startedAt: new Date(T0 - 60_000),
     changedAt,
   });
@@ -46,6 +50,21 @@ describe("the office changes API", () => {
   });
   beforeEach(async () => {
     await (await getDb()).collection("sessions").deleteMany({});
+  });
+
+  it("shows a session stored with the old finished-turn state as idle", async () => {
+    // Given a session stored before the state was renamed
+    await seedSession("legacy", new Date(T0), "waiting");
+
+    // When the owner asks for the changes
+    const body = changesResponseSchema.parse(
+      await (await GET(changesRequest(ownerHeaders))).json(),
+    );
+
+    // Then the session comes back as idle
+    expect(body.sessions.map((s) => [s.sessionId, s.state])).toEqual([
+      ["legacy", "idle"],
+    ]);
   });
 
   it("answers only the owner", async () => {

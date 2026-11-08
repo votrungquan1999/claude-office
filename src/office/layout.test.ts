@@ -4,10 +4,15 @@ import { getBlockedTiles, getSeatTiles } from "./layout/layoutSerializer";
 import { findPath } from "./layout/tileMap";
 import { ROOM_ORDER } from "./rooms";
 
-const MIN_SEATS_PER_ROOM = 10;
+const SEATS_PER_ROOM: Record<string, number> = {
+  working: 24,
+  needsPermission: 12,
+  waitingForYou: 18,
+  idle: 18,
+};
 
 describe("the office layout", () => {
-  it("has the four rooms, each with at least ten seats the employees can use", () => {
+  it("has the four rooms in screen order, each with its own number of seats and a 34 by 22 map", () => {
     // Given the generated layout with the real furniture loaded
     const office = loadOffice();
 
@@ -19,13 +24,17 @@ describe("the office layout", () => {
       seatsByRoom.set(room, (seatsByRoom.get(room) ?? 0) + 1);
     }
 
-    // Then the four rooms exist and no seat is left outside a room
+    // Then the four rooms exist, hold their seats, and no seat is left outside a room
     expect(labels).toEqual(ROOM_ORDER);
-    for (const room of ROOM_ORDER) {
-      expect(seatsByRoom.get(room) ?? 0).toBeGreaterThanOrEqual(
-        MIN_SEATS_PER_ROOM,
-      );
-    }
+    expect(labels).toEqual([
+      "working",
+      "needsPermission",
+      "waitingForYou",
+      "idle",
+    ]);
+    expect(Object.fromEntries(seatsByRoom)).toEqual(SEATS_PER_ROOM);
+    expect(office.getLayout().cols).toBe(34);
+    expect(office.getLayout().rows).toBe(22);
     expect(seatsByRoom.has("none")).toBe(false);
   });
 

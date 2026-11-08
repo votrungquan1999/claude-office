@@ -34,7 +34,7 @@ test("employees of a Mac that stopped sending heartbeats are marked offline, and
   ]);
   const base = {
     startedAt: new Date(),
-    state: "waiting",
+    state: "idle",
     changedAt: new Date(),
   };
   await db.collection("sessions").insertMany([

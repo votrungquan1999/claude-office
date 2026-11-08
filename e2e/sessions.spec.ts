@@ -20,7 +20,7 @@ test("a session stored for a Mac shows up as an employee labelled with the machi
     machineName: "Studio Mac",
     sessionId: "e2e-session",
     cwd: "/Users/q/projects/lantern",
-    state: "waiting",
+    state: "idle",
     startedAt: new Date(),
     changedAt: new Date(),
   });

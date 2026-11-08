@@ -38,9 +38,9 @@
 
   /* Room tints, reused by the details panel's state pill */
   --color-room-working: #3794ff;
-  --color-room-thinking: #9b6bff;
   --color-room-permission: #c4772c;
-  --color-room-waiting: #4fa84a;
+  --color-room-waiting-for-you: #e0b020;
+  --color-room-idle: #4fa84a;
   --color-pill-offline: #5a5a6a;
 
   /* Shadow */
@@ -90,9 +90,9 @@
   --color-status-success: var(--color-status-success);
   --color-status-error: var(--color-status-error);
   --color-room-working: var(--color-room-working);
-  --color-room-thinking: var(--color-room-thinking);
   --color-room-permission: var(--color-room-permission);
-  --color-room-waiting: var(--color-room-waiting);
+  --color-room-waiting-for-you: var(--color-room-waiting-for-you);
+  --color-room-idle: var(--color-room-idle);
   --color-pill-offline: var(--color-pill-offline);
 
   /* Shadow */

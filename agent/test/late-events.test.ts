@@ -35,7 +35,7 @@ describe("events that arrive late, twice or out of order", () => {
     const stored = await (await getDb())
       .collection("sessions")
       .findOne({ sessionId: "s1" });
-    expect(stored?.state).toBe("waiting");
+    expect(stored?.state).toBe("idle");
     expect(stored?.runningSteps).toEqual([]);
   }, 60_000);
 

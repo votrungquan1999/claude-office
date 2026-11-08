@@ -17,9 +17,10 @@ function folderName(cwd: string): string {
 
 const PILL_COLORS: Record<string, string> = {
   working: "bg-room-working",
-  thinking: "bg-room-thinking",
+  thinking: "bg-room-working",
   needsPermission: "bg-room-permission",
-  waiting: "bg-room-waiting",
+  waitingForYou: "bg-room-waiting-for-you",
+  idle: "bg-room-idle",
   wentHome: "bg-pill-offline",
   offline: "bg-pill-offline",
 };
@@ -37,6 +38,9 @@ function pillOf(
   if (session.state === "wentHome")
     return { text: "Went home", key: "wentHome" };
   if (offline) return { text: "Mac offline", key: "offline" };
+  // Thinking shares the Working room but keeps its own wording.
+  if (session.state === "thinking")
+    return { text: "Thinking", key: "thinking" };
   const room = ROOM_OF_STATE[session.state];
   return {
     text: room ? ROOM_DISPLAY_NAMES[room] : "",

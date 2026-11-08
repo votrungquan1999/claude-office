@@ -5,7 +5,7 @@ import { runHook } from "./run-hook";
 describe("an employee moves to the room matching its session", () => {
   const { setUpMac, officeSessions } = useMacHarness();
 
-  it("follows a turn: waiting, thinking, working, needs permission, thinking, waiting", async () => {
+  it("follows a turn: idle, thinking, working, needs permission, thinking, idle", async () => {
     // Given a Mac with one interactive session
     const { fake, agent } = await setUpMac("machine-air", "Quan's MacBook Air");
     fake.addSession({ sessionId: "s1", cwd: "/work/app" });
@@ -39,14 +39,14 @@ describe("an employee moves to the room matching its session", () => {
       await send({ hook_event_name: "Stop" }),
     ];
 
-    // Then it was waiting, thinking, working, needs permission, thinking, waiting
+    // Then it was idle, thinking, working, needs permission, thinking, idle
     expect(states).toEqual([
-      "waiting",
+      "idle",
       "thinking",
       "working",
       "needsPermission",
       "thinking",
-      "waiting",
+      "idle",
     ]);
   });
 });

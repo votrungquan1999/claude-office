@@ -29,7 +29,7 @@ async function seed(sessions: Collection) {
     },
     { ...base, sessionId: "t", cwd: "/Users/q/think", state: "thinking" },
     { ...base, sessionId: "p", cwd: "/Users/q/perm", state: "needsPermission" },
-    { ...base, sessionId: "q", cwd: "/Users/q/wait", state: "waiting" },
+    { ...base, sessionId: "q", cwd: "/Users/q/wait", state: "idle" },
   ]);
 }
 
@@ -113,7 +113,7 @@ test.describe("employee labels", () => {
       ["Studio Mac / work", "Working: Editing foo.ts"],
       ["Studio Mac / think", "Thinking"],
       ["Studio Mac / perm", "Needs permission"],
-      ["Studio Mac / wait", "Waiting"],
+      ["Studio Mac / wait", "Idle"],
     ];
     for (const [label, status] of expected) {
       const id = await employeeLabelled(page, label);

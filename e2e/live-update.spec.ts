@@ -32,7 +32,7 @@ test("a session written to the database while the office is open appears, and a 
       machineName: "Live Mac",
       sessionId: "live-1",
       cwd: "/Users/q/projects/first",
-      state: "waiting",
+      state: "idle",
       startedAt: new Date(),
       changedAt: new Date(),
     });

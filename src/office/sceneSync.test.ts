@@ -11,7 +11,7 @@ function session(
   sessionId: string,
   cwd: string,
   changedAt = "2026-11-08T10:00:00.000Z",
-  state: SessionDto["state"] = "waiting",
+  state: SessionDto["state"] = "idle",
 ): SessionDto {
   return {
     machineId,
@@ -167,7 +167,8 @@ describe("scene sync", () => {
         "working",
         "thinking",
         "needsPermission",
-        "waiting",
+        "waitingForYou",
+        "idle",
       ] as const;
       const sessions = states.flatMap((state) =>
         [0, 1].map((n) =>
@@ -187,13 +188,13 @@ describe("scene sync", () => {
 
       // Then every employee sits in the room of its state
       expect(office.getCharacters().map((_ch, i) => roomOf(office, i))).toEqual(
-        sessions.map((s) => s.state),
+        sessions.map((s) => (s.state === "thinking" ? "working" : s.state)),
       );
 
-      // When the first session flips to thinking and the poll repeats after 1 s
+      // When the first session flips to idle and the poll repeats after 1 s
       const flipped = {
         ...sessions[0],
-        state: "thinking" as const,
+        state: "idle" as const,
         changedAt: "2026-11-08T10:00:01.000Z",
       };
       now = 1000;
@@ -206,8 +207,8 @@ describe("scene sync", () => {
       now = 3500;
       sync.apply([flipped]);
 
-      // Then it sits in the thinking room
-      expect(roomOf(office, 0)).toBe("thinking");
+      // Then it sits in the Idle room
+      expect(roomOf(office, 0)).toBe("idle");
     });
 
     it("makes an employee stand on the floor of a full room instead of taking a seat in another room", () => {
@@ -243,7 +244,7 @@ describe("scene sync", () => {
     });
 
     it("makes a seated employee walk onto the floor of a full room and free its old seat", () => {
-      // Given a full Working room and one employee seated in the Thinking room
+      // Given a full Working room and one employee seated in the Idle room
       const office = loadOffice();
       const sync = createSceneSync(office, { smoothMs: 0 });
       const seatsInRoom = [...office.seats.keys()].filter(
@@ -261,7 +262,7 @@ describe("scene sync", () => {
       const working = Array.from({ length: seatsInRoom }, (_, n) =>
         at(n, "working", 0),
       );
-      sync.apply([...working, at(seatsInRoom, "thinking", 0)], {
+      sync.apply([...working, at(seatsInRoom, "idle", 0)], {
         firstLoad: true,
       });
       const walker = office.getCharacters()[seatsInRoom];
@@ -284,7 +285,7 @@ describe("scene sync", () => {
       expect(office.seats.get(oldSeatId as string)?.assigned).toBe(false);
     });
 
-    it("shows the state on the employee: busy while working or thinking, a permission bubble that stays until the dialog closes, idle when waiting", () => {
+    it("shows the state on the employee: busy while working or thinking, a permission bubble that stays until the dialog closes, idle when the turn is done", () => {
       // Given one employee
       const office = loadOffice();
       const sync = createSceneSync(office, { smoothMs: 0 });
@@ -298,7 +299,7 @@ describe("scene sync", () => {
           state,
         );
       const employee = () => office.getCharacters()[0];
-      sync.apply([at("waiting", 0)], { firstLoad: true });
+      sync.apply([at("idle", 0)], { firstLoad: true });
       expect(employee().isActive).toBe(false);
 
       // When it works and then thinks, it is busy
@@ -315,13 +316,13 @@ describe("scene sync", () => {
       expect(employee().bubbleType).toBe("permission");
 
       // When the turn is done, the bubble goes and the employee is idle
-      sync.apply([at("waiting", 4)]);
+      sync.apply([at("idle", 4)]);
       expect(employee().bubbleType).toBeNull();
       expect(employee().isActive).toBe(false);
     });
 
     it("finishes a delayed move on a later tick even when the poll sends nothing new for that session", () => {
-      // Given an employee in the Working room whose state just flipped to thinking
+      // Given an employee in the Working room whose state just flipped to needs permission
       let now = 0;
       const office = loadOffice();
       const sync = createSceneSync(office, { now: () => now });
@@ -336,7 +337,11 @@ describe("scene sync", () => {
       sync.apply([base], { firstLoad: true });
       now = 100;
       sync.apply([
-        { ...base, state: "thinking", changedAt: "2026-11-08T10:00:01.000Z" },
+        {
+          ...base,
+          state: "needsPermission",
+          changedAt: "2026-11-08T10:00:01.000Z",
+        },
       ]);
       expect(roomOf(office, 0)).toBe("working");
 
@@ -344,8 +349,8 @@ describe("scene sync", () => {
       now = 2500;
       sync.tick();
 
-      // Then the employee has moved to the thinking room
-      expect(roomOf(office, 0)).toBe("thinking");
+      // Then the employee has moved to the Needs permission room
+      expect(roomOf(office, 0)).toBe("needsPermission");
     });
   });
 

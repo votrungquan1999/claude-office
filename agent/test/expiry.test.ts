@@ -48,7 +48,7 @@ describe("what a Mac that goes quiet leaves behind expires a week after it was l
       machineId: "machine-air",
       machineName: "Quan's MacBook Air",
       cwd: "/work/app",
-      state: "waiting",
+      state: "idle",
       startedAt: sixDaysAgo,
       changedAt: sixDaysAgo,
       lastSeenAt: sixDaysAgo,

@@ -3,7 +3,8 @@ export const SESSION_STATES = [
   "working",
   "thinking",
   "needsPermission",
-  "waiting",
+  "waitingForYou",
+  "idle",
   "wentHome",
 ] as const;
 

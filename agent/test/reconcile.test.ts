@@ -52,7 +52,7 @@ describe("a session whose process is gone goes home", () => {
       (await sessions.findOne({ sessionId }))?.state;
     expect(await state("died")).toBe("wentHome");
     expect(await state("reused")).toBe("wentHome");
-    expect(await state("alive")).toBe("waiting");
+    expect(await state("alive")).toBe("idle");
     expect(
       (await sessions.findOne({ sessionId: "died" }))?.endedAt,
     ).toBeInstanceOf(Date);
@@ -110,8 +110,8 @@ describe("a session whose process is gone goes home", () => {
     });
     await agent.reconcile();
 
-    // Then the interrupted one waits, the one asking needs permission, and the others keep what the hooks said
-    expect(await state("interrupted")).toBe("waiting");
+    // Then the interrupted one is idle, the one asking needs permission, and the others keep what the hooks said
+    expect(await state("interrupted")).toBe("idle");
     expect(await state("asks")).toBe("needsPermission");
     expect(await state("busy")).toBe("working");
     expect(await state("stale")).toBe("thinking");
@@ -208,7 +208,7 @@ describe("a session whose process is gone goes home", () => {
     // Then the session is still in the office, since its pid is alive
     const sessions = (await getDb()).collection("sessions");
     expect((await sessions.findOne({ sessionId: "french" }))?.state).toBe(
-      "waiting",
+      "idle",
     );
   }, 60_000);
 });

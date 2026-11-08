@@ -16,7 +16,7 @@ async function seed(sessions: Collection) {
     machineId: "m1",
     machineName: "A rather long Mac computer name",
     startedAt: new Date(),
-    state: "waiting",
+    state: "working",
     changedAt: new Date(),
   };
   await sessions.insertMany(

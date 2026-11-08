@@ -16,8 +16,8 @@ describe("idle employees wander", () => {
     vi.restoreAllMocks();
   });
 
-  it("only inside their own room, for as long as they are waiting", () => {
-    // Given three employees seated in the Waiting room, all idle
+  it("only inside their own room, for as long as they are idle", () => {
+    // Given three employees seated in the Idle room
     vi.spyOn(Math, "random").mockImplementation(seededRandom(7));
     const office = loadOffice();
     createSceneSync(office).apply(
@@ -26,7 +26,7 @@ describe("idle employees wander", () => {
         machineName: "Mac",
         sessionId: `s${n}`,
         cwd: "/w",
-        state: "waiting" as const,
+        state: "idle" as const,
         startedAt: "2026-11-08T09:00:00.000Z",
         changedAt: "2026-11-08T10:00:00.000Z",
       })),
@@ -45,8 +45,8 @@ describe("idle employees wander", () => {
       }
     }
 
-    // Then they walked around, and never left the Waiting room
+    // Then they walked around, and never left the Idle room
     expect(moved).toBe(true);
-    expect([...roomsVisited]).toEqual(["waiting"]);
+    expect([...roomsVisited]).toEqual(["idle"]);
   });
 });

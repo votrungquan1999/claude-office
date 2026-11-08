@@ -21,7 +21,8 @@ const DOT_COLOR: Record<SessionState, string> = {
   working: "var(--color-status-active)",
   thinking: "var(--color-status-active)",
   needsPermission: "var(--color-status-permission)",
-  waiting: "var(--color-status-success)",
+  waitingForYou: "var(--color-room-waiting-for-you)",
+  idle: "var(--color-status-success)",
   wentHome: "var(--color-btn-bg)",
 };
 

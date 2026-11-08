@@ -38,7 +38,8 @@ describe("the details panel", () => {
       ["working", "Working"],
       ["thinking", "Thinking"],
       ["needsPermission", "Needs permission"],
-      ["waiting", "Waiting"],
+      ["waitingForYou", "Waiting for you"],
+      ["idle", "Idle"],
     ];
     const shown = states.map(([state]) => {
       open(session({ state }));

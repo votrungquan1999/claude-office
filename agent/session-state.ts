@@ -29,7 +29,9 @@ function derive(memory: Omit<StateMemory, "state">): StateMemory {
       ? "needsPermission"
       : memory.inFlight.length > 0
         ? "working"
-        : memory.base;
+        : memory.base === "waiting"
+          ? "idle"
+          : memory.base;
   return { ...memory, state };
 }
 
@@ -231,7 +233,7 @@ export function applyRegistryStatus(
       });
     case "busy":
       // Busy after a dialog opened means the owner answered it.
-      return memory.state === "waiting" || memory.dialogs.length > 0
+      return memory.base === "waiting" || memory.dialogs.length > 0
         ? derive({ ...memory, base: "thinking", dialogs: [] })
         : memory;
   }
