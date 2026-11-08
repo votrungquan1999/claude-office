@@ -1,6 +1,7 @@
 import { ObjectId } from "mongodb";
 import { firstRealMessage, resolveDeskName } from "../src/shared/desk-name";
 import { type HookEvent, hookEventSchema } from "../src/shared/hook-events";
+import type { FolderRecorder } from "./folders";
 import type { KanbanCard } from "./kanban-watch";
 import {
   findRegistryEntry,
@@ -27,6 +28,8 @@ import type { SessionWriter, StepDoc } from "./writer";
 export interface SeedSession {
   sessionId: string;
   cwd: string;
+  /** The registry's folder for the session, which a later `cd` never changes. */
+  startCwd?: string;
   startedAt?: number;
   registryName?: string;
   status?: "idle" | "busy" | "waiting";
@@ -45,12 +48,16 @@ export interface TrackerOptions {
   reorderMs: number;
   now: () => number;
   writer: SessionWriter;
+  /** Records each start folder; absent in tests that do not need it. */
+  folders?: FolderRecorder;
 }
 
 interface Tracked {
   buffer: HookEvent[];
   timer?: NodeJS.Timeout;
   cwd?: string;
+  /** Where the session started: the registry's folder, else the first main-thread event's. */
+  startCwd?: string;
   cwdHookTs: number;
   bridgeSessionId?: string;
   bridgeHookTs: number;
@@ -137,6 +144,7 @@ export class SessionTracker {
       tracked.interactive = true;
       tracked.process = seed.process;
       tracked.cwd = seed.cwd;
+      tracked.startCwd = seed.startCwd;
       tracked.startedAt = seed.startedAt;
       tracked.registryName = seed.registryName;
       tracked.firstMessage = seed.firstMessage;
@@ -175,6 +183,11 @@ export class SessionTracker {
         ? { pid: entry.pid, procStart: entry.procStart }
         : tracked.process;
       tracked.process = process;
+      // A `--resume` elsewhere gives the registry a new start folder.
+      if (entry?.cwd && entry.cwd !== tracked.startCwd) {
+        tracked.startCwd = entry.cwd;
+        this.publish(sessionId, tracked);
+      }
       // A /rename after the session appeared only reaches the registry file.
       if (entry && entry.name !== tracked.registryName) {
         tracked.registryName = entry.name;
@@ -230,6 +243,7 @@ export class SessionTracker {
   /** Applies every buffered event now and waits for the writes to land. */
   async flush(): Promise<void> {
     for (const sessionId of this.sessions.keys()) this.drain(sessionId);
+    await this.options.folders?.flush();
     await this.options.writer.flush();
   }
 
@@ -287,6 +301,7 @@ export class SessionTracker {
     const late = event.hookTs < tracked.lastHookTs;
     tracked.lastHookTs = Math.max(tracked.lastHookTs, event.hookTs);
     // Only the main thread sets the folder (a subagent may run in its own worktree); a late event never moves it back past a newer one.
+    if (!event.agent_id && event.cwd) tracked.startCwd ??= event.cwd;
     if (!event.agent_id && event.cwd && event.hookTs >= tracked.cwdHookTs) {
       tracked.cwd = event.cwd;
       tracked.cwdHookTs = event.hookTs;
@@ -346,6 +361,7 @@ export class SessionTracker {
         tracked.interactive = true;
         tracked.startedAt = entry.startedAt ?? tracked.startedAt;
         tracked.registryName = entry.name;
+        if (entry.cwd) tracked.startCwd = entry.cwd;
         tracked.bridgeSessionId = entry.bridgeSessionId;
         tracked.process = { pid: entry.pid, procStart: entry.procStart };
       } else if (entry || isRegistryReadable(this.options.home)) {
@@ -362,6 +378,7 @@ export class SessionTracker {
       firstMessage: tracked.firstMessage,
       registryName: tracked.registryName,
     });
+    this.options.folders?.record(tracked.startCwd ?? tracked.cwd);
     const steps = tracked.unwritten;
     tracked.unwritten = [];
     writer.submit(
@@ -370,6 +387,7 @@ export class SessionTracker {
         machineName,
         sessionId,
         cwd: tracked.cwd,
+        startCwd: tracked.startCwd ?? tracked.cwd,
         state:
           tracked.endedAt === undefined ? tracked.memory.state : "wentHome",
         startedAt: new Date(tracked.startedAt),

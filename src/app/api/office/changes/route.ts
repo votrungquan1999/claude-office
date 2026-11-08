@@ -13,6 +13,7 @@ interface SessionRow {
   machineName: string;
   sessionId: string;
   cwd: string;
+  startCwd?: string;
   /** `waiting` is the legacy name of the finished-turn state. */
   state: SessionDto["state"] | "waiting";
   startedAt: Date;
@@ -24,6 +25,13 @@ interface SessionRow {
   currentTodo?: string | null;
   hadPrompt?: boolean;
   changedAt: Date;
+}
+
+interface FolderDocument {
+  machineId: string;
+  path: string;
+  companyMode: boolean;
+  firstSeenAt: Date;
 }
 
 interface MachineRow {
@@ -44,6 +52,7 @@ function toDto(row: SessionRow): SessionDto {
     machineName: row.machineName,
     sessionId: row.sessionId,
     cwd: row.cwd,
+    startCwd: row.startCwd ?? row.cwd,
     state: row.state === "waiting" ? "idle" : row.state,
     startedAt: row.startedAt.toISOString(),
     ...(row.endedAt ? { endedAt: row.endedAt.toISOString() } : {}),
@@ -114,6 +123,10 @@ export async function GET(request: NextRequest) {
     .collection<MachineRow>("machines")
     .find({})
     .toArray();
+  const folders = await db
+    .collection<FolderDocument>("folders")
+    .find({})
+    .toArray();
   // The cursor never moves back, even when only overlap rows came back.
   const newest = rows.at(-1)?.changedAt;
   const cursor =
@@ -124,6 +137,11 @@ export async function GET(request: NextRequest) {
       machineId: machine.machineId,
       machineName: machine.machineName,
       lastSeenAt: machine.lastSeenAt.toISOString(),
+    })),
+    folders: folders.map(({ machineId, path, companyMode }) => ({
+      machineId,
+      path,
+      companyMode,
     })),
     cursor: cursor.toISOString(),
     serverNow: new Date().toISOString(),

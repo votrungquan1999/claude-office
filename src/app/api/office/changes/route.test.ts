@@ -220,4 +220,39 @@ describe("the office changes API", () => {
       10_000,
     );
   });
+
+  it("lists every Mac's folder records on each answer", async () => {
+    // Given folder records of two Macs, one with company mode off
+    const folders = (await getDb()).collection("folders");
+    await folders.deleteMany({});
+    await folders.insertMany([
+      {
+        machineId: "m1",
+        path: "/Users/q/personal",
+        companyMode: true,
+        firstSeenAt: new Date(T0),
+      },
+      {
+        machineId: "m2",
+        path: "/Users/q/ubet",
+        companyMode: false,
+        firstSeenAt: new Date(T0),
+      },
+    ]);
+
+    // When the browser polls with a cursor that matches no session
+    const body = changesResponseSchema.parse(
+      await (
+        await GET(changesRequest(ownerHeaders, new Date(T0 + 3_600_000)))
+      ).json(),
+    );
+
+    // Then both records come back without the storage-only fields
+    expect(
+      [...body.folders].sort((a, b) => a.machineId.localeCompare(b.machineId)),
+    ).toEqual([
+      { machineId: "m1", path: "/Users/q/personal", companyMode: true },
+      { machineId: "m2", path: "/Users/q/ubet", companyMode: false },
+    ]);
+  });
 });

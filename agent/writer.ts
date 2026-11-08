@@ -23,6 +23,8 @@ export interface SessionDoc {
   machineName: string;
   sessionId: string;
   cwd: string;
+  /** Folder the session was started in; `cwd` follows later `cd`s. */
+  startCwd?: string;
   state: SessionState;
   startedAt: Date;
   endedAt?: Date;

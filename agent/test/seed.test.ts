@@ -153,6 +153,31 @@ describe("an agent that starts while sessions are already running", () => {
     }
   }, 60_000);
 
+  it("keeps the registry folder as the start folder of a seeded session whose transcript ends in another folder", async () => {
+    // Given a running session registered in /work/start whose transcript last ran in /work/start/sub
+    const live = await processes.live();
+
+    // When the agent starts
+    await setUpMac("machine-air", "Quan's MacBook Air", {
+      beforeStart(fake) {
+        fake.addSession({
+          sessionId: "run-s",
+          cwd: "/work/start",
+          pid: live.pid,
+          procStart: live.procStart,
+        });
+        fake.addTranscript("run-s", [
+          user("Fix it", { cwd: "/work/start/sub" }),
+        ]);
+      },
+    });
+
+    // Then the current folder is the transcript's and the start folder is the registry's
+    const [session] = await officeSessions();
+    expect(session.cwd).toBe("/work/start/sub");
+    expect(session.startCwd).toBe("/work/start");
+  }, 60_000);
+
   it("dates the end of a session found dead after the Mac was off by the last time the Mac was seen alive", async () => {
     // Given a stored session of a Mac that was last seen alive 20 hours ago
     const db = await getDb();

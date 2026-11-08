@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { type BrowserContext, expect, type Page } from "@playwright/test";
+import type { Collection } from "mongodb";
 import { E2E_BASE_URL, E2E_OWNER_COOKIE_FILE } from "./constants";
 
 /**
@@ -99,4 +100,32 @@ export async function employeeLabelled(
     }
   }
   throw new Error(`no employee labelled "${text}"`);
+}
+
+/** A folder record as the specs seed it. */
+export interface SeedFolder {
+  machineId: string;
+  path: string;
+  companyMode?: boolean;
+}
+
+/**
+ * Replaces every folder record with the given ones, company mode on unless stated.
+ * @param folders - The `folders` collection of the e2e database.
+ * @param records - The records to store; none clears the collection.
+ */
+export async function seedFolders(
+  folders: Collection,
+  records: SeedFolder[],
+): Promise<void> {
+  await folders.deleteMany({});
+  if (records.length === 0) return;
+  await folders.insertMany(
+    records.map(({ machineId, path, companyMode }) => ({
+      machineId,
+      path,
+      companyMode: companyMode ?? true,
+      firstSeenAt: new Date(),
+    })),
+  );
 }

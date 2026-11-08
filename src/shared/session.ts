@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { folderDtoSchema } from "./folders";
 import { SESSION_STATES } from "./session-state";
 
 /** How a finished step ended. */
@@ -29,6 +30,8 @@ export const sessionDtoSchema = z.object({
   machineName: z.string(),
   sessionId: z.string(),
   cwd: z.string(),
+  /** Folder the session was started in; `cwd` follows later `cd`s. Absent on rows written before it existed. */
+  startCwd: z.string().optional(),
   state: z.enum(SESSION_STATES),
   startedAt: z.string(),
   endedAt: z.string().optional(),
@@ -62,6 +65,8 @@ export const changesResponseSchema = z.object({
   sessions: z.array(sessionDtoSchema),
   /** Every Mac, on every answer: a Mac going quiet changes none of its sessions. */
   machines: z.array(machineDtoSchema),
+  /** Every start folder of every Mac, on every answer, like `machines`. */
+  folders: z.array(folderDtoSchema),
   cursor: z.string(),
   serverNow: z.string(),
 });

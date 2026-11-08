@@ -1,0 +1,121 @@
+import type { CompanyCounts, MacOverview } from "@/shared/overview";
+
+export interface CompanyStripProps {
+  /** Every Mac with its companies. */
+  macs: MacOverview[];
+  /** The viewed company; its tab shows even when nothing is live in it. */
+  selectedKey: string | null;
+  onSelect: (companyKey: string) => void;
+}
+
+interface CountSpec {
+  room: keyof CompanyCounts;
+  label: string;
+  color: string;
+}
+
+/** The four counts in room order, with the room's own color. */
+export const COUNT_SPECS: readonly CountSpec[] = [
+  { room: "working", label: "working", color: "var(--color-room-working)" },
+  {
+    room: "needsPermission",
+    label: "needs permission",
+    color: "var(--color-room-permission)",
+  },
+  {
+    room: "waitingForYou",
+    label: "waiting for you",
+    color: "var(--color-room-waiting-for-you)",
+  },
+  { room: "idle", label: "idle", color: "var(--color-room-idle)" },
+];
+
+/**
+ * The four counts of a company, each readable on its own.
+ * @param props - The counts.
+ * @returns A row of colored numbers; a zero is dimmed.
+ */
+export function CountRow({ counts }: { counts: CompanyCounts }) {
+  return (
+    <span className="flex items-center gap-6 text-xs">
+      {COUNT_SPECS.map(({ room, label, color }) => (
+        <span
+          key={room}
+          role="img"
+          aria-label={`${counts[room]} ${label}`}
+          className="flex items-center gap-2"
+          style={{ opacity: counts[room] === 0 ? 0.4 : 1 }}
+        >
+          <span
+            aria-hidden="true"
+            className="inline-block h-8 w-8"
+            style={{ background: color }}
+          />
+          <span aria-hidden="true">{counts[room]}</span>
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/**
+ * The always-on strip above the office: per Mac, one tab per active company with its four counts.
+ * @param props - The overview and the viewed company.
+ * @returns The strip.
+ */
+export function CompanyStrip({
+  macs,
+  selectedKey,
+  onSelect,
+}: CompanyStripProps) {
+  return (
+    <nav
+      aria-label="Companies"
+      data-testid="company-strip"
+      className="no-scrollbar flex h-56 w-full shrink-0 items-center gap-12 overflow-x-auto overflow-y-hidden whitespace-nowrap border-b-2 border-border bg-bg-dark px-8"
+    >
+      {macs.flatMap((mac) => {
+        const tabs = mac.companies.filter(
+          (entry) => entry.active || entry.company.key === selectedKey,
+        );
+        if (tabs.length === 0) return [];
+        return (
+          <div
+            key={mac.machineId}
+            data-testid={`mac-group-${mac.machineId}`}
+            data-offline={String(!mac.online)}
+            className="flex shrink-0 items-center gap-8"
+            style={{ opacity: mac.online ? 1 : 0.5 }}
+          >
+            <span className="text-xs text-text-muted">
+              {mac.online ? mac.machineName : `${mac.machineName} · offline`}
+            </span>
+            {tabs.map(({ company, counts, needsYou }) => (
+              <button
+                key={company.key}
+                type="button"
+                data-testid="company-tab"
+                data-company-name={company.name}
+                aria-current={company.key === selectedKey ? "page" : undefined}
+                onClick={() => onSelect(company.key)}
+                className={`flex h-40 shrink-0 items-center gap-10 border-2 px-10 text-sm ${company.key === selectedKey ? "border-accent-bright bg-active-bg" : "border-border bg-btn-bg hover:bg-btn-hover"}`}
+              >
+                <span className="font-bold">{company.name}</span>
+                <CountRow counts={counts} />
+                {needsYou && (
+                  <span
+                    data-testid="company-badge"
+                    className="px-4 text-xs font-bold text-bg-dark"
+                    style={{ background: "var(--color-room-permission)" }}
+                  >
+                    {counts.needsPermission + counts.waitingForYou}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        );
+      })}
+    </nav>
+  );
+}

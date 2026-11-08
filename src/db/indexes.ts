@@ -24,6 +24,10 @@ export async function ensureIndexes(db: Db): Promise<void> {
     { lastSeenAt: 1 },
     { expireAfterSeconds: LAST_SEEN_EXPIRY_SECONDS },
   );
+  // One record per start folder per Mac; no expiry, because the owner's switches must outlive the sessions.
+  await db
+    .collection("folders")
+    .createIndex({ machineId: 1, path: 1 }, { unique: true });
   const steps = db.collection("steps");
   // Serves "older steps of this session" paging, newest first.
   await steps.createIndex({

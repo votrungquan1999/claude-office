@@ -91,6 +91,8 @@ export async function seedRunningSessions(options: SeedOptions): Promise<void> {
       return {
         sessionId: entry.sessionId,
         cwd: transcript.cwd ?? entry.cwd ?? "",
+        // The transcript holds the LAST folder; only the registry knows where the session started.
+        startCwd: entry.cwd,
         startedAt: entry.startedAt,
         registryName: entry.name,
         status: entry.status,

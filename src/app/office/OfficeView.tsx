@@ -12,11 +12,15 @@ import { offlineMachineIds } from "@/office/offline";
 import { createSceneSync } from "@/office/sceneSync";
 import { installTestHooks } from "@/office/testHooks";
 import { dayStartOf, todaysDepartures } from "@/office/wentHome";
+import type { FolderDto } from "@/shared/folders";
+import { buildOverview } from "@/shared/overview";
 import {
   type ChangesResponse,
+  type MachineDto,
   type SessionDto,
   sessionKey,
 } from "@/shared/session";
+import { CompanyStrip } from "./CompanyStrip";
 import { ConnectionStatus } from "./ConnectionStatus";
 import { DetailsPanel } from "./DetailsPanel";
 import { mergeSessions, type SessionMap } from "./officeStore";
@@ -64,6 +68,8 @@ export function OfficeView() {
   const [agentIds, setAgentIds] = useState<number[]>([]);
   const [sessions, setSessions] = useState<SessionMap>(new Map());
   const [offlineIds, setOfflineIds] = useState<ReadonlySet<string>>(new Set());
+  const [machines, setMachines] = useState<MachineDto[]>([]);
+  const [folders, setFolders] = useState<FolderDto[]>([]);
   const [now, setNow] = useState(() => new Date());
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -89,6 +95,8 @@ export function OfficeView() {
     const offline = offlineMachineIds(answer.machines, answer.serverNow);
     setSessions(merged);
     setOfflineIds(offline);
+    setMachines(answer.machines);
+    setFolders(answer.folders);
     sceneSync.apply([...merged.values()], {
       firstLoad,
       offlineMachineIds: offline,
@@ -174,8 +182,21 @@ export function OfficeView() {
     }),
   );
 
+  const overview = buildOverview({
+    folders,
+    sessions: [...sessions.values()],
+    machines,
+    offlineMachineIds: offlineIds,
+    departures: todaysDepartures([...sessions.values()], now),
+  });
+
   return (
     <div className="flex h-full w-full flex-col">
+      <CompanyStrip
+        macs={overview.macs}
+        selectedKey={null}
+        onSelect={() => {}}
+      />
       <div
         ref={containerRef}
         className="relative min-h-0 w-full flex-1 overflow-hidden"

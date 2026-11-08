@@ -41,6 +41,7 @@ export function useMacHarness(): MacHarness {
     const db = await getDb();
     await db.collection("sessions").deleteMany({});
     await db.collection("machines").deleteMany({});
+    await db.collection("folders").deleteMany({});
   });
   afterEach(async () => {
     for (const cleanup of cleanups.splice(0).reverse()) await cleanup();

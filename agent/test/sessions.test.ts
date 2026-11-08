@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { useLiveProcesses } from "./live-process";
 import { useMacHarness } from "./mac-harness";
 import { pause, runHook, startHook } from "./run-hook";
 
 describe("running Claude sessions appear in the office", () => {
   const { setUpMac, officeSessions } = useMacHarness();
+  const processes = useLiveProcesses();
 
   it("shows each Mac's session with the machine name and the folder, and the folder follows cd", async () => {
     // Given two Macs, each running one interactive session
@@ -53,6 +55,59 @@ describe("running Claude sessions appear in the office", () => {
       },
       { machineName: "Mac mini", cwd: "/Users/q/docs", sessionId: "mini-1" },
     ]);
+  });
+  it("keeps the folder a session was started in while its current folder follows cd", async () => {
+    // Given a session started in /Users/q/api
+    const mac = await setUpMac("machine-air", "Quan's MacBook Air");
+    mac.fake.addSession({ sessionId: "s1", cwd: "/Users/q/api" });
+    await runHook(mac.fake.home, {
+      hook_event_name: "SessionStart",
+      session_id: "s1",
+      cwd: "/Users/q/api",
+      source: "startup",
+    });
+
+    // When it cds into a sub-folder
+    await runHook(mac.fake.home, {
+      hook_event_name: "PreToolUse",
+      session_id: "s1",
+      cwd: "/Users/q/api/web",
+      tool_name: "Read",
+      tool_use_id: "t1",
+    });
+    await mac.agent.flush();
+
+    // Then the current folder moved and the start folder did not
+    const [session] = await officeSessions();
+    expect(session.cwd).toBe("/Users/q/api/web");
+    expect(session.startCwd).toBe("/Users/q/api");
+  });
+  it("moves the start folder to the one the registry reports after a --resume elsewhere", async () => {
+    // Given a session started in /a
+    const mac = await setUpMac("machine-air", "Quan's MacBook Air");
+    const running = await processes.live();
+    mac.fake.addSession({
+      sessionId: "s1",
+      cwd: "/a",
+      pid: running.pid,
+      procStart: running.procStart,
+    });
+    await runHook(mac.fake.home, {
+      hook_event_name: "SessionStart",
+      session_id: "s1",
+      cwd: "/a",
+      source: "startup",
+    });
+    await mac.agent.flush();
+
+    // When the registry lists it in /b and a registry check runs
+    mac.fake.updateSession("s1", { cwd: "/b" });
+    await mac.agent.reconcile();
+    await mac.agent.flush();
+
+    // Then the start folder is /b
+    const [session] = await officeSessions();
+    expect(session.startCwd).toBe("/b");
   });
   it("keeps the newest folder when events arrive out of order, and an ended session is not revived by a late event", async () => {
     // Given a Mac with one running session

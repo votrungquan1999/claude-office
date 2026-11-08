@@ -11,6 +11,7 @@ function answer(cursor: string): ChangesResponse {
   return {
     sessions: [],
     machines: [],
+    folders: [],
     cursor,
     serverNow: "2026-11-08T10:00:00.000Z",
   };

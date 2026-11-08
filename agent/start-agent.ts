@@ -11,6 +11,7 @@ import {
   readMachineId,
   writeAgentFile,
 } from "./config";
+import { type FolderDocument, FolderRecorder } from "./folders";
 import { startHeartbeat } from "./heartbeat";
 import { startKanbanWatch } from "./kanban-watch";
 import { readProcessStart } from "./process-start";
@@ -136,6 +137,11 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
     reorderMs: options.reorderMs ?? 200,
     now,
     writer,
+    folders: new FolderRecorder({
+      folders: db.collection<FolderDocument>("folders"),
+      machineId,
+      log,
+    }),
   });
 
   const kanban = startKanbanWatch({
