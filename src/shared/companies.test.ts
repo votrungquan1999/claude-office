@@ -162,6 +162,26 @@ describe("the company tree", () => {
     expect(tree.companies.map((c) => c.name)).toEqual(["a/app", "b/app"]);
   });
 
+  it("adds the parent folder to switched-off names that repeat among a Mac's companies and switched-off folders", () => {
+    // Given /a/x and /b/x are both switched off, and a company /c/y is not
+    const tree = buildCompanyTree({
+      folders: [
+        { machineId: "m1", path: "/a/x", companyMode: false },
+        { machineId: "m1", path: "/b/x", companyMode: false },
+        { machineId: "m1", path: "/c/y", companyMode: true },
+      ],
+      sessions: [
+        { machineId: "m1", sessionId: "1", cwd: "/a/x/p", startCwd: "/a/x/p" },
+        { machineId: "m1", sessionId: "2", cwd: "/b/x/q", startCwd: "/b/x/q" },
+      ],
+      machineIds: MAC,
+    });
+
+    // Then each switched-off name carries its parent, and the unique company keeps its short name
+    expect(tree.switchedOff.map((f) => f.name).sort()).toEqual(["a/x", "b/x"]);
+    expect(tree.companies.map((c) => c.name)).toContain("y");
+  });
+
   it("makes the home folder the one company when a session starts there and every other folder is below it", () => {
     // Given a session started in the home folder and one deeper
     const tree = buildCompanyTree({

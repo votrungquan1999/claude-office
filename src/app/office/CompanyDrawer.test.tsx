@@ -75,6 +75,7 @@ describe("the company drawer", () => {
         sheet={false}
         onSelect={() => {}}
         onClose={() => {}}
+        onSetCompanyMode={() => {}}
       />,
     );
 
@@ -125,6 +126,7 @@ describe("the company drawer", () => {
         sheet
         onSelect={onSelect}
         onClose={onClose}
+        onSetCompanyMode={() => {}}
       />,
     );
 
@@ -156,6 +158,7 @@ describe("the company drawer", () => {
         sheet={false}
         onSelect={() => {}}
         onClose={onClose}
+        onSetCompanyMode={() => {}}
       />,
     );
 
@@ -189,10 +192,64 @@ describe("the company drawer", () => {
         sheet={false}
         onSelect={() => {}}
         onClose={() => {}}
+        onSetCompanyMode={() => {}}
       />,
     );
 
     // Then the header is absent
     expect(screen.queryByTestId("elsewhere-need-you")).toBeNull();
+  });
+
+  it("puts a switch on each company, lists a switched-off folder as a dimmed row in Other with its switch, and gives Other none", () => {
+    // Given g is switched off: its children a and b are companies, and a session started at g itself sits in Other
+    const overview = buildOverview({
+      folders: [{ machineId: "m1", path: "/g", companyMode: false }],
+      sessions: [
+        live("m1", "x", "/g/a", "working"),
+        live("m1", "y", "/g/b", "idle"),
+        live("m1", "z", "/g", "idle"),
+      ],
+      machines: [{ machineId: "m1", machineName: "Studio", lastSeenAt: T }],
+      offlineMachineIds: new Set(),
+      departures: [],
+    });
+    const onSetCompanyMode = vi.fn();
+    render(
+      <CompanyDrawer
+        overview={overview}
+        selectedKey={null}
+        sheet={false}
+        onSelect={() => {}}
+        onClose={() => {}}
+        onSetCompanyMode={onSetCompanyMode}
+      />,
+    );
+
+    // Then each company row has a switch that is on
+    const a = within(screen.getByTestId("drawer-company-a"));
+    expect(a.getByRole("switch").getAttribute("aria-checked")).toBe("true");
+
+    // And the switched-off folder is a dimmed row reading "in Other" with its switch off
+    const g = screen.getByTestId("drawer-off-g");
+    expect(within(g).getByText("in Other")).toBeTruthy();
+    expect(g.getAttribute("data-dimmed")).toBe("true");
+    expect(within(g).getByRole("switch").getAttribute("aria-checked")).toBe(
+      "false",
+    );
+
+    // And Other has no switch
+    expect(
+      within(screen.getByTestId("drawer-company-Other")).queryByRole("switch"),
+    ).toBeNull();
+
+    // When the owner presses a's switch and g's switch
+    fireEvent.click(a.getByRole("switch"));
+    fireEvent.click(within(g).getByRole("switch"));
+
+    // Then each press asks exactly once for the opposite value
+    expect(onSetCompanyMode.mock.calls).toEqual([
+      ["m1", "/g/a", false],
+      ["m1", "/g", true],
+    ]);
   });
 });

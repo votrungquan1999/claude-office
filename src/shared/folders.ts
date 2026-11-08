@@ -9,3 +9,12 @@ export const folderDtoSchema = z.object({
 });
 
 export type FolderDto = z.infer<typeof folderDtoSchema>;
+
+/** The owner's request to switch company mode on or off for one folder of one Mac. */
+export const setCompanyModeRequestSchema = z.object({
+  machineId: z.string().min(1),
+  path: z.string().min(1),
+  companyMode: z.boolean(),
+});
+
+export type SetCompanyModeRequest = z.infer<typeof setCompanyModeRequestSchema>;

@@ -36,6 +36,7 @@ describe("the company strip", () => {
         machineId: "m1",
         machineName: "Air",
         online: true,
+        switchedOff: [],
         companies: [
           company("personal", [3, 1, 1, 5], { needsYou: true }),
           company("old", [0, 0, 0, 0], { active: false }),
@@ -45,9 +46,16 @@ describe("the company strip", () => {
         machineId: "m2",
         machineName: "Mini",
         online: false,
+        switchedOff: [],
         companies: [company("lab", [0, 2, 0, 0], { machineId: "m2" })],
       },
-      { machineId: "m3", machineName: "Empty", online: true, companies: [] },
+      {
+        machineId: "m3",
+        machineName: "Empty",
+        online: true,
+        switchedOff: [],
+        companies: [],
+      },
     ];
 
     // When the strip renders
@@ -96,7 +104,13 @@ describe("the company strip", () => {
     // Given a company with nothing live that is the viewed one
     const quiet = company("quiet", [0, 0, 0, 0], { active: false });
     const macs: MacOverview[] = [
-      { machineId: "m1", machineName: "Air", online: true, companies: [quiet] },
+      {
+        machineId: "m1",
+        machineName: "Air",
+        online: true,
+        switchedOff: [],
+        companies: [quiet],
+      },
     ];
 
     // When it is selected

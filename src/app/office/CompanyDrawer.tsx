@@ -8,8 +8,47 @@ export interface CompanyDrawerProps {
   selectedKey: string | null;
   /** Full-width sheet on a phone; a side panel elsewhere. */
   sheet: boolean;
+  /** Why the last switch did not stick, shown until the next one. */
+  error?: string | null;
   onSelect: (companyKey: string) => void;
+  /** Asks to switch company mode on or off for one folder of one Mac. */
+  onSetCompanyMode: (
+    machineId: string,
+    path: string,
+    companyMode: boolean,
+  ) => void;
   onClose: () => void;
+}
+
+interface CompanySwitchProps {
+  label: string;
+  checked: boolean;
+  onToggle: () => void;
+}
+
+/**
+ * The company-mode switch of one folder.
+ * @param props - Its accessible name, its position and what to do on a press.
+ * @returns A switch button with a 44 px tap target.
+ */
+function CompanySwitch({ label, checked, onToggle }: CompanySwitchProps) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={onToggle}
+      className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center hover:bg-btn-hover"
+    >
+      <span
+        aria-hidden="true"
+        className={`flex h-[18px] w-[34px] items-center border-2 border-border px-2 ${checked ? "justify-end bg-accent-bright" : "justify-start bg-bg-dark"}`}
+      >
+        <span className="block h-[10px] w-[10px] bg-text" />
+      </span>
+    </button>
+  );
 }
 
 /**
@@ -21,7 +60,9 @@ export function CompanyDrawer({
   overview,
   selectedKey,
   sheet,
+  error = null,
   onSelect,
+  onSetCompanyMode,
   onClose,
 }: CompanyDrawerProps) {
   // Escape closes the drawer wherever focus is, so the listener sits on the document.
@@ -75,6 +116,11 @@ export function CompanyDrawer({
           {`${elsewhere} elsewhere need you`}
         </p>
       )}
+      {error && (
+        <p role="alert" className="px-8 text-xs font-bold text-warning">
+          {error}
+        </p>
+      )}
       {overview.macs.map((mac) => (
         <section
           key={mac.machineId}
@@ -89,22 +135,59 @@ export function CompanyDrawer({
           {mac.companies.length === 0 && mac.online && (
             <p className="text-xs text-text-muted">No companies yet</p>
           )}
-          {mac.companies.map(({ company, counts, needsYou }) => (
-            <div
-              key={company.key}
-              data-testid={`drawer-company-${company.name}`}
-              className={`border-2 ${company.key === selectedKey ? "border-accent-bright bg-active-bg" : needsYou ? "border-warning" : "border-border bg-btn-bg"}`}
-            >
-              <button
-                type="button"
-                title={company.name}
-                aria-current={company.key === selectedKey ? "page" : undefined}
-                onClick={() => onSelect(company.key)}
-                className="flex w-full flex-col gap-4 p-8 text-left hover:bg-btn-hover"
+          {mac.companies.map(({ company, counts, needsYou }) => {
+            const { path } = company;
+            return (
+              <div
+                key={company.key}
+                data-testid={`drawer-company-${company.name}`}
+                className={`border-2 ${company.key === selectedKey ? "border-accent-bright bg-active-bg" : needsYou ? "border-warning" : "border-border bg-btn-bg"}`}
               >
-                <span className="truncate font-bold">{company.name}</span>
-                <CountRow counts={counts} />
-              </button>
+                <div className="flex items-stretch">
+                  <button
+                    type="button"
+                    title={company.name}
+                    aria-current={
+                      company.key === selectedKey ? "page" : undefined
+                    }
+                    onClick={() => onSelect(company.key)}
+                    className="flex min-w-0 flex-1 flex-col gap-4 p-8 text-left hover:bg-btn-hover"
+                  >
+                    <span className="truncate font-bold">{company.name}</span>
+                    <CountRow counts={counts} />
+                  </button>
+                  {path !== null && (
+                    <CompanySwitch
+                      label={`Company mode for ${company.name}`}
+                      checked
+                      onToggle={() =>
+                        onSetCompanyMode(company.machineId, path, false)
+                      }
+                    />
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          {mac.switchedOff.map((folder) => (
+            <div
+              key={folder.path}
+              data-testid={`drawer-off-${folder.name}`}
+              data-dimmed="true"
+              className="flex items-center border-2 border-border bg-btn-bg"
+              style={{ opacity: 0.6 }}
+            >
+              <div className="flex min-w-0 flex-1 flex-col gap-4 p-8">
+                <span className="truncate font-bold">{folder.name}</span>
+                <span className="text-xs text-text-muted">in Other</span>
+              </div>
+              <CompanySwitch
+                label={`Company mode for ${folder.name}`}
+                checked={false}
+                onToggle={() =>
+                  onSetCompanyMode(mac.machineId, folder.path, true)
+                }
+              />
             </div>
           ))}
         </section>

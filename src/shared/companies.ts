@@ -35,9 +35,18 @@ export interface SessionCompany {
   project?: string;
 }
 
+/** A folder whose company mode is off: its sessions sit in Other and its children are companies. */
+export interface SwitchedOffFolder {
+  machineId: string;
+  path: string;
+  name: string;
+}
+
 export interface CompanyTree {
   /** Per Mac in the order the Macs were first seen; by name within a Mac, "Other" last. */
   companies: Company[];
+  /** Per Mac, the folders switched off while they would be companies: their children became companies and their own sessions sit in Other. */
+  switchedOff: SwitchedOffFolder[];
   /**
    * Places a session in its company.
    * @param session - The session to place.
@@ -89,12 +98,18 @@ function nameWithParent(path: string): string {
  * The company folders of one Mac: the outermost known folders whose company mode is on; an off folder hands its job to the child folders that hold known folders, at any depth.
  * @param known - Every known folder of the Mac.
  * @param off - The known folders whose company mode is off.
+ * @param switchedOff - Collects the off folders whose switch took effect.
  * @returns The company folders.
  */
-function companyPaths(known: Set<string>, off: Set<string>): string[] {
+function companyPaths(
+  known: Set<string>,
+  off: Set<string>,
+  switchedOff: string[],
+): string[] {
   const resolve = (path: string): string[] => {
     // A flag only matters on a folder that is a candidate; the virtual ones in between count as on.
     if (!known.has(path) || !off.has(path)) return [path];
+    switchedOff.push(path);
     const prefix = path === "/" ? "" : path;
     const children = new Set<string>();
     for (const other of known) {
@@ -144,23 +159,33 @@ export function buildCompanyTree(input: CompanyTreeInput): CompanyTree {
     );
   }
   const companies: Company[] = [];
+  const switchedOff: CompanyTree["switchedOff"] = [];
   const pathsByMac = new Map<string, string[]>();
   for (const [machineId, known] of knownByMac) {
+    const offPaths: string[] = [];
     const paths = [
-      ...new Set(companyPaths(known, offByMac.get(machineId) ?? new Set())),
+      ...new Set(
+        companyPaths(known, offByMac.get(machineId) ?? new Set(), offPaths),
+      ),
     ];
+    const offUnique = [...new Set(offPaths)];
     pathsByMac.set(machineId, paths);
+    // A name repeated among this Mac's companies and switched-off folders gets its parent folder.
     const taken = new Map<string, number>();
-    for (const path of paths) {
+    for (const path of [...paths, ...offUnique]) {
       taken.set(lastSegment(path), (taken.get(lastSegment(path)) ?? 0) + 1);
+    }
+    const nameOf = (path: string) =>
+      (taken.get(lastSegment(path)) ?? 0) > 1
+        ? nameWithParent(path)
+        : lastSegment(path);
+    for (const path of offUnique) {
+      switchedOff.push({ machineId, path, name: nameOf(path) });
     }
     const named = paths.map((path) => ({
       key: `${machineId}\0${path}`,
       machineId,
-      name:
-        (taken.get(lastSegment(path)) ?? 0) > 1
-          ? nameWithParent(path)
-          : lastSegment(path),
+      name: nameOf(path),
       path,
       other: false,
     }));
@@ -212,5 +237,5 @@ export function buildCompanyTree(input: CompanyTreeInput): CompanyTree {
     );
     companies.splice(last + 1, 0, other);
   }
-  return { companies, companyOf: place };
+  return { companies, switchedOff, companyOf: place };
 }

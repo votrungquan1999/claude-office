@@ -23,8 +23,16 @@ import {
 import { CompanyDrawer } from "./CompanyDrawer";
 import { CompanyStrip } from "./CompanyStrip";
 import { ConnectionStatus } from "./ConnectionStatus";
+import { postCompanyMode } from "./companyMode";
 import { DetailsPanel } from "./DetailsPanel";
-import { mergeSessions, type SessionMap } from "./officeStore";
+import {
+  applyOverrides,
+  type ModeOverrides,
+  mergeSessions,
+  overrideKey,
+  type SessionMap,
+  settleOverrides,
+} from "./officeStore";
 import { RoomSigns } from "./RoomSigns";
 import { useOfficeChanges } from "./useOfficeChanges";
 import { WentHomeList } from "./WentHomeList";
@@ -69,6 +77,8 @@ interface OfficeData {
   sessions: SessionMap;
   machines: MachineDto[];
   folders: FolderDto[];
+  /** Switches the owner pressed that no answer has confirmed yet. */
+  overrides: ModeOverrides;
   offline: ReadonlySet<string>;
 }
 
@@ -81,7 +91,7 @@ interface OfficeData {
 function overviewOf(data: OfficeData, now: Date) {
   const sessions = [...data.sessions.values()];
   return buildOverview({
-    folders: data.folders,
+    folders: applyOverrides(data.folders, data.overrides),
     sessions,
     machines: data.machines,
     offlineMachineIds: data.offline,
@@ -122,6 +132,8 @@ export function OfficeView() {
   const [offlineIds, setOfflineIds] = useState<ReadonlySet<string>>(new Set());
   const [machines, setMachines] = useState<MachineDto[]>([]);
   const [folders, setFolders] = useState<FolderDto[]>([]);
+  const [overrides, setOverrides] = useState<ModeOverrides>(new Map());
+  const [switchError, setSwitchError] = useState<string | null>(null);
   const [companyKey, setCompanyKey] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const drawerButtonRef = useRef<HTMLButtonElement>(null);
@@ -139,6 +151,7 @@ export function OfficeView() {
     sessions: new Map(),
     machines: [],
     folders: [],
+    overrides: new Map(),
     offline: new Set(),
   });
   // The poll reads refs only, so the picked company lives in one too.
@@ -174,23 +187,18 @@ export function OfficeView() {
     setSelectedKey((open) => (open && only.has(open) ? open : null));
   };
 
-  /** Folds one answer into the sessions and the scene. */
-  const onAnswer = (answer: ChangesResponse, firstLoad: boolean) => {
-    const data: OfficeData = {
-      sessions: mergeSessions(
-        firstLoad ? new Map() : dataRef.current.sessions,
-        answer.sessions,
-      ),
-      machines: answer.machines,
-      folders: answer.folders,
-      // Judged against the server's clock: the phone's may be minutes off.
-      offline: offlineMachineIds(answer.machines, answer.serverNow),
-    };
+  /**
+   * Makes data the browser's state and shows the company it resolves to.
+   * @param data - What the browser now knows.
+   * @param sitDown - Seat everyone without a spawn effect, as on a first load.
+   */
+  const commit = (data: OfficeData, sitDown: boolean) => {
     dataRef.current = data;
     setSessions(data.sessions);
     setOfflineIds(data.offline);
     setMachines(data.machines);
     setFolders(data.folders);
+    setOverrides(data.overrides);
     // Resolved here from the merged data, so the first paint already shows the right company.
     const picked = resolveSelection(
       overviewOf(data, new Date()),
@@ -199,11 +207,60 @@ export function OfficeView() {
     const changed = picked !== companyRef.current;
     companyRef.current = picked;
     setCompanyKey(picked);
-    showCompany(data, picked, { sitDown: firstLoad || changed });
+    showCompany(data, picked, { sitDown: sitDown || changed });
+  };
+
+  /** Folds one answer into the sessions and the scene. */
+  const onAnswer = (answer: ChangesResponse, firstLoad: boolean) => {
+    commit(
+      {
+        sessions: mergeSessions(
+          firstLoad ? new Map() : dataRef.current.sessions,
+          answer.sessions,
+        ),
+        machines: answer.machines,
+        folders: answer.folders,
+        // A switch stays in force until an answer agrees, so a poll already in flight cannot flip it back.
+        overrides: settleOverrides(dataRef.current.overrides, answer.folders),
+        // Judged against the server's clock: the phone's may be minutes off.
+        offline: offlineMachineIds(answer.machines, answer.serverNow),
+      },
+      firstLoad,
+    );
+  };
+
+  /** Switches company mode at once and sends it; a refused request puts the old value back. */
+  const setCompanyMode = async (
+    machineId: string,
+    path: string,
+    companyMode: boolean,
+  ) => {
+    const key = overrideKey(machineId, path);
+    setSwitchError(null);
+    const pickBefore = companyRef.current;
+    commit(
+      {
+        ...dataRef.current,
+        overrides: new Map(dataRef.current.overrides).set(key, companyMode),
+      },
+      false,
+    );
+    const pickDuring = companyRef.current;
+    const sent = await postCompanyMode({ machineId, path, companyMode });
+    if (sent) return;
+    // A later press on the same folder owns the pending value now, so this failure leaves it alone.
+    if (dataRef.current.overrides.get(key) !== companyMode) return;
+    const reverted = new Map(dataRef.current.overrides);
+    reverted.delete(key);
+    // The switch may have made the viewed company vanish and moved the pick; the owner has not chosen since, so the revert puts it back.
+    if (companyRef.current === pickDuring) companyRef.current = pickBefore;
+    commit({ ...dataRef.current, overrides: reverted }, false);
+    setSwitchError("Could not change company mode. Try again.");
   };
 
   /** Opens the company drawer; a details panel left open would sit under it, so it closes. */
   const openDrawer = () => {
+    setSwitchError(null);
     setSelectedKey(null);
     officeState.selectedAgentId = null;
     setDrawerOpen(true);
@@ -302,7 +359,7 @@ export function OfficeView() {
   );
 
   const overview = overviewOf(
-    { sessions, machines, folders, offline: offlineIds },
+    { sessions, machines, folders, overrides, offline: offlineIds },
     now,
   );
   const departures = todaysDepartures([...sessions.values()], now).filter(
@@ -371,6 +428,10 @@ export function OfficeView() {
               selectCompany(key);
               closeDrawer();
             }}
+            error={switchError}
+            onSetCompanyMode={(machineId, path, mode) =>
+              void setCompanyMode(machineId, path, mode)
+            }
             onClose={closeDrawer}
           />
         )}

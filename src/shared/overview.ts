@@ -1,4 +1,9 @@
-import { buildCompanyTree, type Company, type CompanyTree } from "./companies";
+import {
+  buildCompanyTree,
+  type Company,
+  type CompanyTree,
+  type SwitchedOffFolder,
+} from "./companies";
 import type { FolderDto } from "./folders";
 import type { MachineDto, SessionDto } from "./session";
 
@@ -24,6 +29,7 @@ export interface MacOverview {
   machineName: string;
   online: boolean;
   companies: CompanyOverview[];
+  switchedOff: SwitchedOffFolder[];
 }
 
 export interface Overview {
@@ -97,6 +103,9 @@ export function buildOverview(input: OverviewInput): Overview {
         .filter((company) => company.machineId === machineId)
         .map((company) => overviews.get(company.key))
         .filter((entry): entry is CompanyOverview => entry !== undefined),
+      switchedOff: tree.switchedOff.filter(
+        (folder) => folder.machineId === machineId,
+      ),
     }))
     .sort(
       (a, b) =>
