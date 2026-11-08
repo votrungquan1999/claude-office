@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { type ReactNode, useEffect } from "react";
 import type { Overview } from "@/shared/overview";
 import { CountRow } from "./CompanyStrip";
 
@@ -20,6 +20,8 @@ export interface CompanyDrawerProps {
     companyMode: boolean,
   ) => void;
   onClose: () => void;
+  /** Extra controls under the title, such as the tag filter on a sideways phone. */
+  extra?: ReactNode;
 }
 
 interface CompanySwitchProps {
@@ -67,6 +69,7 @@ export function CompanyDrawer({
   onSelect,
   onSetCompanyMode,
   onClose,
+  extra,
 }: CompanyDrawerProps) {
   // Escape closes the drawer wherever focus is, so the listener sits on the document.
   useEffect(() => {
@@ -112,6 +115,7 @@ export function CompanyDrawer({
           ×
         </button>
       </div>
+      {extra && <div className="no-scrollbar overflow-x-auto">{extra}</div>}
       {elsewhere > 0 && (
         <p
           data-testid="elsewhere-need-you"

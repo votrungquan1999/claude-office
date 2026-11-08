@@ -155,3 +155,41 @@ export function keepOneCompany(machineId: string, path: string): void {
   test.beforeEach(() => withFolders([{ machineId, path }]));
   test.afterEach(() => withFolders([]));
 }
+
+/** A session as the specs seed it; everything but the id has a default. */
+export interface SeedSession {
+  sessionId: string;
+  machineId?: string;
+  machineName?: string;
+  cwd?: string;
+  /** Where the session started; the company and project come from it. */
+  startCwd?: string;
+  state?: string;
+  deskName?: string;
+  /** Repo tags as the agent sends them. */
+  tags?: Array<{ name: string; key: string }>;
+  endedAt?: Date;
+}
+
+/**
+ * Replaces every session with the given ones.
+ * @param sessions - The `sessions` collection of the e2e database.
+ * @param rows - The sessions to store; fields left out get the defaults.
+ */
+export async function seedSessions(
+  sessions: Collection,
+  rows: SeedSession[],
+): Promise<void> {
+  await sessions.deleteMany({});
+  await sessions.insertMany(
+    rows.map(({ machineId, machineName, cwd, state, ...rest }) => ({
+      machineId: machineId ?? "m1",
+      machineName: machineName ?? "Studio Mac",
+      cwd: cwd ?? "/Users/q/personal",
+      state: state ?? "idle",
+      startedAt: new Date(),
+      changedAt: new Date(),
+      ...rest,
+    })),
+  );
+}

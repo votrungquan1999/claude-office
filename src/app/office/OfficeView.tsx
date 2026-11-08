@@ -21,6 +21,11 @@ import {
   type SessionDto,
   sessionKey,
 } from "@/shared/session";
+import {
+  buildTagFilter,
+  SHOW_ALL,
+  type TagFilterSelection,
+} from "@/shared/tag-filter";
 import { CompanyDrawer } from "./CompanyDrawer";
 import { CompactCompanyButton, CompanyStrip } from "./CompanyStrip";
 import { ConnectionStatus } from "./ConnectionStatus";
@@ -35,6 +40,7 @@ import {
   settleOverrides,
 } from "./officeStore";
 import { RoomSigns } from "./RoomSigns";
+import { TagFilter } from "./TagFilter";
 import { useOfficeChanges } from "./useOfficeChanges";
 import { WentHomeList } from "./WentHomeList";
 
@@ -100,6 +106,34 @@ function overviewOf(data: OfficeData, now: Date) {
   });
 }
 
+/** The tag the owner picked, and the company it was picked in; in any other company it means All. */
+interface TagPick {
+  companyKey: string | null;
+  selection: TagFilterSelection;
+}
+
+/**
+ * The tag filter of one company, from what the browser knows.
+ * @param sessions - Every session the browser knows.
+ * @param companyOf - Places a session in its company.
+ * @param companyKey - The viewed company.
+ * @param pick - The owner's last pick.
+ * @returns The filter's chips and who it shows.
+ */
+function tagFilterOf(
+  sessions: SessionMap,
+  companyOf: (session: SessionDto) => { companyKey: string } | null,
+  companyKey: string | null,
+  pick: TagPick,
+) {
+  return buildTagFilter(
+    [...sessions.values()].filter(
+      (session) => companyOf(session)?.companyKey === companyKey,
+    ),
+    pick.companyKey === companyKey ? pick.selection : SHOW_ALL,
+  );
+}
+
 const STATUS_LINES = {
   working: "Working",
   thinking: "Thinking",
@@ -136,6 +170,10 @@ export function OfficeView() {
   const [overrides, setOverrides] = useState<ModeOverrides>(new Map());
   const [switchError, setSwitchError] = useState<string | null>(null);
   const [companyKey, setCompanyKey] = useState<string | null>(null);
+  const [tagPick, setTagPick] = useState<TagPick>({
+    companyKey: null,
+    selection: SHOW_ALL,
+  });
   const [drawerOpen, setDrawerOpen] = useState(false);
   const drawerButtonRef = useRef<HTMLButtonElement>(null);
   const [now, setNow] = useState(() => new Date());
@@ -158,8 +196,19 @@ export function OfficeView() {
   });
   // The poll reads refs only, so the picked company lives in one too.
   const companyRef = useRef<string | null>(null);
+  const tagPickRef = useRef<TagPick>({ companyKey: null, selection: SHOW_ALL });
   // The browser's own midnight decides which departures count as today.
   const [dayStart] = useState(() => dayStartOf(new Date()).toISOString());
+
+  /**
+   * Forgets any tag pick and shows everyone in a company.
+   * @param key - The company the reset pick belongs to.
+   */
+  const resetTagPick = (key: string | null) => {
+    const pick = { companyKey: key, selection: SHOW_ALL };
+    tagPickRef.current = pick;
+    setTagPick(pick);
+  };
 
   /**
    * Shows only the picked company's employees in the scene.
@@ -174,9 +223,20 @@ export function OfficeView() {
   ) => {
     const overview = overviewOf(data, new Date());
     const sessionList = [...data.sessions.values()];
+    const filter = tagFilterOf(
+      data.sessions,
+      overview.tree.companyOf,
+      key,
+      tagPickRef.current,
+    );
+    // The tag filter narrows who stands in the office; a session that went home is never there anyway.
     const only = new Set(
       sessionList
-        .filter((s) => overview.tree.companyOf(s)?.companyKey === key)
+        .filter(
+          (s) =>
+            overview.tree.companyOf(s)?.companyKey === key &&
+            (s.state === "wentHome" || filter.matches(s)),
+        )
         .map(sessionKey),
     );
     sceneSync.apply(sessionList, {
@@ -203,11 +263,25 @@ export function OfficeView() {
     setFolders(data.folders);
     setOverrides(data.overrides);
     // Resolved here from the merged data, so the first paint already shows the right company.
+    const overview = overviewOf(data, new Date());
+    // A pick read back from storage holds only while its company is active; one made in this page holds while it exists.
     const picked = resolveSelection(
-      overviewOf(data, new Date()),
+      overview,
       companyRef.current ?? readStoredCompany(),
+      { restored: companyRef.current === null },
     );
     const changed = picked !== companyRef.current;
+    // A pick that stopped applying (tag gone, other company) is dropped so it cannot return later.
+    const inForce = tagFilterOf(
+      data.sessions,
+      overview.tree.companyOf,
+      picked,
+      tagPickRef.current,
+    ).selection;
+    const pick = tagPickRef.current.selection;
+    if (inForce.kind !== pick.kind || inForce.key !== pick.key) {
+      resetTagPick(picked);
+    }
     companyRef.current = picked;
     setCompanyKey(picked);
     showCompany(data, picked, { sitDown: sitDown || changed });
@@ -275,10 +349,19 @@ export function OfficeView() {
     drawerButtonRef.current?.focus();
   };
 
+  /** Narrows the office to a tag at once. */
+  const selectTag = (selection: TagFilterSelection) => {
+    const pick = { companyKey: companyRef.current, selection };
+    tagPickRef.current = pick;
+    setTagPick(pick);
+    showCompany(dataRef.current, companyRef.current, { sitDown: true });
+  };
+
   /** Switches the office to another company at once. */
   const selectCompany = (key: string) => {
     companyRef.current = key;
     setCompanyKey(key);
+    resetTagPick(key);
     storeCompany(key);
     showCompany(dataRef.current, key, { sitDown: true });
   };
@@ -365,6 +448,12 @@ export function OfficeView() {
     { sessions, machines, folders, overrides, offline: offlineIds },
     now,
   );
+  const tagFilter = (
+    <TagFilter
+      view={tagFilterOf(sessions, overview.tree.companyOf, companyKey, tagPick)}
+      onSelect={selectTag}
+    />
+  );
   const departures = todaysDepartures([...sessions.values()], now).filter(
     (session) => overview.tree.companyOf(session)?.companyKey === companyKey,
   );
@@ -378,6 +467,7 @@ export function OfficeView() {
           onSelect={selectCompany}
           onOpenDrawer={openDrawer}
           drawerButtonRef={drawerButtonRef}
+          trailing={tagFilter}
         />
       )}
       <div
@@ -447,6 +537,7 @@ export function OfficeView() {
               void setCompanyMode(machineId, path, mode)
             }
             onClose={closeDrawer}
+            extra={sideways ? tagFilter : undefined}
           />
         )}
         <DetailsPanel
