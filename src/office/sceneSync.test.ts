@@ -520,4 +520,33 @@ describe("scene sync", () => {
     // Then no one is marked
     expect(offlineByMachine()).toEqual({ m1: false, m2: false });
   });
+
+  it("drops employees outside the shown set at once with no departure effect, frees their seats, and seats them again without a spawn effect", () => {
+    // Given two employees
+    const office = loadOffice();
+    const sync = createSceneSync(office);
+    const a = session("m1", "Mac", "a", "/a");
+    const b = session("m1", "Mac", "b", "/b");
+    sync.apply([a, b], { firstLoad: true });
+    const idOfB = sync.agentIds()[1];
+    const seatOfA = office.getCharacters()[0].seatId as string;
+
+    // When only B may be shown
+    sync.apply([a, b], { only: new Set(["m1/b"]) });
+
+    // Then A is gone immediately, its seat is free, and B is untouched
+    expect(office.getCharacters().map((ch) => ch.id)).toEqual([idOfB]);
+    expect(office.seats.get(seatOfA)?.assigned).toBe(false);
+    expect(sync.agentIds()).toEqual([idOfB]);
+    expect(sync.sessionKeyOf(idOfB)).toBe("m1/b");
+
+    // When A may be shown again
+    sync.apply([a, b], { firstLoad: true, only: new Set(["m1/a", "m1/b"]) });
+
+    // Then A sits down with no spawn effect
+    const back = office.getCharacters().find((ch) => ch.id !== idOfB);
+    expect(office.getCharacters()).toHaveLength(2);
+    expect(back?.matrixEffect).toBeFalsy();
+    expect(back?.seatId).toBe(seatOfA);
+  });
 });

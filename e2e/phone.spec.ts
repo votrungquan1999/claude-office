@@ -2,7 +2,14 @@ import { readFileSync } from "node:fs";
 import { expect, type Page, test } from "@playwright/test";
 import { type Collection, MongoClient } from "mongodb";
 import { E2E_DB, E2E_MONGO_URI_FILE } from "./constants";
-import { employeeLabelled, signInAsOwner, waitForEmployees } from "./helpers";
+import {
+  employeeLabelled,
+  keepOneCompany,
+  signInAsOwner,
+  waitForEmployees,
+} from "./helpers";
+
+keepOneCompany("m1", "/Users/q");
 
 // The "phone" project's device profile applies: 393 x 852, dpr 3, touch.
 

@@ -2,7 +2,9 @@ import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import { MongoClient } from "mongodb";
 import { E2E_DB, E2E_MONGO_URI_FILE } from "./constants";
-import { signInAsOwner, waitForEmployees } from "./helpers";
+import { keepOneCompany, signInAsOwner, waitForEmployees } from "./helpers";
+
+keepOneCompany("live-machine", "/Users/q");
 
 test("a session written to the database while the office is open appears, and a later change relabels it, without a reload", async ({
   context,

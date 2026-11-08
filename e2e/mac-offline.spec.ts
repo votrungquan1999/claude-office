@@ -59,33 +59,36 @@ test("employees of a Mac that stopped sending heartbeats are marked offline, and
     // When the owner opens the office
     await page.goto("/");
 
-    // Then only the quiet Mac's employee carries the offline mark
-    await waitForEmployees(page, 2);
-    const downId = await employeeLabelled(page, "Down Mac / down");
+    // Then the online Mac's company is shown first, and its employee carries no offline mark
+    await waitForEmployees(page, 1);
     const upId = await employeeLabelled(page, "Up Mac / up");
     const labelOf = (id: number) =>
       page.locator(`[data-testid="agent-overlay"][data-agent-id="${id}"]`);
+    await page.evaluate((i) => window.__officeTestHooks?.selectAgent(i), upId);
+    await expect(labelOf(upId)).not.toHaveAttribute("data-offline", "true");
+    const drawn = () =>
+      page.evaluate(() =>
+        (window.__officeTestHooks?.getCharacters() ?? []).map(
+          (c) => c.macOffline,
+        ),
+      );
+    expect(await drawn()).toEqual([false]);
+
+    // When the owner opens the quiet Mac's company
+    await page.locator('[data-company-name="down"]').click();
+
+    // Then its employee carries the offline mark and is drawn grey
+    await waitForEmployees(page, 1);
+    const downId = await employeeLabelled(page, "Down Mac / down");
     await page.evaluate(
       (i) => window.__officeTestHooks?.selectAgent(i),
       downId,
     );
     await expect(labelOf(downId)).toHaveAttribute("data-offline", "true");
-    await page.evaluate((i) => window.__officeTestHooks?.selectAgent(i), upId);
-    await expect(labelOf(upId)).not.toHaveAttribute("data-offline", "true");
-
-    // And the scene draws that employee grey while the other stays in colour
-    const drawnGrey = await page.evaluate(() =>
-      Object.fromEntries(
-        (window.__officeTestHooks?.getCharacters() ?? []).map((c) => [
-          c.id,
-          c.macOffline,
-        ]),
-      ),
-    );
-    expect(drawnGrey[downId]).toBe(true);
-    expect(drawnGrey[upId]).toBe(false);
+    expect(await drawn()).toEqual([true]);
 
     // And its details say the Mac is offline
+    await page.evaluate(() => window.__officeTestHooks?.selectAgent(-1));
     await clickEmployee(page, downId);
     await expect(page.getByTestId("details-panel")).toContainText(
       "Mac offline",

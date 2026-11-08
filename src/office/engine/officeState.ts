@@ -645,6 +645,22 @@ export class OfficeState {
     return this.subagentMeta.get(id)?.parentAgentId ?? id;
   }
 
+  /**
+   * Removes an employee at once, with no despawn effect.
+   * @param id - The renderer id.
+   */
+  removeAgentNow(id: number): void {
+    const ch = this.characters.get(id);
+    if (!ch) return;
+    if (ch.seatId) {
+      const seat = this.seats.get(ch.seatId);
+      if (seat) seat.assigned = false;
+    }
+    if (this.selectedAgentId === id) this.selectedAgentId = null;
+    if (this.cameraFollowId === id) this.cameraFollowId = null;
+    this.characters.delete(id);
+  }
+
   removeAgent(id: number): void {
     const ch = this.characters.get(id);
     if (!ch) return;

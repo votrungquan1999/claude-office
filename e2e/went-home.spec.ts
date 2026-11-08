@@ -2,7 +2,9 @@ import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import { MongoClient } from "mongodb";
 import { E2E_DB, E2E_MONGO_URI_FILE } from "./constants";
-import { signInAsOwner } from "./helpers";
+import { keepOneCompany, signInAsOwner } from "./helpers";
+
+keepOneCompany("m1", "/Users/q");
 
 // Local midnight is 17:00Z the day before in this zone, so "today" is fixed whatever the host's zone is.
 test.use({

@@ -13,7 +13,7 @@ import { createSceneSync } from "@/office/sceneSync";
 import { installTestHooks } from "@/office/testHooks";
 import { dayStartOf, todaysDepartures } from "@/office/wentHome";
 import type { FolderDto } from "@/shared/folders";
-import { buildOverview } from "@/shared/overview";
+import { buildOverview, resolveSelection } from "@/shared/overview";
 import {
   type ChangesResponse,
   type MachineDto,
@@ -35,6 +35,57 @@ import { WentHomeList } from "./WentHomeList";
  */
 function folderName(cwd: string): string {
   return cwd.split("/").filter(Boolean).at(-1) ?? cwd;
+}
+
+const COMPANY_STORAGE_KEY = "claude-office.company";
+
+/**
+ * The company picked last time in this browser.
+ * @returns Its key, or null when none is stored or storage is unavailable.
+ */
+function readStoredCompany(): string | null {
+  try {
+    return window.localStorage.getItem(COMPANY_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Remembers the picked company in this browser.
+ * @param key - The company key.
+ */
+function storeCompany(key: string): void {
+  try {
+    window.localStorage.setItem(COMPANY_STORAGE_KEY, key);
+  } catch {
+    // The pick still works for this visit.
+  }
+}
+
+/** What the last answer left in the browser. */
+interface OfficeData {
+  sessions: SessionMap;
+  machines: MachineDto[];
+  folders: FolderDto[];
+  offline: ReadonlySet<string>;
+}
+
+/**
+ * The overview of everything the browser knows, with today's departures.
+ * @param data - Sessions, Macs and folders.
+ * @param now - The current time.
+ * @returns The per-Mac overview.
+ */
+function overviewOf(data: OfficeData, now: Date) {
+  const sessions = [...data.sessions.values()];
+  return buildOverview({
+    folders: data.folders,
+    sessions,
+    machines: data.machines,
+    offlineMachineIds: data.offline,
+    departures: todaysDepartures(sessions, now),
+  });
 }
 
 const STATUS_LINES = {
@@ -70,6 +121,7 @@ export function OfficeView() {
   const [offlineIds, setOfflineIds] = useState<ReadonlySet<string>>(new Set());
   const [machines, setMachines] = useState<MachineDto[]>([]);
   const [folders, setFolders] = useState<FolderDto[]>([]);
+  const [companyKey, setCompanyKey] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -80,28 +132,79 @@ export function OfficeView() {
   // Once the owner zooms by hand, resizing no longer re-fits the office.
   const userZoomed = useRef(false);
   const isMobile = useIsMobile();
-  const sessionsRef = useRef<SessionMap>(new Map());
+  const dataRef = useRef<OfficeData>({
+    sessions: new Map(),
+    machines: [],
+    folders: [],
+    offline: new Set(),
+  });
+  // The poll reads refs only, so the picked company lives in one too.
+  const companyRef = useRef<string | null>(null);
   // The browser's own midnight decides which departures count as today.
   const [dayStart] = useState(() => dayStartOf(new Date()).toISOString());
 
-  /** Folds one answer into the sessions and the scene. */
-  const onAnswer = (answer: ChangesResponse, firstLoad: boolean) => {
-    const merged = mergeSessions(
-      firstLoad ? new Map() : sessionsRef.current,
-      answer.sessions,
+  /**
+   * Shows only the picked company's employees in the scene.
+   * @param data - What the browser knows.
+   * @param key - The picked company.
+   * @param options - `sitDown` seats everyone without a spawn effect, as on a first load.
+   */
+  const showCompany = (
+    data: OfficeData,
+    key: string | null,
+    options: { sitDown: boolean },
+  ) => {
+    const overview = overviewOf(data, new Date());
+    const sessionList = [...data.sessions.values()];
+    const only = new Set(
+      sessionList
+        .filter((s) => overview.tree.companyOf(s)?.companyKey === key)
+        .map(sessionKey),
     );
-    sessionsRef.current = merged;
-    // Judged against the server's clock: the phone's may be minutes off.
-    const offline = offlineMachineIds(answer.machines, answer.serverNow);
-    setSessions(merged);
-    setOfflineIds(offline);
-    setMachines(answer.machines);
-    setFolders(answer.folders);
-    sceneSync.apply([...merged.values()], {
-      firstLoad,
-      offlineMachineIds: offline,
+    sceneSync.apply(sessionList, {
+      firstLoad: options.sitDown,
+      offlineMachineIds: data.offline,
+      only,
     });
     setAgentIds(sceneSync.agentIds());
+    // A panel left open on a session outside the company would point at nobody on screen.
+    setSelectedKey((open) => (open && only.has(open) ? open : null));
+  };
+
+  /** Folds one answer into the sessions and the scene. */
+  const onAnswer = (answer: ChangesResponse, firstLoad: boolean) => {
+    const data: OfficeData = {
+      sessions: mergeSessions(
+        firstLoad ? new Map() : dataRef.current.sessions,
+        answer.sessions,
+      ),
+      machines: answer.machines,
+      folders: answer.folders,
+      // Judged against the server's clock: the phone's may be minutes off.
+      offline: offlineMachineIds(answer.machines, answer.serverNow),
+    };
+    dataRef.current = data;
+    setSessions(data.sessions);
+    setOfflineIds(data.offline);
+    setMachines(data.machines);
+    setFolders(data.folders);
+    // Resolved here from the merged data, so the first paint already shows the right company.
+    const picked = resolveSelection(
+      overviewOf(data, new Date()),
+      companyRef.current ?? readStoredCompany(),
+    );
+    const changed = picked !== companyRef.current;
+    companyRef.current = picked;
+    setCompanyKey(picked);
+    showCompany(data, picked, { sitDown: firstLoad || changed });
+  };
+
+  /** Switches the office to another company at once. */
+  const selectCompany = (key: string) => {
+    companyRef.current = key;
+    setCompanyKey(key);
+    storeCompany(key);
+    showCompany(dataRef.current, key, { sitDown: true });
   };
 
   // Employees need the layout's seats, so polling starts only after the assets.
@@ -182,20 +285,20 @@ export function OfficeView() {
     }),
   );
 
-  const overview = buildOverview({
-    folders,
-    sessions: [...sessions.values()],
-    machines,
-    offlineMachineIds: offlineIds,
-    departures: todaysDepartures([...sessions.values()], now),
-  });
+  const overview = overviewOf(
+    { sessions, machines, folders, offline: offlineIds },
+    now,
+  );
+  const departures = todaysDepartures([...sessions.values()], now).filter(
+    (session) => overview.tree.companyOf(session)?.companyKey === companyKey,
+  );
 
   return (
     <div className="flex h-full w-full flex-col">
       <CompanyStrip
         macs={overview.macs}
-        selectedKey={null}
-        onSelect={() => {}}
+        selectedKey={companyKey}
+        onSelect={selectCompany}
       />
       <div
         ref={containerRef}
@@ -237,7 +340,7 @@ export function OfficeView() {
           now={now.getTime()}
         />
         <WentHomeList
-          departures={todaysDepartures([...sessions.values()], now)}
+          departures={departures}
           folded={isMobile}
           onSelect={(session) => setSelectedKey(sessionKey(session))}
         />

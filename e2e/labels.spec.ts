@@ -5,9 +5,12 @@ import { E2E_DB, E2E_MONGO_URI_FILE } from "./constants";
 import {
   employeeLabelled,
   hoverEmployee,
+  keepOneCompany,
   signInAsOwner,
   waitForEmployees,
 } from "./helpers";
+
+keepOneCompany("m1", "/Users/q");
 
 const base = {
   machineId: "m1",

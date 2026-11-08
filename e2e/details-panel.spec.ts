@@ -2,7 +2,9 @@ import { readFileSync } from "node:fs";
 import { expect, type Page, test } from "@playwright/test";
 import { MongoClient, ObjectId } from "mongodb";
 import { E2E_DB, E2E_MONGO_URI_FILE } from "./constants";
-import { clickEmployee, signInAsOwner } from "./helpers";
+import { clickEmployee, keepOneCompany, signInAsOwner } from "./helpers";
+
+keepOneCompany("m1", "/Users/q");
 
 test.use({ viewport: { width: 1600, height: 1200 }, hasTouch: false });
 

@@ -2,7 +2,9 @@ import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import { MongoClient } from "mongodb";
 import { E2E_DB, E2E_MONGO_URI_FILE } from "./constants";
-import { signInAsOwner, waitForEmployees } from "./helpers";
+import { keepOneCompany, signInAsOwner, waitForEmployees } from "./helpers";
+
+keepOneCompany("m1", "/Users/q");
 
 test("a room with more sessions than seats shows its count against its seats on the sign, and a room under capacity shows only its name", async ({
   context,

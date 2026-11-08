@@ -2,7 +2,14 @@ import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import { MongoClient } from "mongodb";
 import { E2E_DB, E2E_MONGO_URI_FILE } from "./constants";
-import { employeeLabelled, signInAsOwner, waitForEmployees } from "./helpers";
+import {
+  employeeLabelled,
+  keepOneCompany,
+  signInAsOwner,
+  waitForEmployees,
+} from "./helpers";
+
+keepOneCompany("m1", "/Users/q");
 
 const ROOMS = ["working", "needsPermission", "waitingForYou", "idle"];
 const SEATS: Record<string, number> = {

@@ -17,7 +17,12 @@ export interface SceneSync {
   /** Brings the scene in line with the given sessions; replaying the same sessions changes nothing. */
   apply(
     sessions: SessionDto[],
-    options?: { firstLoad?: boolean; offlineMachineIds?: ReadonlySet<string> },
+    options?: {
+      firstLoad?: boolean;
+      offlineMachineIds?: ReadonlySet<string>;
+      /** Keys of the sessions the scene may show; every other employee leaves at once, with no despawn effect. */
+      only?: ReadonlySet<string>;
+    },
   ): void;
   /** Finishes moves whose state has held long enough; call it on the poll clock. */
   tick(): void;
@@ -164,10 +169,18 @@ export function createSceneSync(
   }
 
   return {
-    apply(sessions, { firstLoad = false, offlineMachineIds } = {}) {
+    apply(sessions, { firstLoad = false, offlineMachineIds, only } = {}) {
       offline = offlineMachineIds ?? offline;
+      if (only) {
+        for (const [key, employee] of employees) {
+          if (only.has(key)) continue;
+          office.removeAgentNow(employee.id);
+          employees.delete(key);
+        }
+      }
       for (const session of sessions) {
         const key = sessionKey(session);
+        if (only && !only.has(key)) continue;
         const place = `${session.machineName} / ${folderName(session.cwd)}`;
         const label = session.deskName
           ? `${session.deskName} · ${place}`

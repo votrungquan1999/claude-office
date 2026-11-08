@@ -1,7 +1,12 @@
 import { readFileSync } from "node:fs";
-import { type BrowserContext, expect, type Page } from "@playwright/test";
-import type { Collection } from "mongodb";
-import { E2E_BASE_URL, E2E_OWNER_COOKIE_FILE } from "./constants";
+import { type BrowserContext, expect, type Page, test } from "@playwright/test";
+import { type Collection, MongoClient } from "mongodb";
+import {
+  E2E_BASE_URL,
+  E2E_DB,
+  E2E_MONGO_URI_FILE,
+  E2E_OWNER_COOKIE_FILE,
+} from "./constants";
 
 /**
  * Puts the seeded owner's session cookie into the browser, so the context is signed in.
@@ -128,4 +133,25 @@ export async function seedFolders(
       firstSeenAt: new Date(),
     })),
   );
+}
+
+/**
+ * Registers hooks that make every session of one Mac a project of a single company, so a spec that is not about companies sees all its employees in the office.
+ * @param machineId - The Mac whose sessions the spec seeds.
+ * @param path - A folder that is an ancestor of every start folder the spec seeds.
+ */
+export function keepOneCompany(machineId: string, path: string): void {
+  const withFolders = async (records: SeedFolder[]) => {
+    const client = new MongoClient(
+      readFileSync(E2E_MONGO_URI_FILE, "utf8").trim(),
+    );
+    await client.connect();
+    try {
+      await seedFolders(client.db(E2E_DB).collection("folders"), records);
+    } finally {
+      await client.close();
+    }
+  };
+  test.beforeEach(() => withFolders([{ machineId, path }]));
+  test.afterEach(() => withFolders([]));
 }

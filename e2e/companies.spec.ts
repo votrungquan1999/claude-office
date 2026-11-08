@@ -29,7 +29,7 @@ test("the company strip shows each Mac's active companies with four counts and a
   await seedFolders(db.collection("folders"), [
     { machineId: "air", path: "/Users/q/personal" },
     { machineId: "air", path: "/Users/q/ubet-devenv/workspace" },
-    { machineId: "air", path: "/Users/q/old" },
+    { machineId: "air", path: "/Users/q/retired" },
     { machineId: "mini", path: "/Users/q/lab" },
   ]);
   const session = (
@@ -62,7 +62,7 @@ test("the company strip shows each Mac's active companies with four counts and a
       hadPrompt: true,
       endedAt: new Date(now - 60_000),
     }),
-    session("air", "old", "/Users/q/old", "wentHome", {
+    session("air", "old", "/Users/q/retired", "wentHome", {
       hadPrompt: true,
       endedAt: new Date(now - 30 * HOUR),
     }),
@@ -101,6 +101,109 @@ test("the company strip shows each Mac's active companies with four counts and a
     await expect(mini).toHaveAttribute("data-offline", "true");
     await expect(mini.getByLabel("1 needs permission")).toBeVisible();
     await expect(mini.getByTestId("company-badge")).toHaveCount(0);
+  } finally {
+    await seedFolders(db.collection("folders"), []);
+    await db.collection("machines").deleteMany({});
+    await sessions.deleteMany({});
+    await client.close();
+  }
+});
+
+test("clicking a company tab shows only that company's employees, went-home list and phone cards, and the first company is shown to begin with", async ({
+  context,
+  page,
+}) => {
+  // Given two companies: personal with two live sessions and a departure, workspace with one live session and a departure
+  const client = new MongoClient(
+    readFileSync(E2E_MONGO_URI_FILE, "utf8").trim(),
+  );
+  await client.connect();
+  const db = client.db(E2E_DB);
+  const now = Date.now();
+  await db.collection("machines").deleteMany({});
+  await db.collection("machines").insertOne({
+    machineId: "air",
+    machineName: "Air",
+    lastSeenAt: new Date(now),
+  });
+  await seedFolders(db.collection("folders"), [
+    { machineId: "air", path: "/Users/q/personal" },
+    { machineId: "air", path: "/Users/q/ubet/workspace" },
+  ]);
+  const row = (
+    sessionId: string,
+    cwd: string,
+    state: string,
+    extra: Record<string, unknown> = {},
+  ) => ({
+    machineId: "air",
+    machineName: "Air",
+    sessionId,
+    cwd,
+    startCwd: cwd,
+    state,
+    deskName: sessionId,
+    startedAt: new Date(now - 2 * HOUR),
+    changedAt: new Date(now - 60_000),
+    ...extra,
+  });
+  const gone = { hadPrompt: true, endedAt: new Date(now - 60_000) };
+  const sessions = db.collection("sessions");
+  await sessions.deleteMany({});
+  await sessions.insertMany([
+    row("p1", "/Users/q/personal/a", "idle"),
+    row("p2", "/Users/q/personal/b", "idle"),
+    row("pgone", "/Users/q/personal/c", "wentHome", gone),
+    row("w1", "/Users/q/ubet/workspace", "idle"),
+    row("wgone", "/Users/q/ubet/workspace/d", "wentHome", gone),
+  ]);
+  await signInAsOwner(context);
+  const employees = () =>
+    page.evaluate(() => window.__officeTestHooks?.getCharacters().length);
+  const departures = () =>
+    page.getByTestId("went-home-list").locator("li").allTextContents();
+
+  try {
+    // When the owner opens the office
+    await page.goto("/");
+
+    // Then the first company by name, personal, is shown with its two employees, cards and its departure only
+    await expect.poll(employees).toBe(2);
+    await expect(page.getByTestId("agent-card")).toHaveCount(2);
+    await expect.poll(async () => (await departures()).length).toBe(1);
+    expect((await departures())[0]).toContain("pgone");
+    await expect(
+      page.locator('[data-company-name="personal"]'),
+    ).toHaveAttribute("aria-current", "page");
+
+    // When the owner opens a personal employee's details and then clicks the workspace tab
+    await page.getByTestId("agent-card").first().click();
+    await expect(page.getByTestId("details-panel")).toBeVisible();
+    await page.locator('[data-company-name="workspace"]').click();
+
+    // Then the panel closes, and only workspace's employee, card and departure remain
+    await expect(page.getByTestId("details-panel")).toHaveCount(0);
+    // The switch is immediate, not waiting for the next poll
+    await expect.poll(employees, { timeout: 500 }).toBe(1);
+    await expect(page.getByTestId("agent-card")).toHaveCount(1);
+    await expect.poll(async () => (await departures())[0]).toContain("wgone");
+    expect(await departures()).toHaveLength(1);
+
+    // And the pick survives the next poll answer
+    await page.waitForResponse((response) =>
+      response.url().includes("/api/office/changes"),
+    );
+    expect(await employees()).toBe(1);
+    await expect(
+      page.locator('[data-company-name="workspace"]'),
+    ).toHaveAttribute("aria-current", "page");
+
+    // And the choice survives a reload
+    await page.reload();
+    await expect.poll(employees).toBe(1);
+    await expect(
+      page.locator('[data-company-name="workspace"]'),
+    ).toHaveAttribute("aria-current", "page");
   } finally {
     await seedFolders(db.collection("folders"), []);
     await db.collection("machines").deleteMany({});

@@ -105,3 +105,48 @@ export function buildOverview(input: OverviewInput): Overview {
     );
   return { macs, tree };
 }
+
+/**
+ * Picks the company the office shows: the pick while it still exists, else the first non-Other company with a live session (scanning online Macs in name order), else a live Other, else the first non-Other company, "Other" only when nothing else exists.
+ * @param overview - The current overview.
+ * @param stored - The last pick, if any.
+ * @param options - `restored` marks a pick read back from browser storage rather than made in this page; it holds only while its company is active, so a company that rolled off the strip days ago is not reopened empty.
+ * @returns The company key, or null when there are no companies.
+ */
+export function resolveSelection(
+  overview: Overview,
+  stored: string | null,
+  { restored = false }: { restored?: boolean } = {},
+): string | null {
+  const all = overview.macs.flatMap((mac) => mac.companies);
+  if (
+    stored &&
+    all.some(
+      (entry) => entry.company.key === stored && (!restored || entry.active),
+    )
+  )
+    return stored;
+  const isLive = (entry: CompanyOverview) =>
+    Object.values(entry.counts).reduce((sum, n) => sum + n, 0) > 0;
+  const online = overview.macs.filter((mac) => mac.online);
+  // Online Macs are already in name order, so the first live company wins across Macs.
+  const live = online
+    .flatMap((mac) => mac.companies)
+    .find((entry) => !entry.company.other && isLive(entry));
+  // Work in Other still counts, so the office never opens empty while a live session exists.
+  const liveOther = online
+    .flatMap((mac) => mac.companies)
+    .find((entry) => entry.company.other && isLive(entry));
+  // Offline Macs only supply the default when no online Mac has a company.
+  const firstOf = (macs: MacOverview[]) =>
+    macs.flatMap((mac) => mac.companies).find((entry) => !entry.company.other)
+      ?.company.key;
+  return (
+    live?.company.key ??
+    liveOther?.company.key ??
+    firstOf(online) ??
+    firstOf(overview.macs) ??
+    all[0]?.company.key ??
+    null
+  );
+}
