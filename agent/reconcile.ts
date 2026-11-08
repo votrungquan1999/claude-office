@@ -96,7 +96,7 @@ export async function seedRunningSessions(options: SeedOptions): Promise<void> {
         status: entry.status,
         firstMessage: transcript.firstMessage,
         hadPrompt: transcript.hadPrompt,
-        bridgeSessionId: transcript.bridgeSessionId,
+        bridgeSessionId: entry.bridgeSessionId ?? transcript.bridgeSessionId,
         process: { pid: entry.pid, procStart: entry.procStart },
       };
     }),

@@ -175,6 +175,11 @@ export class SessionTracker {
         tracked.registryName = entry.name;
         this.publish(sessionId, tracked);
       }
+      // The registry is the source of truth for the Remote Control link.
+      if (entry && entry.bridgeSessionId !== tracked.bridgeSessionId) {
+        tracked.bridgeSessionId = entry.bridgeSessionId;
+        this.publish(sessionId, tracked);
+      }
       // /clear gives the same process a new session id without a SessionEnd for the old one.
       const known = tracked.process;
       const replaced =
@@ -280,8 +285,8 @@ export class SessionTracker {
       tracked.cwd = event.cwd;
       tracked.cwdHookTs = event.hookTs;
     }
-    // The id is only in the hook's env while Remote Control is connected, so the newest event decides, absent included.
-    if (event.hookTs >= tracked.bridgeHookTs) {
+    // Claude Code often leaves the id out of the hook env, so an event without it says nothing; the registry clears it on reconcile.
+    if (event.bridgeSessionId && event.hookTs >= tracked.bridgeHookTs) {
       tracked.bridgeSessionId = event.bridgeSessionId;
       tracked.bridgeHookTs = event.hookTs;
     }
@@ -330,6 +335,7 @@ export class SessionTracker {
         tracked.interactive = true;
         tracked.startedAt = entry.startedAt ?? tracked.startedAt;
         tracked.registryName = entry.name;
+        tracked.bridgeSessionId = entry.bridgeSessionId;
         tracked.process = { pid: entry.pid, procStart: entry.procStart };
       } else if (entry || isRegistryReadable(this.options.home)) {
         return;

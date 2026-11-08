@@ -20,6 +20,8 @@ export interface FakeSession {
   status?: "idle" | "busy" | "waiting";
   startedAt?: number;
   statusUpdatedAt?: number;
+  /** Remote Control id Claude Code writes while Remote Control is connected. */
+  bridgeSessionId?: string;
 }
 
 export interface FakeHome {
@@ -73,6 +75,7 @@ export function makeFakeHome(machineId: string): FakeHome {
         statusUpdatedAt: session.statusUpdatedAt ?? 1_700_000_000_000,
         kind: session.kind ?? "interactive",
         name: session.name ?? "made-up",
+        bridgeSessionId: session.bridgeSessionId,
         // Keys Claude Code writes that the agent does not use.
         pidDomain: "darwin",
         peerProtocol: 1,

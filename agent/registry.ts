@@ -20,6 +20,8 @@ const registryEntrySchema = z.object({
   statusUpdatedAt: lenient(z.number()),
   /** `ps -o lstart` text of the session's process; tells a reused pid from the original. */
   procStart: lenient(z.string()),
+  /** Id of the Remote Control session; absent while Remote Control is off. */
+  bridgeSessionId: lenient(z.string()),
 });
 
 export type RegistryEntry = z.infer<typeof registryEntrySchema>;

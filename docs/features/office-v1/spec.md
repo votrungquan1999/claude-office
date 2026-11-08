@@ -88,7 +88,7 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 ### Remote Control
 
 - The details panel shows "Open Remote Control" linking to `https://claude.ai/code/<bridgeSessionId>` (ids containing `/`, `?` or `#` give no link), or "Remote Control is off for this session".
-- The newest event decides; an event without the id clears it.
+- The session registry's `bridgeSessionId` is the source of truth: it is read at start and on every registry check; a hook event that carries the id may set it, but a hook event without it never clears it; the id is cleared only when the registry entry exists and has none.
 - Clicking never navigates by itself; the link lives only in the panel.
 
 ### Staying right when hooks miss things
