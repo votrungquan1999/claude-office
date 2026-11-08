@@ -133,4 +133,42 @@ describe("the hook's field allowlist", () => {
       file_name: "readme.md",
     });
   });
+
+  it("cuts a pasted block out of the prompt before the 500-character cut, so typed words survive, and forwards the paste's head separately", () => {
+    // Given a 2000-character paste in the real tag shape, then typed words
+    const paste = `\n\n<pasted_content id="d296">${"P".repeat(2000)}</pasted_content id="d296">`;
+    const payload = {
+      hook_event_name: "UserPromptSubmit",
+      session_id: "s1",
+      prompt: `${paste} fix the login redirect`,
+    };
+
+    // When the hook reduces it and the agent parses the result
+    const reduced = reduceEvent(payload, 1000, {});
+    const parsed = hookEventSchema.parse(reduced);
+
+    // Then the prompt keeps the typed words and none of the paste, and the head is the first 500 paste characters
+    expect(parsed.prompt).toContain("fix the login redirect");
+    expect(parsed.prompt).not.toContain("PPPP");
+    expect(parsed.prompt).toContain("<pasted_content/>");
+    expect(parsed.paste_head).toBe("P".repeat(500));
+  });
+
+  it("keeps a paste with an inner paste tag of another id as one paste and takes the head from the first non-blank one", () => {
+    // Given a blank paste, then a paste holding an inner tag, then typed words
+    const prompt = `<pasted_content id="d1"> </pasted_content id="d1"><pasted_content id="d2">head <pasted_content id="in">x</pasted_content id="in"> tail</pasted_content id="d2"> fix it`;
+
+    // When the hook reduces it
+    const reduced = reduceEvent(
+      { hook_event_name: "UserPromptSubmit", session_id: "s1", prompt },
+      1000,
+      {},
+    );
+
+    // Then only the typed words remain beside placeholders, and the head is the second paste's start
+    expect(reduced.prompt).toBe("<pasted_content/><pasted_content/> fix it");
+    expect(reduced.paste_head).toBe(
+      'head <pasted_content id="in">x</pasted_content id="in"> tail',
+    );
+  });
 });

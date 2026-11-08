@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { getDb } from "@/db/mongo";
 import { useLiveProcesses } from "./live-process";
 import { useMacHarness } from "./mac-harness";
 import { pause, runHook } from "./run-hook";
@@ -143,4 +144,115 @@ describe("a desk is named after the session", () => {
     // Then the desk has no name any more
     await expect.poll(deskName, { timeout: 5000 }).toBeUndefined();
   }, 30_000);
+
+  it("never shows the paste tag: the typed words beside a paste name the desk, wherever the paste sits", async () => {
+    // Given sessions whose first message holds pastes in the real tag shape
+    const { fake, agent } = await setUpMac("machine-air", "Quan's MacBook Air");
+    const paste = (id: string, size: number) =>
+      `<pasted_content id="${id}">${"P".repeat(size)}</pasted_content id="${id}">`;
+    const prompts: Record<string, string> = {
+      after: `\n\n${paste("d1", 2000)} fix the login redirect`,
+      before: `fix the login redirect \n${paste("d1", 300)}`,
+      both: `fix the login ${paste("d1", 300)} redirect ${paste("d2", 300)}`,
+      several: `${paste("d1", 300)}${paste("d2", 300)} fix the login redirect`,
+    };
+    for (const sessionId of Object.keys(prompts)) {
+      fake.addSession({ sessionId, cwd: `/work/${sessionId}`, name: "" });
+      await runHook(fake.home, {
+        hook_event_name: "UserPromptSubmit",
+        session_id: sessionId,
+        cwd: `/work/${sessionId}`,
+        prompt: prompts[sessionId],
+      });
+    }
+
+    // When the agent publishes them
+    await agent.flush();
+
+    // Then each desk shows the typed words only
+    const names = Object.fromEntries(
+      (await officeSessions()).map((s) => [s.sessionId, s.deskName]),
+    );
+    expect(names).toEqual({
+      after: "fix the login redirect",
+      before: "fix the login redirect",
+      both: "fix the login redirect",
+      several: "fix the login redirect",
+    });
+  });
+
+  it("shows 'Pasted text' for a paste-only message live and from a transcript, lets /rename beat it, and never stores the pasted text", async () => {
+    // Given live paste-only sessions (one renamed) and running sessions found from transcripts
+    const live = await processes.live();
+    const live2 = await processes.live();
+    const user = (text: string) => ({
+      type: "user",
+      cwd: "/work/a",
+      isSidechain: false,
+      message: { role: "user", content: text },
+    });
+    const block = (body: string) =>
+      `<pasted_content id="d9">${body}</pasted_content id="d9">`;
+    const { fake, agent } = await setUpMac(
+      "machine-air",
+      "Quan's MacBook Air",
+      {
+        beforeStart(home) {
+          home.addSession({
+            sessionId: "seed-only",
+            cwd: "/work/a",
+            name: "",
+            pid: live.pid,
+            procStart: live.procStart,
+          });
+          home.addTranscript("seed-only", [user(block("SEEDSECRETBODY"))]);
+          home.addSession({
+            sessionId: "seed-typed",
+            cwd: "/work/a",
+            pid: live2.pid,
+            procStart: live2.procStart,
+          });
+          home.addTranscript("seed-typed", [
+            user(`${block("SEEDSECRETBODY")} fix the login redirect`),
+          ]);
+        },
+      },
+    );
+    fake.addSession({ sessionId: "only", cwd: "/work/only", name: "" });
+    fake.addSession({
+      sessionId: "renamed",
+      cwd: "/work/renamed",
+      name: "My own name",
+    });
+    for (const sessionId of ["only", "renamed"]) {
+      await runHook(fake.home, {
+        hook_event_name: "UserPromptSubmit",
+        session_id: sessionId,
+        cwd: `/work/${sessionId}`,
+        prompt: block("LIVESECRETBODY"),
+      });
+    }
+
+    // When the agent publishes them
+    await agent.flush();
+
+    // Then paste-only desks show the placeholder or the owner's name, and the typed words win in a transcript
+    const names = Object.fromEntries(
+      (await officeSessions()).map((s) => [s.sessionId, s.deskName]),
+    );
+    expect(names).toEqual({
+      only: "Pasted text",
+      renamed: "My own name",
+      "seed-only": "Pasted text",
+      "seed-typed": "fix the login redirect",
+    });
+
+    // And no pasted text is anywhere in the database
+    const db = await getDb();
+    const dump: string[] = [];
+    for (const { name } of await db.listCollections().toArray()) {
+      dump.push(JSON.stringify(await db.collection(name).find({}).toArray()));
+    }
+    expect(dump.join("\n")).not.toMatch(/LIVESECRETBODY|SEEDSECRETBODY/);
+  }, 60_000);
 });

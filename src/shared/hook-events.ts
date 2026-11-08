@@ -33,6 +33,8 @@ export const hookEventSchema = z.object({
   agent_id: z.string().optional(),
   agent_type: z.string().optional(),
   prompt: z.string().max(500).optional(),
+  /** Start of a pasted block, used only to name a paste-only session; never stored. */
+  paste_head: z.string().max(500).optional(),
   stop_hook_active: z.boolean().optional(),
   last_assistant_message: z.string().max(1000).optional(),
   session_title: z.string().optional(),

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { firstRealMessage, resolveDeskName } from "./desk-name";
+import { firstRealMessage, isPasteOnly, resolveDeskName } from "./desk-name";
 
 describe("desk name", () => {
   it("prefers the card summary, then the card title, then the first message, then the registry name, skipping blanks", () => {
@@ -77,5 +77,45 @@ describe("desk name", () => {
     expect(firstRealMessage("<a>x</a>  <b>y</b>")).toBeUndefined();
     // the rest is judged by the same rules as any message
     expect(firstRealMessage("<a>x</a> /clear")).toBeUndefined();
+  });
+
+  it("names a paste-only message 'Pasted text', and lets the owner's /rename beat that placeholder but not a card", () => {
+    const paste =
+      '<pasted_content id="d296">\n\nsome long text</pasted_content id="d296">';
+    // a paste alone, an unclosed short paste, and the hook's body-less placeholder
+    for (const only of [
+      paste,
+      `\n\n${paste}  `,
+      '<pasted_content id="d1">cut off',
+      "<pasted_content/>",
+    ]) {
+      expect(firstRealMessage(only), only).toBe("Pasted text");
+      expect(isPasteOnly(only), only).toBe(true);
+    }
+    // typed words, a command after the paste, and ordinary tags are not paste-only
+    expect(isPasteOnly(`${paste} hello`)).toBe(false);
+    expect(firstRealMessage(`${paste} /clear`)).toBeUndefined();
+    expect(isPasteOnly("<a>x</a> <b>y</b>")).toBe(false);
+    // the placeholder yields to /rename, never to nothing, and a card still wins
+    expect(
+      resolveDeskName({ firstMessage: "Pasted text", registryName: "My name" }),
+    ).toBe("My name");
+    expect(resolveDeskName({ firstMessage: "Pasted text" })).toBe(
+      "Pasted text",
+    );
+    expect(
+      resolveDeskName({
+        cardSummary: "Card",
+        firstMessage: "Pasted text",
+        registryName: "My name",
+      }),
+    ).toBe("Card");
+  });
+
+  it("keeps an inner paste tag with another id inside its paste, so no typed words leak out of it", () => {
+    const nested =
+      '<pasted_content id="outer">start <pasted_content id="inner">x</pasted_content id="inner"> end</pasted_content id="outer">';
+    expect(isPasteOnly(nested)).toBe(true);
+    expect(firstRealMessage(`${nested} fix it`)).toBe("fix it");
   });
 });

@@ -13,6 +13,10 @@ const PROMPT_MAX = 500;
 const ANSWER_TAIL_MAX = 1000;
 const HARD_EXIT_MS = 1500;
 
+// A paste block as Claude Code writes it: the close tag repeats the open tag's attributes; an unclosed one runs to the end.
+const PASTE_BLOCK =
+  /<pasted_content\b([^>]*)>([\s\S]*?)(?:<\/pasted_content\1>|$)/g;
+
 const STRING_FIELDS = [
   "hook_event_name",
   "session_id",
@@ -25,6 +29,23 @@ const STRING_FIELDS = [
   "agent_type",
   "session_title",
 ];
+
+/**
+ * Replaces each paste block with a fixed placeholder so the typed words survive the length cut.
+ * @param {string} prompt - The raw prompt.
+ * @returns {{ prompt: string, pasteHead: string | undefined }} The prompt without paste bodies, and the start of the first non-blank paste.
+ */
+function stripPastes(prompt) {
+  if (!prompt.includes("<pasted_content"))
+    return { prompt, pasteHead: undefined };
+  let pasteHead;
+  const stripped = prompt.replace(PASTE_BLOCK, (_block, _attributes, body) => {
+    // Same unit as the agent schema's max length (UTF-16), so the event is never rejected.
+    pasteHead ??= body.trim() ? body.trim().slice(0, PROMPT_MAX) : undefined;
+    return "<pasted_content/>";
+  });
+  return { prompt: stripped, pasteHead };
+}
 
 /**
  * Keeps only what step text and repo tags need from a tool's input; command text, file contents and the like are dropped.
@@ -108,8 +129,11 @@ export function reduceEvent(data, hookTs, env) {
     event.duration_ms = data.duration_ms;
   if (typeof data.is_interrupt === "boolean")
     event.is_interrupt = data.is_interrupt;
-  if (typeof data.prompt === "string")
-    event.prompt = data.prompt.slice(0, PROMPT_MAX);
+  if (typeof data.prompt === "string") {
+    const { prompt, pasteHead } = stripPastes(data.prompt);
+    event.prompt = prompt.slice(0, PROMPT_MAX);
+    if (pasteHead) event.paste_head = pasteHead;
+  }
   // Stop only: the end of the turn's last answer says whether it asked the owner something.
   if (data.hook_event_name === "Stop") {
     if (typeof data.stop_hook_active === "boolean")
