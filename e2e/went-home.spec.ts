@@ -81,6 +81,10 @@ test("the went-home list shows today's prompted departures only, opens details o
     await expect(panel).toContainText("Light the lantern");
     await expect(panel.getByTestId("folder")).toHaveText("~/projects/today");
     await expect(panel.getByTestId("state-pill")).toHaveText("Went home");
+    await expect(panel.getByTestId("state-band")).toHaveCSS(
+      "background-color",
+      "rgb(90, 90, 106)",
+    );
     await expect(panel).not.toContainText("Remote Control");
     await expect(panel.getByTestId("remote-control-link")).toHaveCount(0);
 

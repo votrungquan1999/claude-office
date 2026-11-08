@@ -93,6 +93,10 @@ test("employees of a Mac that stopped sending heartbeats are marked offline, and
     await expect(page.getByTestId("details-panel")).toContainText(
       "Mac offline",
     );
+    await expect(page.getByTestId("state-band")).toHaveCSS(
+      "background-color",
+      "rgb(90, 90, 106)",
+    );
   } finally {
     await db.collection("sessions").deleteMany({});
     await db.collection("machines").deleteMany({});

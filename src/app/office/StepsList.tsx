@@ -11,7 +11,6 @@ interface StepLine {
   key: string;
   text: string;
   note: string;
-  running: boolean;
   muted: boolean;
 }
 
@@ -55,9 +54,9 @@ function mergeById(base: StepDto[], incoming: StepDto[]): StepDto[] {
 }
 
 /**
- * The steps of the selected session, newest first, with the running ones on top.
+ * The finished steps of the selected session, newest first.
  * @param props - The selected session.
- * @returns The list with its "Show older steps" button below it.
+ * @returns The list with its "More steps" button below it.
  */
 export function StepsList({ session }: StepsListProps) {
   const recent = session.recentSteps ?? [];
@@ -65,7 +64,7 @@ export function StepsList({ session }: StepsListProps) {
   // Steps seen in the live list before newer ones pushed them out of it.
   const [kept, setKept] = useState<StepDto[]>([]);
   const [failed, setFailed] = useState(false);
-  // Until "Show older steps" succeeds only the last RECENT_STEPS show, however many the list has seen.
+  // Until "More steps" succeeds only the last RECENT_STEPS show, however many the list has seen.
   const [expanded, setExpanded] = useState(false);
   // undefined: not asked yet (a full recent list may have more behind it); null: nothing more.
   const [next, setNext] = useState<string | null | undefined>(undefined);
@@ -109,15 +108,8 @@ export function StepsList({ session }: StepsListProps) {
     (step) => Date.parse(step.startedAt) >= visibleSince,
   );
   const shown = expanded ? inWindow : inWindow.slice(-RECENT_STEPS);
-  // Newest first: the running steps, then finished steps from the latest back.
+  // Newest first; running steps are shown in the card's box above.
   const lines: StepLine[] = [
-    ...(session.runningSteps ?? []).map((running, index) => ({
-      key: `running-${index}-${running.startedAt}-${running.text}`,
-      text: running.text,
-      note: "running",
-      running: true,
-      muted: false,
-    })),
     ...shown.toReversed().map((step) => ({
       key: step.id,
       text: step.text,
@@ -127,33 +119,28 @@ export function StepsList({ session }: StepsListProps) {
       ]
         .filter(Boolean)
         .join(" · "),
-      running: false,
       muted: step.status !== "ok",
     })),
   ];
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col gap-2">
-      <h3 className="text-xs tracking-widest text-text-muted uppercase">
+    <section className="flex min-h-0 flex-1 flex-col gap-2 [@media(max-height:500px)]:flex-none">
+      <h3 className="text-xs tracking-widest text-text-muted uppercase [@media(max-height:500px)]:hidden">
         Recent steps
       </h3>
       {failed && <p role="alert">Could not load older steps. Try again.</p>}
-      {lines.length === 0 && <p className="text-text-muted">No steps yet</p>}
+      {lines.length === 0 && (
+        <p className="text-text-muted">No finished steps yet</p>
+      )}
       <ul
         data-testid="steps-list"
-        className="flex min-h-0 flex-col gap-1 overflow-y-auto"
+        className="flex min-h-0 flex-col gap-1 overflow-y-auto [@media(max-height:500px)]:overflow-visible"
       >
         {lines.map((line) => (
           <li
             key={line.key}
-            className={`flex items-baseline gap-2 leading-tight ${line.muted ? "text-text-muted" : ""}`}
+            className={`flex items-baseline justify-between gap-2 leading-tight ${line.muted ? "text-text-muted" : ""}`}
           >
-            <span
-              aria-hidden
-              className={`shrink-0 ${line.running ? "text-status-active" : "invisible"}`}
-            >
-              ●
-            </span>
             <span
               data-testid="step-text"
               title={line.text}
@@ -163,7 +150,7 @@ export function StepsList({ session }: StepsListProps) {
             </span>
             <span
               data-testid="step-note"
-              className={`shrink-0 text-xs tabular-nums ${line.running ? "text-status-active" : "text-text-muted"}`}
+              className="shrink-0 text-xs text-text-muted tabular-nums"
             >
               {line.note}
             </span>
@@ -174,9 +161,9 @@ export function StepsList({ session }: StepsListProps) {
         <button
           type="button"
           onClick={() => void showMore()}
-          className="border-2 border-border bg-btn-bg px-2 py-1 hover:bg-btn-hover"
+          className="shrink-0 border-2 border-dashed border-border px-2 py-1 text-xs uppercase hover:bg-btn-hover"
         >
-          Show older steps
+          More steps <span aria-hidden>▼</span>
         </button>
       )}
     </section>

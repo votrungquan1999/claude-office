@@ -177,6 +177,8 @@ export function OfficeView() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const drawerButtonRef = useRef<HTMLButtonElement>(null);
   const [now, setNow] = useState(() => new Date());
+  // How far the server's clock is ahead of this browser's, from the latest answer.
+  const [serverOffsetMs, setServerOffsetMs] = useState(0);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
   const panRef = useRef({ x: 0, y: 0 });
@@ -289,6 +291,7 @@ export function OfficeView() {
 
   /** Folds one answer into the sessions and the scene. */
   const onAnswer = (answer: ChangesResponse, firstLoad: boolean) => {
+    setServerOffsetMs(Date.parse(answer.serverNow) - Date.now());
     commit(
       {
         sessions: mergeSessions(
@@ -448,12 +451,16 @@ export function OfficeView() {
     { sessions, machines, folders, overrides, offline: offlineIds },
     now,
   );
-  const tagFilter = (
-    <TagFilter
-      view={tagFilterOf(sessions, overview.tree.companyOf, companyKey, tagPick)}
-      onSelect={selectTag}
-    />
+  const tagFilterView = tagFilterOf(
+    sessions,
+    overview.tree.companyOf,
+    companyKey,
+    tagPick,
   );
+  const tagFilter = <TagFilter view={tagFilterView} onSelect={selectTag} />;
+  const selectedSession = selectedKey
+    ? (sessions.get(selectedKey) ?? null)
+    : null;
   const departures = todaysDepartures([...sessions.values()], now).filter(
     (session) => overview.tree.companyOf(session)?.companyKey === companyKey,
   );
@@ -541,7 +548,14 @@ export function OfficeView() {
           />
         )}
         <DetailsPanel
-          session={selectedKey ? (sessions.get(selectedKey) ?? null) : null}
+          session={selectedSession}
+          serverOffsetMs={serverOffsetMs}
+          project={
+            selectedSession
+              ? overview.tree.companyOf(selectedSession)?.project
+              : undefined
+          }
+          tagLabels={tagFilterView.labels}
           offlineMachineIds={offlineIds}
           sheet={isMobile}
           onClose={() => {

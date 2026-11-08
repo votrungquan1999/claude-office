@@ -1,8 +1,13 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionDto } from "@/shared/session";
-import type { SessionState } from "@/shared/session-state";
 import { DetailsPanel } from "./DetailsPanel";
 
 function session(extra: Partial<SessionDto> = {}): SessionDto {
@@ -18,10 +23,19 @@ function session(extra: Partial<SessionDto> = {}): SessionDto {
   };
 }
 
-function open(s: SessionDto, offline: string[] = []) {
+function open(
+  s: SessionDto,
+  offline: string[] = [],
+  project?: string,
+  serverOffsetMs?: number,
+  tagLabels: ReadonlyMap<string, string> = new Map(),
+) {
   render(
     <DetailsPanel
       session={s}
+      project={project}
+      tagLabels={tagLabels}
+      serverOffsetMs={serverOffsetMs}
       offlineMachineIds={new Set(offline)}
       sheet={false}
       onClose={vi.fn()}
@@ -30,32 +44,239 @@ function open(s: SessionDto, offline: string[] = []) {
 }
 
 describe("the details panel", () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+  });
 
-  it("shows a state pill worded for the state, and a grey 'Mac offline' pill when the Mac is offline", () => {
-    // Given one panel per state
-    const states: Array<[SessionState, string]> = [
-      ["working", "Working"],
-      ["thinking", "Thinking"],
-      ["needsPermission", "Needs permission"],
-      ["waitingForYou", "Waiting for you"],
-      ["idle", "Idle"],
+  it("shows a state band worded for each of the seven states, in the room's data-state, and 'Mac offline' over any state when the Mac is offline", () => {
+    // Given one panel per state, an offline Mac and a session that went home
+    const cases: Array<[string, SessionDto, boolean, string, string]> = [
+      ["working", session({ state: "working" }), false, "Working", "working"],
+      [
+        "thinking",
+        session({ state: "thinking" }),
+        false,
+        "Thinking",
+        "thinking",
+      ],
+      [
+        "needsPermission",
+        session({ state: "needsPermission" }),
+        false,
+        "Needs you",
+        "needsPermission",
+      ],
+      [
+        "waitingForYou",
+        session({ state: "waitingForYou" }),
+        false,
+        "Waiting for you",
+        "waitingForYou",
+      ],
+      ["idle", session({ state: "idle" }), false, "Idle", "idle"],
+      [
+        "offline",
+        session({ state: "working" }),
+        true,
+        "Mac offline",
+        "offline",
+      ],
+      [
+        "wentHome",
+        session({ state: "wentHome" }),
+        false,
+        "Went home",
+        "wentHome",
+      ],
     ];
-    const shown = states.map(([state]) => {
-      open(session({ state }));
-      const text = screen.getByTestId("state-pill").textContent;
+    const shown = cases.map(([, s, offline]) => {
+      open(s, offline ? ["m1"] : []);
+      const seen = {
+        text: screen.getByTestId("state-pill").textContent,
+        state: screen.getByTestId("state-band").getAttribute("data-state"),
+      };
       cleanup();
-      return text;
+      return seen;
     });
-    // And one for a session whose Mac is offline
-    open(session(), ["m1"]);
 
-    // Then each pill names its state, and the offline Mac overrides it
-    expect(shown).toEqual(states.map(([, text]) => text));
-    expect(screen.getByTestId("state-pill").textContent).toBe("Mac offline");
-    expect(screen.getByTestId("state-pill").getAttribute("data-state")).toBe(
-      "offline",
+    // Then each band names its state and carries the matching data-state
+    expect(shown).toEqual(
+      cases.map(([, , , text, state]) => ({ text, state })),
     );
+  });
+
+  it("shows the project under the band when there is one, and at most 3 repo tags with a +N for the rest", () => {
+    // Given a session with a project and five tags
+    const tags = ["a", "b", "c", "d", "e"].map((name) => ({
+      name,
+      key: `k${name}`,
+    }));
+    open(session({ tags }), [], "claude-office");
+
+    // Then the project shows, three tags show and the rest collapse into "+2"
+    expect(screen.getByTestId("project").textContent).toBe("claude-office");
+    expect(screen.getAllByTestId("tag").map((el) => el.textContent)).toEqual([
+      "#a",
+      "#b",
+      "#c",
+    ]);
+    expect(screen.getByTestId("tags-more").textContent).toBe("+2");
+    cleanup();
+
+    // And without a project or tags neither line shows
+    open(session());
+    expect(screen.queryByTestId("project")).toBeNull();
+    expect(screen.queryByTestId("tag")).toBeNull();
+    expect(screen.queryByTestId("tags-more")).toBeNull();
+  });
+
+  it("writes a tag as the company's label map says, so the card reads like the chips", () => {
+    // Given a session with one tag the company wrote as parent/name, and one the map does not know
+    const tags = [
+      { name: "api", key: "1111aaaaaaaa", parent: "personal" },
+      { name: "web", key: "2222bbbbbbbb" },
+    ];
+
+    // When the card opens with the company's label map
+    open(
+      session({ tags }),
+      [],
+      undefined,
+      undefined,
+      new Map([["1111aaaaaaaa", "personal/api"]]),
+    );
+
+    // Then the mapped tag reads parent/name and the other keeps its name
+    expect(screen.getAllByTestId("tag").map((el) => el.textContent)).toEqual([
+      "#personal/api",
+      "#web",
+    ]);
+  });
+
+  it("shows the running step in a terminal box with its time, ticking once a second", () => {
+    // Given a working session whose step started 12 seconds ago
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-09T10:00:00Z"));
+    open(
+      session({
+        state: "working",
+        runningSteps: [
+          {
+            text: "Inspect overlay label logic",
+            startedAt: "2026-11-09T09:59:48Z",
+          },
+        ],
+      }),
+    );
+
+    // Then the box shows the step and 12s
+    expect(screen.getByTestId("terminal-text").textContent).toBe(
+      "> Inspect overlay label logic",
+    );
+    expect(screen.getByTestId("terminal-time").textContent).toBe("12s");
+
+    // When a second passes
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+
+    // Then the time moves on
+    expect(screen.getByTestId("terminal-time").textContent).toBe("13s");
+  });
+
+  it("reads the time against the server's clock and never shows a negative time", () => {
+    // Given a step that started at 10:00:50 and a server clock 60 s ahead of this browser's
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-09T10:00:00Z"));
+    const step = (startedAt: string) =>
+      session({
+        state: "working",
+        runningSteps: [{ text: "Run tests", startedAt }],
+      });
+    open(step("2026-11-09T10:00:50Z"), [], undefined, 60_000);
+
+    // Then the time counts from the server's now (10:01:00), not the browser's
+    expect(screen.getByTestId("terminal-time").textContent).toBe("10s");
+    cleanup();
+
+    // And a step stamped in the future reads 0s
+    open(step("2026-11-09T10:05:00Z"));
+    expect(screen.getByTestId("terminal-time").textContent).toBe("0s");
+  });
+
+  it("words the terminal box for thinking, waiting, idle and working without a step, and hides it when the session went home or its Mac is offline", () => {
+    const text = () =>
+      screen.queryByTestId("terminal-text")?.textContent ?? null;
+    const check = (s: SessionDto, offline: string[] = []) => {
+      open(s, offline);
+      const seen = text();
+      cleanup();
+      return seen;
+    };
+
+    // Then each state words its box
+    expect(check(session({ state: "working" }))).toBe("> working…");
+    expect(check(session({ state: "thinking" }))).toBe("> thinking…");
+    expect(check(session({ state: "waitingForYou" }))).toBe(
+      "> waiting for your reply",
+    );
+    expect(
+      check(
+        session({
+          state: "idle",
+          recentSteps: [
+            {
+              id: "1",
+              text: "Old step",
+              startedAt: "2026-11-09T09:00:00Z",
+              status: "ok",
+            },
+            {
+              id: "2",
+              text: "Last step",
+              startedAt: "2026-11-09T09:01:00Z",
+              status: "ok",
+            },
+          ],
+        }),
+      ),
+    ).toBe("> Last step");
+    expect(check(session({ state: "idle" }))).toBeNull();
+    expect(check(session({ state: "wentHome" }))).toBeNull();
+    expect(check(session({ state: "working" }), ["m1"])).toBeNull();
+  });
+
+  it("shows what a session wants to run only when exactly one step runs, and the empty box otherwise", () => {
+    const running = (...texts: string[]) =>
+      session({
+        state: "needsPermission",
+        runningSteps: texts.map((text) => ({
+          text,
+          startedAt: "2026-11-09T09:59:48Z",
+        })),
+      });
+
+    // Given one running step
+    open(running("Run the e2e suite"));
+    expect(screen.getByTestId("wants-to-run").textContent).toContain(
+      "Wants to run",
+    );
+    expect(screen.getByTestId("wants-to-run-text").textContent).toBe(
+      "Run the e2e suite",
+    );
+    cleanup();
+
+    // And two running steps, so nothing says which one asks
+    open(running("Read a.ts", "Run the e2e suite"));
+    expect(screen.getByTestId("wants-to-run")).toBeTruthy();
+    expect(screen.queryByTestId("wants-to-run-text")).toBeNull();
+    cleanup();
+
+    // And none (a notification without a tool)
+    open(running());
+    expect(screen.getByTestId("wants-to-run")).toBeTruthy();
+    expect(screen.queryByTestId("wants-to-run-text")).toBeNull();
   });
 
   it("writes the home folder as ~, cuts a long path in the middle, and keeps the full path in the title", () => {
@@ -78,13 +299,23 @@ describe("the details panel", () => {
     expect(screen.getByTestId("folder").textContent).toBe("/srv/app");
   });
 
-  it("offers 'Open in Remote Control' as a new-tab link when there is one, otherwise a muted 'Remote Control off', and neither for a session that went home", () => {
+  it("offers 'Open Remote Control' as a new-tab link when there is one, 'Approve in Remote Control' when it needs permission, keeps it on a Mac-offline card, otherwise a muted 'Remote Control off', and neither for a session that went home", () => {
     // Given a session with a Remote Control id
     open(session({ bridgeSessionId: "cse_abc" }));
-    const link = screen.getByRole("link", { name: /Open in Remote Control/ });
-    expect(link.textContent).toBe("Open in Remote Control ↗");
+    const link = screen.getByRole("link", { name: /Open Remote Control/ });
+    expect(link.textContent).toBe("Open Remote Control ↗");
     expect(link.getAttribute("href")).toBe("https://claude.ai/code/cse_abc");
     expect(link.getAttribute("target")).toBe("_blank");
+    cleanup();
+
+    // And one that needs permission, and one whose Mac is offline
+    open(session({ state: "needsPermission", bridgeSessionId: "cse_abc" }));
+    expect(screen.getByRole("link").textContent).toBe(
+      "Approve in Remote Control ↗",
+    );
+    cleanup();
+    open(session({ bridgeSessionId: "cse_abc" }), ["m1"]);
+    expect(screen.getByRole("link").textContent).toBe("Open Remote Control ↗");
     cleanup();
 
     // And one without
@@ -99,12 +330,13 @@ describe("the details panel", () => {
     expect(screen.queryByText(/Remote Control/)).toBeNull();
   });
 
-  it("says 'No steps yet' for a session without steps and closes through the × button", () => {
+  it("says 'No finished steps yet' for a session without steps and closes through the × button", () => {
     // Given a session with no steps
     const onClose = vi.fn();
     render(
       <DetailsPanel
         session={session()}
+        tagLabels={new Map()}
         offlineMachineIds={new Set()}
         sheet={false}
         onClose={onClose}
@@ -112,7 +344,7 @@ describe("the details panel", () => {
     );
 
     // Then the empty state shows, and the close button works
-    expect(screen.getByText("No steps yet")).toBeTruthy();
+    expect(screen.getByText("No finished steps yet")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });

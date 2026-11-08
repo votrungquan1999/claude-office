@@ -107,6 +107,90 @@ async function openOffice(page: Page) {
   await waitForEmployees(page, 3);
 }
 
+/** Makes session "one" a busy permission request: Remote Control, a project below the company folder, four tags, a running step and five finished steps. */
+async function makeCardBusy(sessions: Collection) {
+  await sessions.updateOne(
+    { sessionId: "one" },
+    {
+      $set: {
+        state: "needsPermission",
+        bridgeSessionId: "cse_abc",
+        startCwd: "/Users/q/projects/a-really-long-folder-name-for-session-one",
+        tags: ["alpha", "bravo", "charlie", "delta"].map((name) => ({
+          name,
+          key: `key-${name}`,
+        })),
+        runningSteps: [
+          { text: "Run the whole e2e suite", startedAt: new Date() },
+        ],
+        recentSteps: Array.from({ length: 5 }, (_, i) => ({
+          id: `step-${i}`,
+          machineId: "m1",
+          sessionId: "one",
+          text: `Finished step ${i + 1}`,
+          startedAt: new Date(Date.now() - (i + 1) * 60_000),
+          durationMs: 100,
+          status: "ok",
+          expireAt: new Date(Date.now() + 86_400_000),
+        })),
+      },
+    },
+  );
+}
+
+/**
+ * Opens the busy card on a phone and checks the sheet sits inside the screen with its button in view.
+ * @param page - The office page.
+ * @param sideways - True on a short screen, where the sheet scrolls as a whole and every step is reachable.
+ */
+async function expectSheetFits(page: Page, sideways = false) {
+  await page.getByTestId("agent-card").filter({ hasText: "one:" }).tap();
+  const panel = page.getByTestId("details-panel");
+  await expect(panel.getByTestId("wants-to-run")).toBeVisible();
+  const screen = page.viewportSize();
+  const box = await panel.boundingBox();
+  const button = await panel.getByTestId("remote-control-link").boundingBox();
+  expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(
+    screen?.height ?? 0,
+  );
+  expect(box?.y ?? -1).toBeGreaterThanOrEqual(0);
+  expect(button?.y ?? -1).toBeGreaterThanOrEqual(box?.y ?? 0);
+  expect((button?.y ?? 0) + (button?.height ?? 0)).toBeLessThanOrEqual(
+    (box?.y ?? 0) + (box?.height ?? 0),
+  );
+  if (sideways) {
+    // The sheet scrolls as a whole, and each of the five steps can be scrolled to and read at full height
+    expect(
+      await panel.evaluate((el) => el.scrollHeight > el.clientHeight),
+    ).toBe(true);
+    const rows = panel.getByTestId("step-text");
+    await expect(rows).toHaveCount(5);
+    for (const row of await rows.all()) {
+      await row.scrollIntoViewIfNeeded();
+      await expect(row).toBeVisible();
+      const rowBox = await row.boundingBox();
+      const sheetBox = await panel.boundingBox();
+      expect(rowBox?.height ?? 0).toBeGreaterThanOrEqual(10);
+      expect(rowBox?.y ?? 0).toBeGreaterThanOrEqual(sheetBox?.y ?? 0);
+      expect((rowBox?.y ?? 0) + (rowBox?.height ?? 0)).toBeLessThanOrEqual(
+        (sheetBox?.y ?? 0) + (sheetBox?.height ?? 0),
+      );
+    }
+  } else {
+    // The steps list keeps some height
+    const list = await panel.getByTestId("steps-list").boundingBox();
+    expect(list?.height ?? 0).toBeGreaterThan(0);
+  }
+  // And "More steps" stays above the footer
+  const more = await panel
+    .getByRole("button", { name: "More steps" })
+    .boundingBox();
+  const footer = await panel.getByTestId("folder").boundingBox();
+  expect((more?.y ?? 0) + (more?.height ?? 0)).toBeLessThanOrEqual(
+    footer?.y ?? 0,
+  );
+}
+
 test.describe("the office on a phone", () => {
   let client: MongoClient;
   let sessions: Collection;
@@ -121,6 +205,17 @@ test.describe("the office on a phone", () => {
   test.afterEach(async () => {
     await sessions.deleteMany({});
     await client.close();
+  });
+
+  test("the details sheet of a busy permission request fits upright with its button in view", async ({
+    page,
+  }) => {
+    // Given a session with Remote Control, a project, four tags and a running step
+    await makeCardBusy(sessions);
+    await openOffice(page);
+
+    // Then its sheet fits the screen and shows the button
+    await expectSheetFits(page);
   });
 
   test("fits the screen with long names, shows the whole office, and lists every session in the card bar", async ({
@@ -373,6 +468,17 @@ test.describe("the office on a sideways phone", () => {
   test.afterEach(async () => {
     await sessions.deleteMany({});
     await client.close();
+  });
+
+  test("the details sheet of a busy permission request fits sideways with its button in view", async ({
+    page,
+  }) => {
+    // Given a session with Remote Control, a project, four tags and a running step
+    await makeCardBusy(sessions);
+    await openOffice(page);
+
+    // Then its sheet fits the screen and shows the button
+    await expectSheetFits(page, true);
   });
 
   test("folds the company strip into one button over the canvas that opens the drawer, and rotating back restores the strip with the drawer still open", async ({

@@ -58,8 +58,8 @@ describe("the steps list", () => {
     vi.unstubAllGlobals();
   });
 
-  it("lists the running step first, then finished steps newest first, with the older-steps button after the list", () => {
-    // Given a session with five finished steps and one running step
+  it("lists finished steps newest first and leaves the running step to the card, with the older-steps button after the list", () => {
+    // Given a session with five finished steps and one running step (shown in the card, not here)
     vi.stubGlobal("fetch", vi.fn());
     const base = session([5, 6, 7, 8, 9].map((n) => step(n)));
     render(
@@ -73,26 +73,19 @@ describe("the steps list", () => {
       />,
     );
 
-    // Then the running step leads, the rest run newest to oldest, and the button sits below them
+    // Then only finished steps show, newest to oldest, and the button sits below them
     expect(
       screen.getAllByTestId("step-text").map((el) => el.textContent),
-    ).toEqual([
-      "Read live.ts",
-      "Step 9",
-      "Step 8",
-      "Step 7",
-      "Step 6",
-      "Step 5",
-    ]);
+    ).toEqual(["Step 9", "Step 8", "Step 7", "Step 6", "Step 5"]);
     const list = screen.getByTestId("steps-list");
-    const button = screen.getByRole("button", { name: "Show older steps" });
+    const button = screen.getByRole("button", { name: "More steps" });
     expect(
       list.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 
   it("says when older steps could not be loaded and loads them on a retry", async () => {
-    // Given a full list whose first "Show older steps" request fails and second succeeds
+    // Given a full list whose first "More steps" request fails and second succeeds
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(new Response("nope", { status: 500 }))
@@ -103,7 +96,7 @@ describe("the steps list", () => {
     );
 
     // When the owner asks for more and it fails
-    fireEvent.click(screen.getByRole("button", { name: "Show older steps" }));
+    fireEvent.click(screen.getByRole("button", { name: "More steps" }));
 
     // Then an error shows, the button stays, and the list is unchanged
     expect((await screen.findByRole("alert")).textContent).toContain(
@@ -112,7 +105,7 @@ describe("the steps list", () => {
     expect(listed()).toHaveLength(5);
 
     // When the owner tries again
-    fireEvent.click(screen.getByRole("button", { name: "Show older steps" }));
+    fireEvent.click(screen.getByRole("button", { name: "More steps" }));
 
     // Then the older steps appear and the error is gone
     expect(await screen.findByText(/Step 2/)).toBeTruthy();
@@ -128,7 +121,7 @@ describe("the steps list", () => {
     );
     const live = [5, 6, 7, 8, 9].map((n) => step(n));
     const { rerender } = render(<StepsList session={session(live)} />);
-    fireEvent.click(screen.getByRole("button", { name: "Show older steps" }));
+    fireEvent.click(screen.getByRole("button", { name: "More steps" }));
     await screen.findByText(/Step 3/);
 
     // When a new step arrives (step 5 leaves the live list) and step 9 gets a new duration
@@ -169,12 +162,10 @@ describe("the steps list", () => {
       <StepsList session={session([6, 7, 8, 9, 10].map((n) => step(n)))} />,
     );
 
-    // Then the list still shows 5 steps and "Show older steps" is still offered
+    // Then the list still shows 5 steps and "More steps" is still offered
     expect(listed()).toHaveLength(5);
     expect(listed()[4]).toContain("Step 6");
-    expect(
-      screen.getByRole("button", { name: "Show older steps" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "More steps" })).toBeTruthy();
   });
 
   it("shows a run time below zero as 0 ms and hides steps older than a week, including ones loaded by 'Show more'", async () => {
@@ -197,7 +188,7 @@ describe("the steps list", () => {
         ])}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Show older steps" }));
+    fireEvent.click(screen.getByRole("button", { name: "More steps" }));
     await screen.findByText(/Step 3/);
 
     // Then only steps from the last week show, and the negative time reads 0 ms

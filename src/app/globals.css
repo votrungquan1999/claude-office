@@ -41,6 +41,7 @@
   --color-room-permission: #c4772c;
   --color-room-waiting-for-you: #e0b020;
   --color-room-idle: #4fa84a;
+  --color-approve: #ffe08a;
   --color-pill-offline: #5a5a6a;
 
   /* Shadow */
@@ -93,6 +94,7 @@
   --color-room-permission: var(--color-room-permission);
   --color-room-waiting-for-you: var(--color-room-waiting-for-you);
   --color-room-idle: var(--color-room-idle);
+  --color-approve: var(--color-approve);
   --color-pill-offline: var(--color-pill-offline);
 
   /* Shadow */
