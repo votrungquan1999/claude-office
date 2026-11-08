@@ -186,4 +186,136 @@ describe("an agent that starts while sessions are already running", () => {
       new Date(lastSeenAt.getTime() + 7 * 86_400_000),
     );
   }, 60_000);
+
+  it("shows a session that had already finished when the agent started in Waiting for you or Idle, read from its transcript tail, and keeps it after the first registry check", async () => {
+    // Given a transcript line for each kind of record a finished turn leaves behind
+    const text = (words: string) => ({
+      type: "assistant",
+      cwd: "/work/a",
+      message: { content: [{ type: "text", text: words }] },
+    });
+    const summary = (hasOutput: boolean) => ({
+      type: "system",
+      subtype: "stop_hook_summary",
+      hasOutput,
+    });
+    const stopHook = {
+      type: "attachment",
+      attachment: { type: "hook_success", hookEvent: "Stop" },
+    };
+    const thinking = {
+      type: "assistant",
+      message: { content: [{ type: "thinking", thinking: "..." }] },
+    };
+    const toolCall = {
+      type: "assistant",
+      message: {
+        content: [{ type: "tool_use", name: "Bash", input: { command: "ls" } }],
+      },
+    };
+    const toolResult = {
+      type: "user",
+      message: { content: [{ type: "tool_result", tool_use_id: "t1" }] },
+    };
+    /** A turn ended by a Stop hook that made the session add a follow-up. */
+    const withFollowUp = (first: string, second: string) => [
+      user("do it"),
+      text(first),
+      stopHook,
+      summary(true),
+      thinking,
+      text(second),
+      summary(false),
+    ];
+    const transcripts: Record<string, Array<object | string>> = {
+      "asked-then-plain-follow-up": withFollowUp(
+        "Done. Want me to push?",
+        "No spec update needed.",
+      ),
+      "plain-then-asking-follow-up": withFollowUp(
+        "Done.",
+        "Should I update the spec?",
+      ),
+      "plain-ending": [user("do it"), text("All done."), summary(false)],
+      garbled: ["{not json", "also not json"],
+      "oversized-last-record": [
+        user("do it"),
+        text("Want me to push?"),
+        text(`${"x".repeat(100_000)} All done.`),
+      ],
+      "asked-then-interrupted": [
+        user("do it"),
+        text("Want me to push?"),
+        user("[Request interrupted by user]"),
+      ],
+      "asked-but-busy": [user("do it"), text("Want me to push?")],
+      "asked-no-hooks": [user("do it"), text("Want me to push?")],
+      "asked-then-tool": [user("do it"), text("Want me to push?"), toolCall],
+      "asked-then-tool-result": [
+        user("do it"),
+        text("Want me to push?"),
+        toolCall,
+        toolResult,
+      ],
+      "asked-then-background-turn-without-question": [
+        user("do it"),
+        text("Should I merge it?"),
+        summary(false),
+        user("<task-notification>done</task-notification>", {
+          origin: { kind: "task-notification" },
+        }),
+        text("Build finished."),
+        summary(false),
+      ],
+      "asked-then-api-error": [
+        user("do it"),
+        text("Want me to push?"),
+        { ...text("API Error: 529"), isApiErrorMessage: true },
+      ],
+    };
+    const ids = Object.keys(transcripts);
+    const live = await Promise.all(ids.map(() => processes.live()));
+
+    // When the agent starts with each of them registered, all idle except the busy one
+    const { agent } = await setUpMac("machine-air", "Quan's MacBook Air", {
+      beforeStart(fake) {
+        for (const [index, sessionId] of ids.entries()) {
+          fake.addSession({
+            sessionId,
+            cwd: "/work/a",
+            pid: live[index].pid,
+            procStart: live[index].procStart,
+            status: sessionId === "asked-but-busy" ? "busy" : "idle",
+          });
+          fake.addTranscript(sessionId, transcripts[sessionId]);
+        }
+      },
+    });
+    const states = async () =>
+      Object.fromEntries(
+        (await officeSessions()).map((s) => [s.sessionId, s.state]),
+      );
+    const expected = {
+      "asked-then-plain-follow-up": "waitingForYou",
+      "plain-then-asking-follow-up": "waitingForYou",
+      "plain-ending": "idle",
+      garbled: "idle",
+      "oversized-last-record": "idle",
+      "asked-then-interrupted": "idle",
+      "asked-but-busy": "thinking",
+      "asked-no-hooks": "waitingForYou",
+      "asked-then-tool": "idle",
+      "asked-then-tool-result": "idle",
+      "asked-then-background-turn-without-question": "idle",
+      "asked-then-api-error": "idle",
+    };
+
+    // Then each shows the room its transcript's ending says
+    expect(await states()).toEqual(expected);
+
+    // And the first registry check keeps them
+    await agent.reconcile();
+    await agent.flush();
+    expect(await states()).toEqual(expected);
+  }, 60_000);
 });

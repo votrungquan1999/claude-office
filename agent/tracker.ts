@@ -33,6 +33,8 @@ export interface SeedSession {
   firstMessage?: string;
   hadPrompt: boolean;
   bridgeSessionId?: string;
+  /** The newest turn, already ended, asked the owner something. */
+  asked?: boolean;
   process?: { pid?: number; procStart?: string };
 }
 
@@ -140,8 +142,9 @@ export class SessionTracker {
       tracked.firstMessage = seed.firstMessage;
       tracked.hadPrompt = seed.hadPrompt;
       tracked.bridgeSessionId = seed.bridgeSessionId;
+      // A question only counts for a session the registry calls idle; busy and waiting say the turn goes on.
       tracked.memory = applyRegistryStatus(
-        initialStateMemory(),
+        initialStateMemory(seed.asked && (seed.status ?? "idle") === "idle"),
         seed.status ?? "idle",
       );
       this.publish(seed.sessionId, tracked);

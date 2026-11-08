@@ -40,10 +40,15 @@ function derive(memory: Omit<StateMemory, "state">): StateMemory {
   return { ...memory, state };
 }
 
-export function initialStateMemory(): StateMemory {
+/**
+ * The memory of a session whose turn has ended.
+ * @param asked - Whether that turn asked the owner something.
+ * @returns The memory, in Waiting for you or Idle.
+ */
+export function initialStateMemory(asked = false): StateMemory {
   return derive({
     base: "waiting",
-    asked: false,
+    asked,
     inFlight: [],
     closed: [],
     dialogs: [],

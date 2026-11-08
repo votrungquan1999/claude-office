@@ -8,6 +8,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
+import { asks } from "../src/shared/asks";
 import { firstRealMessage } from "../src/shared/desk-name";
 
 /** Transcripts reach hundreds of MB, so only their two ends are ever read. */
@@ -21,6 +22,9 @@ const recordSchema = z.object({
   isSidechain: z.boolean().optional(),
   isMeta: z.boolean().optional(),
   isCompactSummary: z.boolean().optional(),
+  isApiErrorMessage: z.boolean().optional(),
+  subtype: z.string().optional(),
+  hasOutput: z.boolean().optional(),
   origin: z.unknown().optional(),
   bridgeSessionId: z.string().optional(),
   message: z
@@ -45,6 +49,8 @@ export interface TranscriptSeed {
   /** The folder of the newest record. */
   cwd?: string;
   bridgeSessionId?: string;
+  /** The newest turn ended by asking the owner something. */
+  asked: boolean;
 }
 
 /**
@@ -120,6 +126,76 @@ function humanTexts(record: TranscriptRecord): string[] {
   );
 }
 
+/** Whether a record starts a turn: any user prompt, human or background-task, that is not a tool result or injected text. */
+function startsTurn(record: TranscriptRecord): boolean {
+  if (record.type !== "user" || record.isSidechain) return false;
+  if (record.isMeta || record.isCompactSummary) return false;
+  const content = record.message?.content;
+  return !(
+    Array.isArray(content) && content.some((b) => b.type === "tool_result")
+  );
+}
+
+/** The text blocks of an assistant record, joined; empty when it has none or is an API error notice. */
+function assistantText(record: TranscriptRecord): string {
+  if (record.type !== "assistant" || record.isApiErrorMessage) return "";
+  const content = record.message?.content;
+  if (typeof content === "string") return content;
+  return (content ?? [])
+    .flatMap((block) =>
+      block.type === "text" && block.text !== undefined ? [block.text] : [],
+    )
+    .join("\n");
+}
+
+/** Whether an assistant record runs a tool, which means the turn was still going. */
+function runsTool(record: TranscriptRecord): boolean {
+  const content = record.message?.content;
+  return (
+    record.type === "assistant" &&
+    Array.isArray(content) &&
+    content.some((block) => block.type === "tool_use")
+  );
+}
+
+/**
+ * Whether the newest ended turn asked the owner something, by the same rule and segments as the live Stop path.
+ * @param tail - The records of the transcript's last bytes.
+ * @returns True when any segment of the turn, split at each Stop-hook summary, ends in a question.
+ */
+function turnAsked(tail: TranscriptRecord[]): boolean {
+  const records = tail.filter((record) => !record.isSidechain);
+  // The turn starts at the last prompt, including a background-task notification
+  const lastPrompt = records.findLastIndex(startsTurn);
+  const turn = records.slice(lastPrompt + 1);
+  const lastText = turn.findLastIndex((record) => assistantText(record) !== "");
+  if (lastText < 0) return false;
+  // A user record (tool result), a tool call or an API error after the last text means the turn did not end on it
+  if (
+    turn
+      .slice(lastText + 1)
+      .some(
+        (record) =>
+          record.type === "user" ||
+          runsTool(record) ||
+          record.isApiErrorMessage,
+      )
+  ) {
+    return false;
+  }
+  // Each Stop hook that produced a follow-up leaves a summary; every segment's last answer counts
+  const segments: TranscriptRecord[][] = [[]];
+  for (const record of turn) {
+    segments.at(-1)?.push(record);
+    if (record.type === "system" && record.subtype === "stop_hook_summary")
+      segments.push([]);
+  }
+  return segments.some((segment) => {
+    const last = segment.findLast((record) => assistantText(record) !== "");
+    return last ? asks(assistantText(last)) : false;
+  });
+}
+
 /**
  * What a session's transcript says about it, from bounded reads of its head and tail.
  * @param home - The user's home folder.
@@ -131,7 +207,7 @@ export function readTranscriptSeed(
   sessionId: string,
 ): TranscriptSeed {
   const path = transcriptPath(home, sessionId);
-  if (!path) return { hadPrompt: false };
+  if (!path) return { hadPrompt: false, asked: false };
   let head: TranscriptRecord[];
   let tail: TranscriptRecord[];
   try {
@@ -139,10 +215,11 @@ export function readTranscriptSeed(
     tail = readRecords(path, true);
   } catch {
     // Error boundary: an unreadable transcript only costs the desk name and folder hints, never the session.
-    return { hadPrompt: false };
+    return { hadPrompt: false, asked: false };
   }
   const prompts = head.flatMap(humanTexts);
   return {
+    asked: turnAsked(tail),
     firstMessage: prompts
       .map((text) => firstRealMessage(text))
       .find((text) => text !== undefined),
