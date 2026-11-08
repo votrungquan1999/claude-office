@@ -59,4 +59,23 @@ describe("desk name", () => {
     );
     expect(firstRealMessage("/ is not mounted")).toBe("/ is not mounted");
   });
+
+  it("strips any leading <tag>…</tag> block and uses the rest, or reports nothing when nothing is left", () => {
+    expect(
+      firstRealMessage(
+        "<browser_instruction># Claude in Chrome automation\nuse tabs</browser_instruction> fix the login bug",
+      ),
+    ).toBe("fix the login bug");
+    expect(firstRealMessage("<a>one</a><b x='1'>two</b>\nthen real text")).toBe(
+      "then real text",
+    );
+    expect(
+      firstRealMessage(
+        "<browser_instruction>only injected</browser_instruction>",
+      ),
+    ).toBeUndefined();
+    expect(firstRealMessage("<a>x</a>  <b>y</b>")).toBeUndefined();
+    // the rest is judged by the same rules as any message
+    expect(firstRealMessage("<a>x</a> /clear")).toBeUndefined();
+  });
 });

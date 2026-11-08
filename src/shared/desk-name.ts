@@ -2,7 +2,9 @@ const MAX_NAME_LENGTH = 60;
 
 // A real slash command is "/word" alone or followed by arguments; "/Users/x" or "/ is" are ordinary text.
 const SLASH_COMMAND = /^\/[\w:-]+(\s|$)/;
-// Blocks Claude Code injects as user turns; other "<tag>" text is something the owner typed.
+// A leading "<tag …>…</tag>" block; Claude Code injects these as user turns under ever-new tag names.
+const LEADING_BLOCK = /^<([A-Za-z][\w:.-]*)(?:\s[^>]*)?>[\s\S]*?<\/\1>\s*/;
+// An injected block that never closes (cut off); other "<tag>" text is something the owner typed.
 const SYSTEM_TAG =
   /^<(command-[\w-]+|local-command-[\w-]+|system-reminder|ide[_-][\w-]+|bash-(input|stdout|stderr)|task-notification)[\s>]/;
 const INTERRUPT = /^\[Request interrupted by user/;
@@ -32,10 +34,11 @@ export function resolveDeskName(inputs: DeskNameInputs): string | undefined {
 /**
  * A prompt turned into a desk name.
  * @param prompt - What the owner typed.
- * @returns The prompt cut short on one line, or undefined when it is a command or empty.
+ * @returns The prompt, minus leading injected blocks, cut short on one line; undefined when it is a command or nothing is left.
  */
 export function firstRealMessage(prompt: string): string | undefined {
-  const text = prompt.replace(/\s+/g, " ").trim();
+  let text = prompt.replace(/\s+/g, " ").trim();
+  while (LEADING_BLOCK.test(text)) text = text.replace(LEADING_BLOCK, "");
   // Commands, bash-mode shell input ("!"), injected blocks and interrupt notices are not a description of the task.
   if (
     !text ||

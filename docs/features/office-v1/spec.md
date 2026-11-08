@@ -62,7 +62,8 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 ### Desk name
 
 - The desk shows, in order: the AI-Kanban card summary, the card title, the first real user message cut to 60 characters, the session's own name.
-- Slash commands, `!` bash-mode input, injected system blocks and interrupt notices are not used as the first message.
+- Slash commands, `!` bash-mode input and interrupt notices are not used as the first message.
+- A message that starts with a `<tag …>…</tag>` block (any tag name) has that block removed, repeatedly, and the rest is used; if nothing is left the message is skipped and the next one is tried.
 - A card created, renamed or removed later updates the desk; a name given with `/rename` later is picked up.
 
 ### Steps
