@@ -68,6 +68,20 @@ Stop it for now: `launchctl bootout gui/$(id -u)/dev.quanvo.claude-office.agent`
 
 Remove it by hand: run that `bootout`, delete `~/Library/LaunchAgents/dev.quanvo.claude-office.agent.plist`, and optionally delete `~/.claude-office/` (config, address file and logs). Then remove the hooks and the link as described in step 4.
 
+## Optional: name paste-only desks with an Anthropic key
+
+A session whose first message is only pasted text shows "Pasted text" on its desk. To have a short name written from the paste instead, add an Anthropic API key to `~/.claude-office/config.json`, next to the two database fields:
+
+```json
+{ "mongodbUri": "...", "mongodbDb": "...", "anthropicApiKey": "sk-ant-..." }
+```
+
+- **What is sent:** at most the first 500 characters of the paste go to Anthropic (model `claude-haiku-5-5`), once per session (one retry if Anthropic is briefly unavailable). Nothing else leaves the Mac, and the key is never logged or stored in the database.
+- **When it is read:** the agent reads the file only when it starts, so restart it after adding the key: `launchctl kickstart -k gui/$(id -u)/dev.quanvo.claude-office.agent`. Paste-only sessions that are already running get their name right after the restart.
+- **A failed request:** a session whose request failed for good (for example a wrong key) keeps "Pasted text" and is not asked again, even after the key is fixed.
+- **Without a key** (or with a blank one) nothing is sent and the desk keeps "Pasted text". Running `npm run setup -- --reconnect` keeps the key.
+- Answers are cached in `~/.claude-office/pasted-names.json`, so a restart does not ask again.
+
 ## Running the web app locally (optional)
 
 Only needed to work on the web app itself; a Mac that just reports sessions never runs it.

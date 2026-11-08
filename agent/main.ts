@@ -42,6 +42,7 @@ async function main(): Promise<void> {
     agent = await startAgent({
       home,
       mongo: { uri: config.mongodbUri, db: config.mongodbDb },
+      anthropicApiKey: config.anthropicApiKey,
     });
   } catch (error) {
     // The connection string is never logged.

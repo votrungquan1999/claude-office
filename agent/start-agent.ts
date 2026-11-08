@@ -14,6 +14,7 @@ import {
 import { type FolderDocument, FolderRecorder } from "./folders";
 import { startHeartbeat } from "./heartbeat";
 import { startKanbanWatch } from "./kanban-watch";
+import { PasteNamer } from "./paste-namer";
 import { readProcessStart } from "./process-start";
 import {
   readProcessTable,
@@ -45,6 +46,12 @@ export interface AgentOptions {
   staleWriteMs?: number;
   /** Called once when the agent has gone stale; the default exits the process. */
   onStale?: () => void;
+  /** The owner's Anthropic key; paste-only desks are named by Haiku only when it is set. */
+  anthropicApiKey?: string;
+  /** Where the Anthropic API lives; tests point it at a local fake. */
+  anthropicBaseUrl?: string;
+  /** How long to wait before the one retry of a failed name request. */
+  anthropicRetryMs?: number;
   log?: (message: string) => void;
 }
 
@@ -139,6 +146,15 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
     now,
     writer,
     repos: createRepoResolver(),
+    pasteNamer: options.anthropicApiKey
+      ? new PasteNamer({
+          home,
+          apiKey: options.anthropicApiKey,
+          baseUrl: options.anthropicBaseUrl ?? "https://api.anthropic.com",
+          retryMs: options.anthropicRetryMs,
+          log,
+        })
+      : undefined,
     folders: new FolderRecorder({
       folders: db.collection<FolderDocument>("folders"),
       machineId,
@@ -205,7 +221,10 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
 
   return {
     port: listener.port,
-    flush: () => tracker.flush(),
+    async flush() {
+      await tracker.flush();
+      await tracker.settleNames();
+    },
     reconcile,
     heartbeat: heartbeat.beat,
     checkWriteHealth: watchdog.check,

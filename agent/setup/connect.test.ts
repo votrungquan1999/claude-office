@@ -162,6 +162,28 @@ describe("connecting this Mac from the setup command", () => {
     expect(statSync(file).mode & 0o777).toBe(0o600);
   });
 
+  it("keeps the owner's Anthropic key when it replaces the connection", async () => {
+    // Given an old config that also holds the owner's key
+    const dir = join(fake.home, ".claude-office");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "config.json"),
+      JSON.stringify({
+        mongodbUri: "mongodb://old",
+        mongodbDb: "old",
+        anthropicApiKey: "sk-test-keep-me",
+      }),
+    );
+
+    // When setup runs again with reconnect
+    await run({ reconnect: true }).done;
+
+    // Then the connection is new and the key is still there
+    const saved = JSON.parse(readFileSync(join(dir, "config.json"), "utf8"));
+    expect(saved.mongodbDb).toBe(process.env.MONGODB_DB);
+    expect(saved.anthropicApiKey).toBe("sk-test-keep-me");
+  });
+
   it("keeps waiting while the owner has not clicked, and gives up with the old config untouched when the code expires", async () => {
     // Given an old config and an owner who never clicks
     const dir = join(fake.home, ".claude-office");

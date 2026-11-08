@@ -9,7 +9,7 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import { asks } from "../src/shared/asks";
-import { firstRealMessage } from "../src/shared/desk-name";
+import { firstRealMessage, pasteHeadOf } from "../src/shared/desk-name";
 
 /** Transcripts reach hundreds of MB, so only their two ends are ever read. */
 const HEAD_BYTES = 256 * 1024;
@@ -57,6 +57,8 @@ type TranscriptRecord = z.infer<typeof recordSchema>;
 export interface TranscriptSeed {
   /** The owner's first real message, cut short for a desk name. */
   firstMessage?: string;
+  /** The start of the paste when the first message was only a paste. */
+  pasteHead?: string;
   /** Whether the owner ever typed something into the session. */
   hadPrompt: boolean;
   /** The folder of the newest record. */
@@ -253,12 +255,16 @@ export function readTranscriptSeed(
     return { hadPrompt: false, asked: false, stepDirs: [] };
   }
   const prompts = head.flatMap(humanTexts);
+  const firstPrompt = prompts.find(
+    (text) => firstRealMessage(text) !== undefined,
+  );
   return {
     asked: turnAsked(tail),
     stepDirs: stepDirsOf([...head, ...tail]),
     firstMessage: prompts
       .map((text) => firstRealMessage(text))
       .find((text) => text !== undefined),
+    pasteHead: firstPrompt === undefined ? undefined : pasteHeadOf(firstPrompt),
     hadPrompt: tail.flatMap(humanTexts).length + prompts.length > 0,
     cwd: [...head, ...tail].findLast((record) => record.cwd)?.cwd,
     bridgeSessionId: [...head, ...tail].findLast(

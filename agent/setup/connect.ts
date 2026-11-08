@@ -40,7 +40,16 @@ function saveConfig(
   const dir = officeDir(home);
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   chmodSync(dir, 0o700);
-  writeFileAtomic(join(dir, "config.json"), JSON.stringify(config), 0o600);
+  // A reconnect replaces the connection only; the owner's key stays.
+  const anthropicApiKey = readValidConfig(home)?.anthropicApiKey;
+  writeFileAtomic(
+    join(dir, "config.json"),
+    JSON.stringify({
+      ...config,
+      ...(anthropicApiKey ? { anthropicApiKey } : {}),
+    }),
+    0o600,
+  );
 }
 
 /**

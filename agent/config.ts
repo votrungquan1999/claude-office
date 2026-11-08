@@ -12,6 +12,11 @@ import { z } from "zod";
 const configSchema = z.object({
   mongodbUri: z.string().min(1),
   mongodbDb: z.string().min(1),
+  /** The owner's optional Anthropic key for naming paste-only desks; blank counts as absent. */
+  anthropicApiKey: z
+    .string()
+    .optional()
+    .transform((key) => key?.trim() || undefined),
 });
 
 export type AgentConfig = z.infer<typeof configSchema>;

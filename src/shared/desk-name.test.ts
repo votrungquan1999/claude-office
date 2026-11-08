@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { firstRealMessage, isPasteOnly, resolveDeskName } from "./desk-name";
+import {
+  firstRealMessage,
+  isPasteOnly,
+  pasteHeadOf,
+  resolveDeskName,
+} from "./desk-name";
 
 describe("desk name", () => {
   it("prefers the card summary, then the card title, then the first message, then the registry name, skipping blanks", () => {
@@ -117,5 +122,21 @@ describe("desk name", () => {
       '<pasted_content id="outer">start <pasted_content id="inner">x</pasted_content id="inner"> end</pasted_content id="outer">';
     expect(isPasteOnly(nested)).toBe(true);
     expect(firstRealMessage(`${nested} fix it`)).toBe("fix it");
+  });
+
+  it("takes the head from the first non-blank paste, including one holding an inner tag of another id", () => {
+    const block = (id: string, body: string) =>
+      `<pasted_content id="${id}">${body}</pasted_content id="${id}">`;
+    // a blank first paste is skipped
+    expect(
+      pasteHeadOf(`${block("d1", "  \n ")}${block("d2", "real text")}`),
+    ).toBe("real text");
+    expect(pasteHeadOf(block("d1", "   "))).toBeUndefined();
+    // an inner block closed at a different id stays inside the outer paste
+    const nested = block(
+      "outer",
+      'start <pasted_content id="inner">x</pasted_content id="inner"> end',
+    );
+    expect(pasteHeadOf(nested)).toContain("end");
   });
 });

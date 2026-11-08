@@ -2,11 +2,16 @@ import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { basename, dirname } from "node:path";
 import { ObjectId } from "mongodb";
-import { firstRealMessage, resolveDeskName } from "../src/shared/desk-name";
+import {
+  firstRealMessage,
+  isPasteOnly,
+  resolveDeskName,
+} from "../src/shared/desk-name";
 import { type HookEvent, hookEventSchema } from "../src/shared/hook-events";
 import type { SessionState } from "../src/shared/session-state";
 import type { FolderRecorder } from "./folders";
 import type { KanbanCard } from "./kanban-watch";
+import type { PasteNamer } from "./paste-namer";
 import {
   findRegistryEntry,
   isRegistryReadable,
@@ -50,6 +55,8 @@ export interface SeedSession {
   /** The state a previous run stored, which says whether `storedStateSince` still applies. */
   storedState?: SessionState;
   firstMessage?: string;
+  /** The start of the paste when the first message was only a paste. */
+  pasteHead?: string;
   hadPrompt: boolean;
   bridgeSessionId?: string;
   /** The newest turn, already ended, asked the owner something. */
@@ -80,6 +87,8 @@ export interface TrackerOptions {
   folders?: FolderRecorder;
   /** Finds the repo of a step folder; absent in tests that do not need tags. */
   repos?: RepoResolver;
+  /** Names paste-only desks; absent when the owner set no Anthropic key. */
+  pasteNamer?: PasteNamer;
 }
 
 interface Tracked {
@@ -94,6 +103,10 @@ interface Tracked {
   startedAt?: number;
   interactive: boolean;
   firstMessage?: string;
+  /** The start of the paste when the first message was only a paste; held in memory only, until Haiku has answered. */
+  pasteHead?: string;
+  /** The name Haiku (or the Mac's cache) gave a paste-only session. */
+  pasteName?: string;
   hadPrompt: boolean;
   registryName?: string;
   memory: StateMemory;
@@ -160,6 +173,8 @@ export class SessionTracker {
   private readonly cards = new Map<string, KanbanCard>();
   /** Repo lookups still running; `flush` waits for them and `stop` drops them. */
   private readonly pending = new Set<Promise<void>>();
+  /** Paste-name requests still running; only `settleNames` waits for them, so a slow Anthropic never delays the seed. */
+  private readonly naming = new Set<Promise<void>>();
   private stopped = false;
 
   constructor(private readonly options: TrackerOptions) {}
@@ -210,6 +225,7 @@ export class SessionTracker {
       tracked.startedAt = seed.startedAt;
       tracked.registryName = seed.registryName;
       tracked.firstMessage = seed.firstMessage;
+      tracked.pasteHead = seed.pasteHead;
       tracked.hadPrompt = seed.hadPrompt;
       tracked.bridgeSessionId = seed.bridgeSessionId;
       // A question only counts for a session the registry calls idle; busy and waiting say the turn goes on.
@@ -344,9 +360,17 @@ export class SessionTracker {
     await this.options.writer.flush();
   }
 
+  /** Waits for every paste-name request, then publishes and writes what they named. */
+  async settleNames(): Promise<void> {
+    while (this.naming.size > 0) await Promise.all([...this.naming]);
+    await this.flush();
+  }
+
   stop(): void {
     this.stopped = true;
+    this.options.pasteNamer?.stop();
     this.pending.clear();
+    this.naming.clear();
     for (const tracked of this.sessions.values()) clearTimeout(tracked.timer);
   }
 
@@ -417,6 +441,10 @@ export class SessionTracker {
     if (event.hook_event_name === "UserPromptSubmit") tracked.hadPrompt = true;
     if (event.hook_event_name === "UserPromptSubmit" && !tracked.firstMessage) {
       tracked.firstMessage = firstRealMessage(event.prompt ?? "");
+      // The hook forwards the head of any paste; only a paste-only message is named from it.
+      tracked.pasteHead = isPasteOnly(event.prompt ?? "")
+        ? event.paste_head
+        : undefined;
     }
     const next = late
       ? reduceLate(tracked.memory, event)
@@ -505,6 +533,46 @@ export class SessionTracker {
     }
   }
 
+  /**
+   * The Haiku name for a paste-only session shown on the office, asking for it once when it is not known yet.
+   * @param sessionId - The session.
+   * @param tracked - Its state; only an interactive session with a paste head is asked about.
+   * @param card - Its AI-Kanban card; a card name covers the desk, so no call is made.
+   * @returns The known name, if any.
+   */
+  private pasteNameFor(
+    sessionId: string,
+    tracked: Tracked,
+    card: KanbanCard | undefined,
+  ): string | undefined {
+    const { pasteNamer } = this.options;
+    if (tracked.pasteName) return tracked.pasteName;
+    if (!pasteNamer || !tracked.pasteHead) return undefined;
+    if (card?.summary?.trim() || card?.title?.trim()) return undefined;
+    const known = pasteNamer.nameOf(sessionId);
+    // An answer, even a cached final failure, means the paste text is never needed again.
+    if (pasteNamer.hasAnswer(sessionId)) tracked.pasteHead = undefined;
+    if (known) {
+      tracked.pasteName = known;
+      return known;
+    }
+    // A desk that went home is not worth a call.
+    if (tracked.endedAt !== undefined || !tracked.pasteHead) return undefined;
+    const task = pasteNamer.ask(sessionId, tracked.pasteHead);
+    if (!task) return undefined;
+    const tracking: Promise<void> = task
+      .then(() => {
+        if (this.stopped) return;
+        // The paste text is no longer needed once the call returned.
+        tracked.pasteName = pasteNamer.nameOf(sessionId);
+        tracked.pasteHead = undefined;
+        this.publish(sessionId, tracked);
+      })
+      .finally(() => this.naming.delete(tracking));
+    this.naming.add(tracking);
+    return undefined;
+  }
+
   private publish(sessionId: string, tracked: Tracked): void {
     if (!tracked.interactive) {
       // A session with no registry entry yet is held and re-checked on its next event.
@@ -524,9 +592,11 @@ export class SessionTracker {
     if (!tracked.cwd || tracked.startedAt === undefined) return;
     const { machineId, machineName, writer } = this.options;
     const card = this.cards.get(sessionId);
+    const pasteName = this.pasteNameFor(sessionId, tracked, card);
     const deskName = resolveDeskName({
       cardSummary: card?.summary,
       cardTitle: card?.title,
+      pasteName,
       firstMessage: tracked.firstMessage,
       registryName: tracked.registryName,
     });

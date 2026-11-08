@@ -17,9 +17,14 @@ const SYSTEM_TAG =
   /^<(command-[\w-]+|local-command-[\w-]+|system-reminder|ide[_-][\w-]+|bash-(input|stdout|stderr)|task-notification)[\s>]/;
 const INTERRUPT = /^\[Request interrupted by user/;
 
+/** How much of a paste is kept to name a paste-only desk. */
+export const PASTE_HEAD_MAX = 500;
+
 export interface DeskNameInputs {
   cardSummary?: string;
   cardTitle?: string;
+  /** A name written from a paste-only first message; beats the placeholder and /rename, never a card. */
+  pasteName?: string;
   firstMessage?: string;
   registryName?: string;
 }
@@ -27,7 +32,7 @@ export interface DeskNameInputs {
 /**
  * The name shown on a desk.
  * @param inputs - Every source the name can come from; blank ones count as absent.
- * @returns The first available of card summary, card title, first message, registry name.
+ * @returns The first available of card summary, card title, paste name, first message, registry name; the registry name goes before the "Pasted text" placeholder.
  */
 export function resolveDeskName(inputs: DeskNameInputs): string | undefined {
   // The owner's /rename is a better name than the paste placeholder.
@@ -35,6 +40,7 @@ export function resolveDeskName(inputs: DeskNameInputs): string | undefined {
   const candidates = [
     inputs.cardSummary,
     inputs.cardTitle,
+    inputs.pasteName,
     ...(placeholder
       ? [inputs.registryName, inputs.firstMessage]
       : [inputs.firstMessage, inputs.registryName]),
@@ -73,8 +79,30 @@ export function firstRealMessage(prompt: string): string | undefined {
   ) {
     return undefined;
   }
-  // Counted in code points so an emoji is never cut in half.
+  return cutName(text);
+}
+
+/**
+ * Cuts a one-line name to the desk's length.
+ * @param text - A name already on one line.
+ * @returns The name, or its first 59 characters and an ellipsis; counted in code points so an emoji is never cut in half.
+ */
+export function cutName(text: string): string {
   const letters = Array.from(text);
   if (letters.length <= MAX_NAME_LENGTH) return text;
   return `${letters.slice(0, MAX_NAME_LENGTH - 1).join("")}…`;
+}
+
+/**
+ * The start of the first paste block's body, which names a paste-only desk.
+ * @param prompt - The whole first message.
+ * @returns The first 500 characters of the first non-blank paste, or undefined when the message is not paste-only or every paste is blank.
+ */
+export function pasteHeadOf(prompt: string): string | undefined {
+  if (!isPasteOnly(prompt)) return undefined;
+  for (const match of prompt.matchAll(PASTE_BLOCK)) {
+    const body = match[2]?.trim();
+    if (body) return body.slice(0, PASTE_HEAD_MAX);
+  }
+  return undefined;
 }
