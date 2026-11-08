@@ -183,6 +183,7 @@ export function OfficeView() {
       firstLoad: options.sitDown,
       offlineMachineIds: data.offline,
       only,
+      companyOf: overview.tree.companyOf,
     });
     setAgentIds(sceneSync.agentIds());
     // A panel left open on a session outside the company would point at nobody on screen.

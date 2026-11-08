@@ -46,7 +46,7 @@ test("a session written to the database while the office is open appears, and a 
       window.__officeTestHooks?.selectAgent(id);
     });
     await expect(page.getByTestId("agent-overlay")).toContainText(
-      "Live Mac / first",
+      "Live Mac / projects/first",
       { timeout: 8000 },
     );
 
@@ -61,7 +61,7 @@ test("a session written to the database while the office is open appears, and a 
 
     // Then the same employee is relabelled
     await expect(page.getByTestId("agent-overlay")).toContainText(
-      "Live Mac / second",
+      "Live Mac / projects/second",
       { timeout: 8000 },
     );
     await expect(page.getByTestId("agent-overlay")).toHaveCount(1);

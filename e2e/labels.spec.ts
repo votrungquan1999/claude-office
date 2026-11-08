@@ -124,4 +124,34 @@ test.describe("employee labels", () => {
       await expect(page.getByTestId("agent-status")).toHaveText(status);
     }
   });
+  test("a label names the project below the company folder, or the company when the session started at it", async ({
+    page,
+  }) => {
+    // Given the company folder /Users/q with one session started below it and one at it
+    await sessions.deleteMany({});
+    await sessions.insertMany([
+      {
+        ...base,
+        sessionId: "below",
+        cwd: "/Users/q/elsewhere",
+        startCwd: "/Users/q/claude-office",
+        state: "idle",
+      },
+      {
+        ...base,
+        sessionId: "at",
+        cwd: "/Users/q/elsewhere",
+        startCwd: "/Users/q",
+        state: "idle",
+      },
+    ]);
+
+    // When the office loads
+    await page.goto("/");
+    await waitForEmployees(page, 2);
+
+    // Then one label shows the project and the other the company name
+    await employeeLabelled(page, "Studio Mac / claude-office");
+    await employeeLabelled(page, "Studio Mac / q");
+  });
 });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mergeSessions } from "@/app/office/officeStore";
+import { buildCompanyTree } from "@/shared/companies";
 import type { SessionDto } from "@/shared/session";
 import { loadOffice } from "@/test/load-office";
 import type { OfficeState } from "./engine/officeState";
@@ -150,6 +151,43 @@ describe("scene sync", () => {
     expect(office.getCharacters()[0].directoryName).toBe(
       "Card title · Mac mini / docs",
     );
+  });
+
+  it("labels an employee with its project below the company folder, or the company name when it started at the folder itself", () => {
+    // Given sessions started at, below and deep below the company folder "personal", and one in another company
+    const at = (id: string, startCwd: string) => ({
+      ...session("m1", "Mac", id, "/Users/q/personal/elsewhere"),
+      startCwd,
+    });
+    const sessions = [
+      at("a", "/Users/q/personal"),
+      at("b", "/Users/q/personal/claude-office"),
+      at("c", "/Users/q/personal/apps/web"),
+      at("d", "/Users/q/work"),
+    ];
+    const tree = buildCompanyTree({
+      folders: [],
+      sessions,
+      machineIds: new Set(["m1"]),
+    });
+    const office = loadOffice();
+    const sync = createSceneSync(office);
+
+    // When they are applied with the company tree
+    sync.apply(sessions, { firstLoad: true, companyOf: tree.companyOf });
+
+    // Then the label shows the project, the sub-path, or the company name when there is no project
+    expect(
+      office
+        .getCharacters()
+        .map((ch) => ch.directoryName)
+        .sort(),
+    ).toEqual([
+      "Mac / apps/web",
+      "Mac / claude-office",
+      "Mac / personal",
+      "Mac / work",
+    ]);
   });
 
   describe("rooms", () => {

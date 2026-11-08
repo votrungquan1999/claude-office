@@ -39,7 +39,7 @@ test("a session stored for a Mac shows up as an employee labelled with the machi
       window.__officeTestHooks?.selectAgent(id);
     });
     await expect(page.getByTestId("agent-overlay")).toContainText(
-      "Studio Mac / lantern",
+      "Studio Mac / projects/lantern",
     );
     expect(
       await page.evaluate(

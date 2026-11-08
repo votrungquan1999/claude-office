@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { expect, type Page, test } from "@playwright/test";
 import { MongoClient } from "mongodb";
 import { E2E_BASE_URL, E2E_DB, E2E_MONGO_URI_FILE } from "./constants";
-import { seedFolders, signInAsOwner } from "./helpers";
+import { seedFolders, signInAsOwner, waitForEmployees } from "./helpers";
 
 const HOUR = 3_600_000;
 
@@ -269,6 +269,53 @@ test("a company stored from an earlier visit that has nothing live today is not 
       "aria-current",
       "page",
     );
+  } finally {
+    await cleanup();
+  }
+});
+
+test("switching a folder off relabels an employee that is already standing in the office", async ({
+  context,
+  page,
+}) => {
+  // Given one employee in git-repos/personal/app, labelled under the company git-repos
+  const { cleanup } = await seed(
+    [
+      ["air", "/Users/q/git-repos"],
+      ["air", "/Users/q/git-repos/personal"],
+    ],
+    [["air", "app", "/Users/q/git-repos/personal/app", "working"]],
+  );
+  await signInAsOwner(context);
+  /** The label panel text of the only employee, shown by selecting it. */
+  const labelText = async () => {
+    const id = await page.evaluate(
+      () => window.__officeTestHooks?.getCharacters()[0]?.id ?? -1,
+    );
+    await page.evaluate((i) => window.__officeTestHooks?.selectAgent(i), id);
+    const text = await page
+      .locator(`[data-testid="agent-overlay"][data-agent-id="${id}"]`)
+      .textContent();
+    await page.evaluate(() => window.__officeTestHooks?.selectAgent(-1));
+    return text ?? "";
+  };
+
+  try {
+    await page.goto("/");
+    await waitForEmployees(page, 1);
+    const before = await labelText();
+    expect(before).toContain("personal/app");
+
+    // When the owner switches git-repos off
+    await page.getByTestId("open-drawer").click();
+    await page
+      .getByRole("dialog", { name: "All companies" })
+      .getByTestId("drawer-company-git-repos")
+      .getByRole("switch")
+      .click();
+
+    // Then the label names the new company's project at once
+    await expect.poll(labelText, { timeout: 1_000 }).not.toContain("personal/");
   } finally {
     await cleanup();
   }

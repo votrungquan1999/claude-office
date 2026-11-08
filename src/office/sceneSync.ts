@@ -1,3 +1,4 @@
+import type { CompanySessionInput, SessionCompany } from "@/shared/companies";
 import type { SessionDto } from "@/shared/session";
 import { sessionKey } from "@/shared/session";
 import { TILE_SIZE } from "./constants";
@@ -22,6 +23,8 @@ export interface SceneSync {
       offlineMachineIds?: ReadonlySet<string>;
       /** Keys of the sessions the scene may show; every other employee leaves at once, with no despawn effect. */
       only?: ReadonlySet<string>;
+      /** Places a session in its company, so the label can name its project or company; without it the label names the folder. */
+      companyOf?(session: CompanySessionInput): SessionCompany | null;
     },
   ): void;
   /** Finishes moves whose state has held long enough; call it on the poll clock. */
@@ -169,7 +172,10 @@ export function createSceneSync(
   }
 
   return {
-    apply(sessions, { firstLoad = false, offlineMachineIds, only } = {}) {
+    apply(
+      sessions,
+      { firstLoad = false, offlineMachineIds, only, companyOf } = {},
+    ) {
       offline = offlineMachineIds ?? offline;
       if (only) {
         for (const [key, employee] of employees) {
@@ -181,7 +187,12 @@ export function createSceneSync(
       for (const session of sessions) {
         const key = sessionKey(session);
         if (only && !only.has(key)) continue;
-        const place = `${session.machineName} / ${folderName(session.cwd)}`;
+        const placed = companyOf?.(session);
+        // A session that started at its company folder has no project, so the company names its place.
+        const where = placed
+          ? (placed.project ?? placed.companyName)
+          : folderName(session.cwd);
+        const place = `${session.machineName} / ${where}`;
         const label = session.deskName
           ? `${session.deskName} · ${place}`
           : place;
