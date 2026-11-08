@@ -136,3 +136,62 @@ export function CompanyStrip({
     </nav>
   );
 }
+
+export interface CompactCompanyButtonProps {
+  /** Every Mac with its companies. */
+  macs: MacOverview[];
+  /** The viewed company. */
+  selectedKey: string | null;
+  /** Opens the drawer that lists every company. */
+  onOpenDrawer: () => void;
+  /** The drawer's trigger, so focus can return to it. */
+  buttonRef?: Ref<HTMLButtonElement>;
+}
+
+/**
+ * The strip folded into one button for a sideways phone: the viewed company and how many sessions need the owner anywhere.
+ * @param props - The Macs, the viewed company and the drawer trigger.
+ * @returns A button that opens the drawer.
+ */
+export function CompactCompanyButton({
+  macs,
+  selectedKey,
+  onOpenDrawer,
+  buttonRef,
+}: CompactCompanyButtonProps) {
+  const viewed = macs
+    .flatMap((mac) => mac.companies)
+    .find((entry) => entry.company.key === selectedKey);
+  // Only online Macs can really be waiting on the owner.
+  const needYou = macs
+    .filter((mac) => mac.online)
+    .flatMap((mac) => mac.companies)
+    .reduce(
+      (total, { counts }) =>
+        total + counts.needsPermission + counts.waitingForYou,
+      0,
+    );
+  return (
+    <button
+      ref={buttonRef}
+      type="button"
+      data-testid="compact-company-button"
+      aria-haspopup="dialog"
+      onClick={onOpenDrawer}
+      className="absolute top-2 left-2 z-30 flex h-40 max-w-[50%] items-center gap-8 border-2 border-border bg-bg px-10 text-sm hover:bg-btn-hover"
+    >
+      <span className="truncate font-bold">
+        {viewed?.company.name ?? "Companies"}
+      </span>
+      {needYou > 0 && (
+        <span
+          data-testid="company-badge"
+          className="shrink-0 px-4 text-xs font-bold text-bg-dark"
+          style={{ background: "var(--color-room-permission)" }}
+        >
+          {needYou}
+        </span>
+      )}
+    </button>
+  );
+}

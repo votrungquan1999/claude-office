@@ -8,6 +8,8 @@ export interface CompanyDrawerProps {
   selectedKey: string | null;
   /** Full-width sheet on a phone; a side panel elsewhere. */
   sheet: boolean;
+  /** The sheet covers the whole canvas height, for a sideways phone. */
+  fullHeight?: boolean;
   /** Why the last switch did not stick, shown until the next one. */
   error?: string | null;
   onSelect: (companyKey: string) => void;
@@ -60,6 +62,7 @@ export function CompanyDrawer({
   overview,
   selectedKey,
   sheet,
+  fullHeight = false,
   error = null,
   onSelect,
   onSetCompanyMode,
@@ -89,7 +92,9 @@ export function CompanyDrawer({
       aria-label="All companies"
       className={`absolute z-[70] flex flex-col gap-8 overflow-y-auto border-2 border-border bg-bg p-12 text-sm ${
         sheet
-          ? "inset-x-0 bottom-0 max-h-[85%] border-x-0 border-b-0"
+          ? fullHeight
+            ? "inset-0 border-0"
+            : "inset-x-0 bottom-0 max-h-[85%] border-x-0 border-b-0"
           : "top-0 right-0 bottom-0 w-[420px] max-w-full"
       }`}
     >

@@ -8,6 +8,7 @@ import { ToolOverlay } from "@/office/components/ToolOverlay";
 import { OfficeState } from "@/office/engine/officeState";
 import { fitZoom } from "@/office/fitZoom";
 import { useIsMobile } from "@/office/hooks/useIsMobile";
+import { useIsSidewaysPhone } from "@/office/hooks/useIsSidewaysPhone";
 import { offlineMachineIds } from "@/office/offline";
 import { createSceneSync } from "@/office/sceneSync";
 import { installTestHooks } from "@/office/testHooks";
@@ -21,7 +22,7 @@ import {
   sessionKey,
 } from "@/shared/session";
 import { CompanyDrawer } from "./CompanyDrawer";
-import { CompanyStrip } from "./CompanyStrip";
+import { CompactCompanyButton, CompanyStrip } from "./CompanyStrip";
 import { ConnectionStatus } from "./ConnectionStatus";
 import { postCompanyMode } from "./companyMode";
 import { DetailsPanel } from "./DetailsPanel";
@@ -147,6 +148,7 @@ export function OfficeView() {
   // Once the owner zooms by hand, resizing no longer re-fits the office.
   const userZoomed = useRef(false);
   const isMobile = useIsMobile();
+  const sideways = useIsSidewaysPhone();
   const dataRef = useRef<OfficeData>({
     sessions: new Map(),
     machines: [],
@@ -368,13 +370,15 @@ export function OfficeView() {
 
   return (
     <div className="flex h-full w-full flex-col">
-      <CompanyStrip
-        macs={overview.macs}
-        selectedKey={companyKey}
-        onSelect={selectCompany}
-        onOpenDrawer={openDrawer}
-        drawerButtonRef={drawerButtonRef}
-      />
+      {!sideways && (
+        <CompanyStrip
+          macs={overview.macs}
+          selectedKey={companyKey}
+          onSelect={selectCompany}
+          onOpenDrawer={openDrawer}
+          drawerButtonRef={drawerButtonRef}
+        />
+      )}
       <div
         ref={containerRef}
         className="relative min-h-0 w-full flex-1 overflow-hidden"
@@ -409,6 +413,14 @@ export function OfficeView() {
             />
           </>
         )}
+        {sideways && (
+          <CompactCompanyButton
+            macs={overview.macs}
+            selectedKey={companyKey}
+            onOpenDrawer={openDrawer}
+            buttonRef={drawerButtonRef}
+          />
+        )}
         <ConnectionStatus
           lastUpdatedAt={lastUpdatedAt}
           connectionLost={connectionLost}
@@ -424,6 +436,7 @@ export function OfficeView() {
             overview={overview}
             selectedKey={companyKey}
             sheet={isMobile}
+            fullHeight={sideways}
             onSelect={(key) => {
               selectCompany(key);
               closeDrawer();
