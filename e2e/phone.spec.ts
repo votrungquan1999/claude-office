@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { expect, type Page, test } from "@playwright/test";
 import { type Collection, MongoClient } from "mongodb";
 import { E2E_DB, E2E_MONGO_URI_FILE } from "./constants";
-import { signInAsOwner } from "./helpers";
+import { employeeLabelled, signInAsOwner, waitForEmployees } from "./helpers";
 
 // The "phone" project's device profile applies: 393 x 852, dpr 3, touch.
 
@@ -97,7 +97,7 @@ const panOf = (page: Page) =>
 
 async function openOffice(page: Page) {
   await page.goto("/");
-  await expect(page.getByTestId("agent-overlay")).toHaveCount(3);
+  await waitForEmployees(page, 3);
 }
 
 test.describe("the office on a phone", () => {
@@ -248,12 +248,7 @@ test.describe("the office on a phone", () => {
   }) => {
     // Given the office on a phone, and where the employee of the second session stands
     await openOffice(page);
-    const id = Number(
-      await page
-        .getByTestId("agent-overlay")
-        .filter({ hasText: "two:" })
-        .getAttribute("data-agent-id"),
-    );
+    const id = await employeeLabelled(page, "two:");
     const point = await page.evaluate((employeeId) => {
       const hooks = window.__officeTestHooks;
       const employee = hooks

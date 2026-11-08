@@ -175,7 +175,6 @@ export function OfficeView() {
               containerRef={containerRef}
               zoom={zoom}
               panRef={panRef}
-              alwaysShowOverlay
             />
           </>
         )}

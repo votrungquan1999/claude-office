@@ -46,3 +46,57 @@ export async function clickEmployee(page: Page, id: number): Promise<void> {
     )
     .toBe(true);
 }
+
+/** Moves the mouse over the employee with this renderer id, as a desktop hover on the canvas. */
+export async function hoverEmployee(page: Page, id: number): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        const point = await screenPointOf(page, id);
+        if (point?.onCanvas) await page.mouse.move(point.x, point.y);
+        return (
+          (await page.getByTestId("agent-overlay").count()) > 0 &&
+          (await page
+            .getByTestId("agent-overlay")
+            .first()
+            .getAttribute("data-agent-id")) === String(id)
+        );
+      },
+      { intervals: [100, 200, 400], timeout: 15_000 },
+    )
+    .toBe(true);
+}
+
+/** Waits until the scene holds this many employees. */
+export async function waitForEmployees(page: Page, count: number) {
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.__officeTestHooks?.getCharacters().length),
+    )
+    .toBe(count);
+}
+
+/**
+ * Finds the employee whose label contains the text, by selecting each one in turn.
+ * @returns The renderer id; the selection is cleared again.
+ */
+export async function employeeLabelled(
+  page: Page,
+  text: string,
+): Promise<number> {
+  const ids = await page.evaluate(
+    () => window.__officeTestHooks?.getCharacters().map((c) => c.id) ?? [],
+  );
+  for (const id of ids) {
+    await page.evaluate((i) => window.__officeTestHooks?.selectAgent(i), id);
+    const label = page.locator(
+      `[data-testid="agent-overlay"][data-agent-id="${id}"]`,
+    );
+    await expect(label).toHaveCount(1);
+    if (((await label.textContent()) ?? "").includes(text)) {
+      await page.evaluate(() => window.__officeTestHooks?.selectAgent(-1));
+      return id;
+    }
+  }
+  throw new Error(`no employee labelled "${text}"`);
+}

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import { MongoClient } from "mongodb";
 import { E2E_DB, E2E_MONGO_URI_FILE } from "./constants";
-import { signInAsOwner } from "./helpers";
+import { signInAsOwner, waitForEmployees } from "./helpers";
 
 test("a session stored for a Mac shows up as an employee labelled with the machine and folder", async ({
   context,
@@ -30,8 +30,12 @@ test("a session stored for a Mac shows up as an employee labelled with the machi
     // When the owner opens the office
     await page.goto("/");
 
-    // Then one employee is in the scene, labelled with the machine and the folder
-    await expect(page.getByTestId("agent-overlay")).toHaveCount(1);
+    // Then one employee is in the scene, labelled with the machine and the folder once selected
+    await waitForEmployees(page, 1);
+    await page.evaluate(() => {
+      const id = window.__officeTestHooks?.getCharacters()[0].id ?? -1;
+      window.__officeTestHooks?.selectAgent(id);
+    });
     await expect(page.getByTestId("agent-overlay")).toContainText(
       "Studio Mac / lantern",
     );

@@ -32,7 +32,6 @@ interface ToolOverlayProps {
   containerRef: React.RefObject<HTMLDivElement | null>;
   zoom: number;
   panRef: React.RefObject<{ x: number; y: number }>;
-  alwaysShowOverlay: boolean;
 }
 
 /** A speech-bubble sprite blitted into a DOM canvas. Bubbles live in the DOM
@@ -69,7 +68,6 @@ export function ToolOverlay({
   containerRef,
   zoom,
   panRef,
-  alwaysShowOverlay,
 }: ToolOverlayProps) {
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -151,9 +149,9 @@ export function ToolOverlay({
           );
         }
 
-        // Only show the label for hovered or selected agents (unless
-        // always-show is on) — the bubble renders regardless.
-        if (!alwaysShowOverlay && !isSelected && !isHovered) {
+        // Labels would pile up with dozens of employees, so only the hovered or
+        // selected one gets a panel; the bubble renders regardless.
+        if (!isSelected && !isHovered) {
           return bubbleNode && <Fragment key={id}>{bubbleNode}</Fragment>;
         }
 
@@ -164,28 +162,6 @@ export function ToolOverlay({
         const screenY = project.toScreenY(
           ch.y + sittingOffset - TOOL_OVERLAY_VERTICAL_OFFSET,
         );
-
-        // A "Done" agent (finished turn: waiting bubble without awaitingInput)
-        // shows ONLY its floating green checkmark bubble, never the label panel
-        // (the panel would cover the bubble). Render an empty positioned marker
-        // so overlay counts stay stable and hover/select can still bring the
-        // panel back. When always-show is off, the early return above already
-        // keeps the panel hidden for idle agents.
-        const isDone = ch.bubbleType === "waiting" && !ch.waitingAwaitingInput;
-        if (isDone && !isSelected && !isHovered) {
-          return (
-            <Fragment key={id}>
-              {bubbleNode}
-              <div
-                className="absolute"
-                style={{ left: screenX, top: screenY, pointerEvents: "none" }}
-                data-testid="agent-overlay"
-                data-agent-id={id}
-                data-offline={ch.macOffline ? "true" : undefined}
-              />
-            </Fragment>
-          );
-        }
 
         const hasWaiting = ch.bubbleType === "waiting";
         const hasPermission = ch.bubbleType === "permission";
@@ -216,8 +192,6 @@ export function ToolOverlay({
                 top: screenY - (hasExtraLines ? 34 : 28),
                 pointerEvents: "none",
                 filter: ch.macOffline ? "grayscale(1)" : undefined,
-                opacity:
-                  alwaysShowOverlay && !isSelected && !isHovered ? 0.75 : 1,
                 zIndex: isSelected
                   ? OVERLAY_LABEL_SELECTED_Z_INDEX
                   : OVERLAY_LABEL_Z_INDEX,

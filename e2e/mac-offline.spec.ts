@@ -2,7 +2,12 @@ import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import { MongoClient } from "mongodb";
 import { E2E_DB, E2E_MONGO_URI_FILE } from "./constants";
-import { clickEmployee, signInAsOwner } from "./helpers";
+import {
+  clickEmployee,
+  employeeLabelled,
+  signInAsOwner,
+  waitForEmployees,
+} from "./helpers";
 
 test.use({ viewport: { width: 1600, height: 1200 }, hasTouch: false });
 
@@ -55,19 +60,20 @@ test("employees of a Mac that stopped sending heartbeats are marked offline, and
     await page.goto("/");
 
     // Then only the quiet Mac's employee carries the offline mark
-    await expect(page.getByTestId("agent-overlay")).toHaveCount(2);
-    const down = page
-      .getByTestId("agent-overlay")
-      .filter({ hasText: "Down Mac / down" });
-    const up = page
-      .getByTestId("agent-overlay")
-      .filter({ hasText: "Up Mac / up" });
-    await expect(down).toHaveAttribute("data-offline", "true");
-    await expect(up).not.toHaveAttribute("data-offline", "true");
+    await waitForEmployees(page, 2);
+    const downId = await employeeLabelled(page, "Down Mac / down");
+    const upId = await employeeLabelled(page, "Up Mac / up");
+    const labelOf = (id: number) =>
+      page.locator(`[data-testid="agent-overlay"][data-agent-id="${id}"]`);
+    await page.evaluate(
+      (i) => window.__officeTestHooks?.selectAgent(i),
+      downId,
+    );
+    await expect(labelOf(downId)).toHaveAttribute("data-offline", "true");
+    await page.evaluate((i) => window.__officeTestHooks?.selectAgent(i), upId);
+    await expect(labelOf(upId)).not.toHaveAttribute("data-offline", "true");
 
-    const downId = Number(await down.getAttribute("data-agent-id"));
     // And the scene draws that employee grey while the other stays in colour
-    const upId = Number(await up.getAttribute("data-agent-id"));
     const drawnGrey = await page.evaluate(() =>
       Object.fromEntries(
         (window.__officeTestHooks?.getCharacters() ?? []).map((c) => [

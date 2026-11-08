@@ -24,6 +24,7 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 
 - **Office view:** one pixel-art office with four labelled rooms: Working, Thinking, Needs permission, Waiting.
 - **Employees:** each session is a character that sits in the room matching its state and moves when the state changes.
+- **Labels:** an employee's label (status line, desk name, Mac and folder) is shown only while the mouse is over it or it is selected (tap or click); permission and waiting bubbles are always shown.
 - **Details:** clicking or tapping an employee opens a panel with the desk name, Mac, folder, steps and the Remote Control link.
 - **Went home:** closed sessions leave the office and appear in a "Went home today" list.
 - **Sign-in:** Google only; one allowed account.

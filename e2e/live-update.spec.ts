@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import { MongoClient } from "mongodb";
 import { E2E_DB, E2E_MONGO_URI_FILE } from "./constants";
-import { signInAsOwner } from "./helpers";
+import { signInAsOwner, waitForEmployees } from "./helpers";
 
 test("a session written to the database while the office is open appears, and a later change relabels it, without a reload", async ({
   context,
@@ -38,6 +38,11 @@ test("a session written to the database while the office is open appears, and a 
     });
 
     // Then its employee shows up within a few seconds
+    await waitForEmployees(page, 1);
+    await page.evaluate(() => {
+      const id = window.__officeTestHooks?.getCharacters()[0].id ?? -1;
+      window.__officeTestHooks?.selectAgent(id);
+    });
     await expect(page.getByTestId("agent-overlay")).toContainText(
       "Live Mac / first",
       { timeout: 8000 },
