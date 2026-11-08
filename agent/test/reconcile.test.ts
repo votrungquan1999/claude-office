@@ -156,6 +156,47 @@ describe("a session whose process is gone goes home", () => {
     expect(stored?.state).toBe("waitingForYou");
   }, 60_000);
 
+  it("decides Waiting for you from the transcript when a Stop hook was missed and the registry says idle", async () => {
+    // Given a running session mid-turn whose Stop never arrived, and a transcript ending in a question
+    const { fake, agent } = await setUpMac("machine-air", "Quan's MacBook Air");
+    const process_ = await processes.live();
+    fake.addSession({
+      sessionId: "missed",
+      cwd: "/work/missed",
+      pid: process_.pid,
+      procStart: process_.procStart,
+    });
+    const send = (event: Record<string, unknown>) =>
+      runHook(fake.home, {
+        session_id: "missed",
+        cwd: "/work/missed",
+        ...event,
+      });
+    await send({ hook_event_name: "SessionStart", source: "startup" });
+    await send({ hook_event_name: "UserPromptSubmit", prompt: "go" });
+    await agent.flush();
+    fake.addTranscript("missed", [
+      { type: "user", message: { content: "go" } },
+      {
+        type: "assistant",
+        message: {
+          content: [{ type: "text", text: "Should I merge it?" }],
+        },
+      },
+    ]);
+
+    // When the registry says idle and the Mac checks its sessions
+    fake.updateSession("missed", {
+      status: "idle",
+      statusUpdatedAt: Date.now() + 60_000,
+    });
+    await agent.reconcile();
+    await agent.flush();
+
+    // Then the ask rule applies to the transcript's last answer
+    expect((await officeSessions())[0]?.state).toBe("waitingForYou");
+  }, 60_000);
+
   it("ends Working on the registry's idle even when a state-neutral idle prompt notification arrived after it", async () => {
     // Given a session mid-turn whose Stop was missed, and a registry idle stamped a moment after the last real event
     const { fake, agent } = await setUpMac("machine-air", "Quan's MacBook Air");

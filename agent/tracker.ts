@@ -4,6 +4,7 @@ import { basename, dirname } from "node:path";
 import { ObjectId } from "mongodb";
 import { firstRealMessage, resolveDeskName } from "../src/shared/desk-name";
 import { type HookEvent, hookEventSchema } from "../src/shared/hook-events";
+import type { SessionState } from "../src/shared/session-state";
 import type { FolderRecorder } from "./folders";
 import type { KanbanCard } from "./kanban-watch";
 import {
@@ -30,6 +31,7 @@ import {
   reduceSteps,
   type StepMemory,
 } from "./steps";
+import { readTranscriptSeed } from "./transcript";
 import type { SessionWriter, StepDoc } from "./writer";
 
 /** What the registry and the transcript know about a session that was running before the agent started. */
@@ -41,6 +43,12 @@ export interface SeedSession {
   startedAt?: number;
   registryName?: string;
   status?: "idle" | "busy" | "waiting";
+  /** When the registry last changed `status`. */
+  statusUpdatedAt?: number;
+  /** The `stateSince` a previous run stored, used when the registry gives no status time. */
+  storedStateSince?: number;
+  /** The state a previous run stored, which says whether `storedStateSince` still applies. */
+  storedState?: SessionState;
   firstMessage?: string;
   hadPrompt: boolean;
   bridgeSessionId?: string;
@@ -104,6 +112,19 @@ interface Tracked {
   process?: { pid?: number; procStart?: string };
   /** Repos worked in so far; only grows. */
   tags: TagDoc[];
+  /** The room last published (Working and Thinking are one), to tell when the session changes room. */
+  publishedRoom?: string;
+  /** When the session entered `publishedRoom`, by the Mac's clock. */
+  stateSince?: number;
+}
+
+/**
+ * The room a published state puts a session in, for telling a room change from a wording change.
+ * @param state - The published state.
+ * @returns The state, with Thinking counted as Working.
+ */
+function roomOf(state: SessionState): string {
+  return state === "thinking" ? "working" : state;
 }
 
 /**
@@ -197,6 +218,15 @@ export class SessionTracker {
         seed.status ?? "idle",
       );
       tracked.tags = [...(seed.tags ?? [])];
+      // A restart keeps the registry's own time in the status, so long-running sessions do not read 0s.
+      tracked.publishedRoom = roomOf(tracked.memory.state);
+      const sameRoom =
+        seed.storedState !== undefined &&
+        roomOf(seed.storedState) === tracked.publishedRoom;
+      tracked.stateSince =
+        seed.statusUpdatedAt ??
+        (sameRoom ? seed.storedStateSince : undefined) ??
+        this.options.now();
     }
     // Tags are resolved before anything is published, so a restart never publishes tag-less sessions.
     await Promise.all(
@@ -275,7 +305,20 @@ export class SessionTracker {
         entry?.status &&
         (entry.statusUpdatedAt ?? -Infinity) > tracked.stateHookTs
       ) {
-        tracked.memory = applyRegistryStatus(tracked.memory, entry.status);
+        // Idle after a turn the hooks never saw end: the transcript tail says whether it ended on a question.
+        const turnEnded =
+          entry.status === "idle" && tracked.memory.base === "thinking";
+        tracked.memory = turnEnded
+          ? initialStateMemory(
+              readTranscriptSeed(this.options.home, sessionId).asked,
+            )
+          : applyRegistryStatus(tracked.memory, entry.status);
+        // The registry knows when the status changed; publish() would stamp the room with now.
+        const room = roomOf(tracked.memory.state);
+        if (tracked.endedAt === undefined && tracked.publishedRoom !== room) {
+          tracked.publishedRoom = room;
+          tracked.stateSince = entry.statusUpdatedAt ?? this.options.now();
+        }
         this.publish(sessionId, tracked);
       }
     }
@@ -490,6 +533,13 @@ export class SessionTracker {
     this.options.folders?.record(tracked.startCwd ?? tracked.cwd);
     const steps = tracked.unwritten;
     tracked.unwritten = [];
+    // Compared on the published state: a went-home session keeps its memory state.
+    const state: SessionState =
+      tracked.endedAt === undefined ? tracked.memory.state : "wentHome";
+    if (tracked.publishedRoom !== roomOf(state)) {
+      tracked.publishedRoom = roomOf(state);
+      tracked.stateSince = tracked.endedAt ?? this.options.now();
+    }
     writer.submit(
       {
         machineId,
@@ -497,8 +547,8 @@ export class SessionTracker {
         sessionId,
         cwd: tracked.cwd,
         startCwd: tracked.startCwd ?? tracked.cwd,
-        state:
-          tracked.endedAt === undefined ? tracked.memory.state : "wentHome",
+        state,
+        stateSince: new Date(tracked.stateSince ?? this.options.now()),
         startedAt: new Date(tracked.startedAt),
         ...(deskName ? { deskName } : {}),
         ...(tracked.bridgeSessionId

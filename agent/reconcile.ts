@@ -89,7 +89,7 @@ export async function seedRunningSessions(options: SeedOptions): Promise<void> {
   const stored = await sessions
     .find(
       { machineId, sessionId: { $in: alive.map((entry) => entry.sessionId) } },
-      { projection: { sessionId: 1, tags: 1 } },
+      { projection: { sessionId: 1, tags: 1, stateSince: 1, state: 1 } },
     )
     .toArray();
   await tracker.seed(
@@ -103,6 +103,12 @@ export async function seedRunningSessions(options: SeedOptions): Promise<void> {
         startedAt: entry.startedAt,
         registryName: entry.name,
         status: entry.status,
+        statusUpdatedAt: entry.statusUpdatedAt,
+        storedStateSince: stored
+          .find((doc) => doc.sessionId === entry.sessionId)
+          ?.stateSince?.getTime(),
+        storedState: stored.find((doc) => doc.sessionId === entry.sessionId)
+          ?.state,
         firstMessage: transcript.firstMessage,
         hadPrompt: transcript.hadPrompt,
         asked: transcript.asked,
@@ -134,6 +140,7 @@ export async function seedRunningSessions(options: SeedOptions): Promise<void> {
     {
       $set: {
         state: "wentHome",
+        stateSince: endedAt,
         endedAt,
         expireAt: new Date(endedAt.getTime() + EXPIRY_DAYS * 86_400_000),
       },

@@ -183,6 +183,11 @@ function Card({
   const band = bandOf(session, offline);
   const style = BAND_STYLES[band.key];
   const remoteControl = remoteControlUrl(session.bridgeSessionId);
+  // A Mac that is offline says nothing about how long the session has been in its state; rows from before the stamp have none.
+  const inState =
+    offline || !session.stateSince
+      ? null
+      : formatElapsed(nowMs - Date.parse(session.stateSince));
   const box = offline ? null : boxOf(session, nowMs);
   const tags = session.tags ?? [];
   return (
@@ -202,12 +207,17 @@ function Card({
         <div
           className={`flex min-w-0 flex-1 flex-col gap-1 [@media(max-height:500px)]:flex-row [@media(max-height:500px)]:flex-wrap [@media(max-height:500px)]:items-baseline [@media(max-height:500px)]:gap-x-2`}
         >
-          <span
-            data-testid="state-pill"
-            className="text-sm font-bold tracking-wide uppercase"
+          <div
+            data-testid="state-line"
+            className="text-sm font-bold tracking-wide"
           >
-            {band.text}
-          </span>
+            <span data-testid="state-pill" className="uppercase">
+              {band.text}
+            </span>
+            {inState !== null && (
+              <span data-testid="state-time"> · {inState}</span>
+            )}
+          </div>
           {project && (
             <span data-testid="project" className="truncate text-xs">
               {project}

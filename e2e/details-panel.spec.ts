@@ -403,7 +403,7 @@ test("the state band is coloured like the employee's room", async ({
   }
 });
 
-test("the running step's time counts from the server's clock when the browser's clock is minutes behind", async ({
+test("the running step's and the room's time count from the server's clock when the browser's clock is minutes behind", async ({
   context,
   page,
 }) => {
@@ -424,6 +424,7 @@ test("the running step's time counts from the server's clock when the browser's 
     runningSteps: [
       { text: "Run tests", startedAt: new Date(Date.now() - 90_000) },
     ],
+    stateSince: new Date(Date.now() - 300_000),
     changedAt: new Date(),
   });
   await signInAsOwner(context);
@@ -444,6 +445,11 @@ test("the running step's time counts from the server's clock when the browser's 
     await expect(
       page.getByTestId("details-panel").getByTestId("terminal-time"),
     ).toHaveText(/^1m \d+s$/);
+
+    // And the band shows about five minutes in the room
+    await expect(page.getByTestId("state-line")).toHaveText(
+      /^Working · 5m \d+s$/i,
+    );
   } finally {
     await sessions.deleteMany({});
     await client.close();

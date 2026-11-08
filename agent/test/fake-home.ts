@@ -20,6 +20,8 @@ export interface FakeSession {
   status?: "idle" | "busy" | "waiting";
   startedAt?: number;
   statusUpdatedAt?: number;
+  /** Leaves `statusUpdatedAt` out of the entry, as an older Claude Code does. */
+  withoutStatusTime?: boolean;
   /** Remote Control id Claude Code writes while Remote Control is connected. */
   bridgeSessionId?: string;
 }
@@ -72,7 +74,11 @@ export function makeFakeHome(machineId: string): FakeHome {
         startedAt: session.startedAt ?? 1_700_000_000_000,
         procStart: session.procStart ?? "Mon Nov  6 08:00:00 2026",
         status: session.status ?? "idle",
-        statusUpdatedAt: session.statusUpdatedAt ?? 1_700_000_000_000,
+        ...(session.withoutStatusTime
+          ? {}
+          : {
+              statusUpdatedAt: session.statusUpdatedAt ?? 1_700_000_000_000,
+            }),
         kind: session.kind ?? "interactive",
         name: session.name ?? "made-up",
         bridgeSessionId: session.bridgeSessionId,

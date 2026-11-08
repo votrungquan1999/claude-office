@@ -18,7 +18,11 @@ export interface MacHarness {
   setUpMac(
     machineId: string,
     computerName: string,
-    options?: { beforeStart?: (fake: FakeHome) => void | Promise<void> },
+    options?: {
+      beforeStart?: (fake: FakeHome) => void | Promise<void>;
+      /** The Mac's clock; real time when absent. */
+      now?: () => number;
+    },
   ): Promise<{ fake: FakeHome; agent: RunningAgent }>;
   /** What the owner's office API lists right now. */
   officeSessions(): Promise<SessionDto[]>;
@@ -65,6 +69,7 @@ export function useMacHarness(): MacHarness {
         reconcileMs: IDLE_MS,
         heartbeatMs: IDLE_MS,
         kanbanPollMs: 50,
+        now: options?.now,
       });
       cleanups.push(() => agent.stop());
       return { fake, agent };

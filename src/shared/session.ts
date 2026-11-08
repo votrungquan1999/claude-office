@@ -58,6 +58,8 @@ export const sessionDtoSchema = z.object({
   tags: z.array(tagDtoSchema).optional(),
   /** Whether the session ever got a prompt; one that never did is left out of the went-home list. */
   hadPrompt: z.boolean().optional(),
+  /** When the session entered its current room (Working and Thinking count as one), by the Mac's clock; absent on older rows. */
+  stateSince: z.string().optional(),
   changedAt: z.string(),
 });
 

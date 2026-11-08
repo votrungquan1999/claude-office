@@ -348,4 +348,81 @@ describe("the details panel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it("uppercases only the band's state word, never the elapsed time", () => {
+    // Given a working session in its room for 4 min 6 s
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-09T10:00:00Z"));
+    open(session({ state: "working", stateSince: "2026-11-09T09:55:54Z" }));
+
+    // Then the state word carries the uppercase style and the time does not
+    expect(screen.getByTestId("state-pill").className).toContain("uppercase");
+    expect(screen.getByTestId("state-time").className).not.toContain(
+      "uppercase",
+    );
+    expect(screen.getByTestId("state-line").className).not.toContain(
+      "uppercase",
+    );
+    expect(screen.getByTestId("state-time").textContent).toBe(" · 4m 06s");
+  });
+
+  it("shows how long the session has been in its state beside the band's word, ticking, and counts a went-home session from when it left", () => {
+    // Given a working session in its room for 3 min 12 s
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-09T10:00:00Z"));
+    const line = () => screen.getByTestId("state-line").textContent;
+    open(session({ state: "working", stateSince: "2026-11-09T09:56:48Z" }));
+    expect(line()).toBe("Working · 3m 12s");
+
+    // When a second passes
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+
+    // Then the time moves on
+    expect(line()).toBe("Working · 3m 13s");
+    cleanup();
+    vi.setSystemTime(new Date("2026-11-09T10:00:00Z"));
+
+    // And hours read "1h 05m", a thinking session keeps counting, and a went-home session counts from when it left
+    open(session({ state: "thinking", stateSince: "2026-11-09T08:55:00Z" }));
+    expect(line()).toBe("Thinking · 1h 05m");
+    cleanup();
+    open(session({ state: "wentHome", stateSince: "2026-11-09T09:30:00Z" }));
+    expect(line()).toBe("Went home · 30m 00s");
+  });
+
+  it("shows no time on a Mac-offline band or when the session has no stamp, and never a negative time", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-09T10:00:00Z"));
+    const line = () => screen.getByTestId("state-line").textContent;
+
+    // Given a Mac that is offline, then a legacy row without a stamp
+    open(session({ state: "working", stateSince: "2026-11-09T09:56:48Z" }), [
+      "m1",
+    ]);
+    expect(line()).toBe("Mac offline");
+    cleanup();
+    open(session({ state: "working" }));
+    expect(line()).toBe("Working");
+    cleanup();
+
+    // And a stamp in the future (the Mac's clock is ahead) reads 0s
+    open(session({ state: "idle", stateSince: "2026-11-09T10:10:00Z" }));
+    expect(line()).toBe("Idle · 0s");
+  });
+
+  it("stops its once-a-second clock when the panel closes", () => {
+    vi.useFakeTimers();
+
+    // Given an open panel that is counting
+    open(session({ state: "working", stateSince: "2026-11-09T09:56:48Z" }));
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+    // When it closes
+    cleanup();
+
+    // Then no timer is left running
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });

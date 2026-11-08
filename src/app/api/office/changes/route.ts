@@ -25,6 +25,7 @@ interface SessionRow {
   currentTodo?: string | null;
   tags?: Array<{ name: string; key: string; parent?: string }>;
   hadPrompt?: boolean;
+  stateSince?: Date;
   changedAt: Date;
 }
 
@@ -86,6 +87,7 @@ function toDto(row: SessionRow): SessionDto {
         }
       : {}),
     ...(row.hadPrompt === undefined ? {} : { hadPrompt: row.hadPrompt }),
+    ...(row.stateSince ? { stateSince: row.stateSince.toISOString() } : {}),
     changedAt: row.changedAt.toISOString(),
   };
 }

@@ -36,6 +36,8 @@ export interface SessionDoc {
   tags?: Array<{ name: string; key: string; parent?: string }>;
   /** Whether the session ever got a prompt; sessions that never did stay out of the went-home list. */
   hadPrompt?: boolean;
+  /** When the session entered its current room, by the Mac's clock. */
+  stateSince?: Date;
 }
 
 export interface WriterOptions {
