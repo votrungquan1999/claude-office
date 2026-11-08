@@ -129,4 +129,4 @@ There is no uninstall command. [SETUP.md](SETUP.md) lists what to remove by hand
 
 The renderer and art come from [Pixel Agents](https://github.com/pixel-agents-hq/pixel-agents) (MIT), and the character sprites are based on JIK-A-4's Metro City pack (CC0). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for details.
 
-This repository has no LICENSE file yet, so the licence for its own code is not yet chosen. Third-party parts keep their own licences.
+This repository's own code is under the [MIT licence](LICENSE). Third-party parts keep their own licences.
