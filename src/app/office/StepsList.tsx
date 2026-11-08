@@ -7,6 +7,14 @@ import {
   stepsPageSchema,
 } from "@/shared/session";
 
+interface StepLine {
+  key: string;
+  text: string;
+  note: string;
+  running: boolean;
+  muted: boolean;
+}
+
 interface StepsListProps {
   session: SessionDto;
 }
@@ -47,9 +55,9 @@ function mergeById(base: StepDto[], incoming: StepDto[]): StepDto[] {
 }
 
 /**
- * The steps of the selected session: older ones, the recent ones, then the running ones.
+ * The steps of the selected session, newest first, with the running ones on top.
  * @param props - The selected session.
- * @returns The list with its "Show more" button.
+ * @returns The list with its "Show older steps" button below it.
  */
 export function StepsList({ session }: StepsListProps) {
   const recent = session.recentSteps ?? [];
@@ -57,7 +65,7 @@ export function StepsList({ session }: StepsListProps) {
   // Steps seen in the live list before newer ones pushed them out of it.
   const [kept, setKept] = useState<StepDto[]>([]);
   const [failed, setFailed] = useState(false);
-  // Until "Show more" succeeds only the last RECENT_STEPS show, however many the list has seen.
+  // Until "Show older steps" succeeds only the last RECENT_STEPS show, however many the list has seen.
   const [expanded, setExpanded] = useState(false);
   // undefined: not asked yet (a full recent list may have more behind it); null: nothing more.
   const [next, setNext] = useState<string | null | undefined>(undefined);
@@ -74,7 +82,7 @@ export function StepsList({ session }: StepsListProps) {
         : null
       : next;
 
-  /** Fetches the next page of older steps and puts it above what is shown; a failure shows a message and can be retried. */
+  /** Fetches the next page of older steps and adds it to what is shown; a failure shows a message and can be retried. */
   async function showMore(): Promise<void> {
     if (!cursor) return;
     const params = new URLSearchParams({
@@ -101,36 +109,76 @@ export function StepsList({ session }: StepsListProps) {
     (step) => Date.parse(step.startedAt) >= visibleSince,
   );
   const shown = expanded ? inWindow : inWindow.slice(-RECENT_STEPS);
-  const lines = shown.map((step) => ({
-    key: step.id,
-    text: [
-      step.text,
-      step.durationMs === undefined ? null : formatDuration(step.durationMs),
-      step.status === "ok" ? null : step.status,
-    ]
-      .filter(Boolean)
-      .join(" · "),
-  }));
-  for (const [index, running] of (session.runningSteps ?? []).entries()) {
-    lines.push({
+  // Newest first: the running steps, then finished steps from the latest back.
+  const lines: StepLine[] = [
+    ...(session.runningSteps ?? []).map((running, index) => ({
       key: `running-${index}-${running.startedAt}-${running.text}`,
-      text: `${running.text} · running`,
-    });
-  }
+      text: running.text,
+      note: "running",
+      running: true,
+      muted: false,
+    })),
+    ...shown.toReversed().map((step) => ({
+      key: step.id,
+      text: step.text,
+      note: [
+        step.durationMs === undefined ? null : formatDuration(step.durationMs),
+        step.status === "ok" ? null : step.status,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+      running: false,
+      muted: step.status !== "ok",
+    })),
+  ];
 
   return (
-    <div>
+    <section className="flex min-h-0 flex-1 flex-col gap-2">
+      <h3 className="text-xs tracking-widest text-text-muted uppercase">
+        Recent steps
+      </h3>
       {failed && <p role="alert">Could not load older steps. Try again.</p>}
-      {cursor && (
-        <button type="button" onClick={() => void showMore()}>
-          Show more
-        </button>
-      )}
-      <ul data-testid="steps-list">
+      {lines.length === 0 && <p className="text-text-muted">No steps yet</p>}
+      <ul
+        data-testid="steps-list"
+        className="flex min-h-0 flex-col gap-1 overflow-y-auto"
+      >
         {lines.map((line) => (
-          <li key={line.key}>{line.text}</li>
+          <li
+            key={line.key}
+            className={`flex items-baseline gap-2 leading-tight ${line.muted ? "text-text-muted" : ""}`}
+          >
+            <span
+              aria-hidden
+              className={`shrink-0 ${line.running ? "text-status-active" : "invisible"}`}
+            >
+              ●
+            </span>
+            <span
+              data-testid="step-text"
+              title={line.text}
+              className="min-w-0 flex-1 truncate"
+            >
+              {line.text}
+            </span>
+            <span
+              data-testid="step-note"
+              className={`shrink-0 text-xs tabular-nums ${line.running ? "text-status-active" : "text-text-muted"}`}
+            >
+              {line.note}
+            </span>
+          </li>
         ))}
       </ul>
-    </div>
+      {cursor && (
+        <button
+          type="button"
+          onClick={() => void showMore()}
+          className="border-2 border-border bg-btn-bg px-2 py-1 hover:bg-btn-hover"
+        >
+          Show older steps
+        </button>
+      )}
+    </section>
   );
 }

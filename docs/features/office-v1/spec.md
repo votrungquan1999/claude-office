@@ -26,7 +26,7 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 - **Employees:** each session is a character that sits in the room matching its state and moves when the state changes.
 - **Labels:** an employee's label (status line, desk name, Mac and folder) is shown only while the mouse is over it or it is selected (tap or click); permission and waiting bubbles are always shown.
 - The label's status line follows the session's state: Working (with the step it is on, when there is one), Thinking, Needs permission or Waiting.
-- **Details:** clicking or tapping an employee opens a panel with the desk name, Mac, folder, steps and the Remote Control link.
+- **Details:** clicking or tapping an employee opens a panel with the desk name, a state pill coloured like its room (grey "Mac offline" when the Mac is offline), Mac, folder with the home folder as `~` and long paths cut in the middle (full path on hover), the Remote Control button and the steps; the panel is 360px wide on a desktop and a bottom sheet on a phone, and only the steps list scrolls.
 - **Went home:** closed sessions leave the office and appear in a "Went home today" list.
 - **Sign-in:** Google only; one allowed account.
 - **Machines:** each Mac runs a small background agent that reports to the shared database; the hosted app reads it.
@@ -70,7 +70,8 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 
 ### Steps
 
-- The details panel shows the last 5 steps with how long each took; "Show more" pages back up to a week.
+- The details panel shows a "Recent steps" list, newest first, with the running step on top (dot and "running"); each step is one line (full text on hover) with its duration on the right; failed and stopped steps are muted.
+- "Show older steps" sits below the list and pages back up to a week; a session with no steps says "No steps yet".
 - Step text: Read/Edit/Write show the verb and file name; Bash shows its description, else "Bash"; Agent shows "Agent: <description>"; Grep/Glob show "Search '<pattern>'"; WebSearch shows the query; WebFetch shows the domain; any other tool shows its name. Text is cut at 120 characters.
 - The to-do tool is not a step; it sets the desk's current to-do line.
 - Failed, denied and stopped steps are marked; an API-error turn end adds one "API error" step.
@@ -87,7 +88,7 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 
 ### Remote Control
 
-- The details panel shows "Open Remote Control" linking to `https://claude.ai/code/<bridgeSessionId>` (ids containing `/`, `?` or `#` give no link), or "Remote Control is off for this session".
+- The details panel shows an "Open in Remote Control" button linking to `https://claude.ai/code/<bridgeSessionId>` in a new tab (ids containing `/`, `?` or `#` give no link), or a muted "Remote Control off".
 - The session registry's `bridgeSessionId` is the source of truth: it is read at start and on every registry check; a hook event that carries the id may set it, but a hook event without it never clears it; the id is cleared only when the registry entry exists and has none.
 - Clicking never navigates by itself; the link lives only in the panel.
 
@@ -109,7 +110,7 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 ### Phone
 
 - The office fits the screen, can be panned and pinch-zoomed, shows a select-only strip of employee cards, and the went-home list is a sheet.
-- Tapping an employee or card opens the details panel, which scrolls on a small screen.
+- Tapping an employee or card opens the details panel as a bottom sheet; only its steps list scrolls.
 
 ### Connecting a Mac
 

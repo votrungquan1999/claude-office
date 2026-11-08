@@ -77,7 +77,9 @@ test("the went-home list shows today's prompted departures only, opens details o
     // Then the details show with no Remote Control link
     const panel = page.getByTestId("details-panel");
     await expect(panel).toContainText("Light the lantern");
-    await expect(panel).toContainText("/Users/q/projects/today");
+    await expect(panel.getByTestId("folder")).toHaveText("~/projects/today");
+    await expect(panel.getByTestId("state-pill")).toHaveText("Went home");
+    await expect(panel).not.toContainText("Remote Control");
     await expect(panel.getByTestId("remote-control-link")).toHaveCount(0);
 
     // When the clock passes local midnight

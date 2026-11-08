@@ -36,6 +36,13 @@
   --color-status-success: #89d185;
   --color-status-error: var(--color-danger);
 
+  /* Room tints, reused by the details panel's state pill */
+  --color-room-working: #3794ff;
+  --color-room-thinking: #9b6bff;
+  --color-room-permission: #c4772c;
+  --color-room-waiting: #4fa84a;
+  --color-pill-offline: #5a5a6a;
+
   /* Shadow */
   --shadow-pixel: 2px 2px 0px #0a0a14;
 
@@ -82,6 +89,11 @@
   --color-status-active: var(--color-status-active);
   --color-status-success: var(--color-status-success);
   --color-status-error: var(--color-status-error);
+  --color-room-working: var(--color-room-working);
+  --color-room-thinking: var(--color-room-thinking);
+  --color-room-permission: var(--color-room-permission);
+  --color-room-waiting: var(--color-room-waiting);
+  --color-pill-offline: var(--color-pill-offline);
 
   /* Shadow */
   --shadow-pixel: var(--shadow-pixel);

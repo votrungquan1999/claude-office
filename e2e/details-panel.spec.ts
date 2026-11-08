@@ -79,7 +79,11 @@ test("clicking an employee opens its details with a Remote Control link, or says
     // Then the details show its machine and folder, with a link that opens Remote Control in a new tab
     await expect(panel).toContainText("Light the lantern");
     await expect(panel).toContainText("Studio Mac");
-    await expect(panel).toContainText("/Users/q/projects/lantern");
+    await expect(panel.getByTestId("folder")).toHaveText("~/projects/lantern");
+    await expect(panel.getByTestId("folder")).toHaveAttribute(
+      "title",
+      "/Users/q/projects/lantern",
+    );
     const link = panel.getByTestId("remote-control-link");
     await expect(link).toHaveAttribute(
       "href",
@@ -92,8 +96,8 @@ test("clicking an employee opens its details with a Remote Control link, or says
     await clickEmployee(page, 2);
 
     // Then the details say so and offer no link
-    await expect(panel).toContainText("/Users/q/projects/anvil");
-    await expect(panel).toContainText("Remote Control is off for this session");
+    await expect(panel.getByTestId("folder")).toHaveText("~/projects/anvil");
+    await expect(panel).toContainText("Remote Control off");
     await expect(panel.getByTestId("remote-control-link")).toHaveCount(0);
 
     // When the owner clicks the one needing permission
@@ -105,7 +109,7 @@ test("clicking an employee opens its details with a Remote Control link, or says
     );
 
     // Then its details show and the permission bubble is still showing
-    await expect(panel).toContainText("/Users/q/projects/kiln");
+    await expect(panel.getByTestId("folder")).toHaveText("~/projects/kiln");
     expect(await bubbleOf(page, 3)).toBe("permission");
 
     // When the owner closes the details
@@ -119,7 +123,7 @@ test("clicking an employee opens its details with a Remote Control link, or says
   }
 });
 
-test("the details list the last 5 steps with durations, the running step and the to-do line, and 'Show more' loads older steps", async ({
+test("the details list the running step then the last 5 steps newest first with durations, and the to-do line, and 'Show older steps' loads older steps", async ({
   context,
   page,
 }) => {
@@ -176,35 +180,57 @@ test("the details list the last 5 steps with durations, the running step and the
     const panel = page.getByTestId("details-panel");
     const list = panel.getByTestId("steps-list");
 
-    // Then the to-do line, the running step and the last 5 steps with run times show, oldest of them first
+    // Then the to-do line, the running step and the last 5 steps with run times show, newest first
     await expect(panel.getByTestId("current-todo")).toHaveText("Fixing login");
-    await expect(list.getByRole("listitem")).toHaveText([
-      "Step 4 · 100 ms",
-      "Step 5 · 100 ms",
-      "Step 6 · 100 ms",
-      "Step 7 · 100 ms · failed",
-      "Step 8 · 4.5 s",
-      "Read live.ts · running",
-    ]);
+    const rows = () =>
+      list
+        .getByRole("listitem")
+        .evaluateAll((items) =>
+          items.map(
+            (li) =>
+              `${li.querySelector('[data-testid="step-text"]')?.textContent} | ${li.querySelector('[data-testid="step-note"]')?.textContent}`,
+          ),
+        );
+    await expect
+      .poll(rows)
+      .toEqual([
+        "Read live.ts | running",
+        "Step 8 | 4.5 s",
+        "Step 7 | 100 ms · failed",
+        "Step 6 | 100 ms",
+        "Step 5 | 100 ms",
+        "Step 4 | 100 ms",
+      ]);
 
-    // When the owner asks for more
-    await panel.getByRole("button", { name: "Show more" }).click();
-
-    // Then the 3 older steps appear above, and there is nothing more to ask for
-    await expect(list.getByRole("listitem")).toHaveText([
-      "Step 1 · 100 ms",
-      "Step 2 · 100 ms",
-      "Step 3 · 100 ms",
-      "Step 4 · 100 ms",
-      "Step 5 · 100 ms",
-      "Step 6 · 100 ms",
-      "Step 7 · 100 ms · failed",
-      "Step 8 · 4.5 s",
-      "Read live.ts · running",
-    ]);
-    await expect(panel.getByRole("button", { name: "Show more" })).toHaveCount(
-      0,
+    // And the older-steps button sits below the list
+    const listBox = await list.boundingBox();
+    const buttonBox = await panel
+      .getByRole("button", { name: "Show older steps" })
+      .boundingBox();
+    expect(buttonBox?.y ?? 0).toBeGreaterThanOrEqual(
+      (listBox?.y ?? 0) + (listBox?.height ?? 0),
     );
+
+    // When the owner asks for older steps
+    await panel.getByRole("button", { name: "Show older steps" }).click();
+
+    // Then the 3 older steps follow at the bottom, and there is nothing more to ask for
+    await expect
+      .poll(rows)
+      .toEqual([
+        "Read live.ts | running",
+        "Step 8 | 4.5 s",
+        "Step 7 | 100 ms · failed",
+        "Step 6 | 100 ms",
+        "Step 5 | 100 ms",
+        "Step 4 | 100 ms",
+        "Step 3 | 100 ms",
+        "Step 2 | 100 ms",
+        "Step 1 | 100 ms",
+      ]);
+    await expect(
+      panel.getByRole("button", { name: "Show older steps" }),
+    ).toHaveCount(0);
   } finally {
     await sessions.deleteMany({});
     await steps.deleteMany({});
@@ -215,7 +241,7 @@ test("the details list the last 5 steps with durations, the running step and the
 test.describe("on a short screen", () => {
   test.use({ viewport: { width: 1000, height: 400 } });
 
-  test("a long details panel stays on screen and scrolls to its Remote Control link", async ({
+  test("a long details panel stays on screen, keeps its Remote Control button in view and scrolls only the steps", async ({
     context,
     page,
   }) => {
@@ -267,25 +293,90 @@ test.describe("on a short screen", () => {
       // When the owner opens the details and loads the older steps
       await clickEmployee(page, 1);
       const panel = page.getByTestId("details-panel");
-      await panel.getByRole("button", { name: "Show more" }).click();
+      await panel.getByRole("button", { name: "Show older steps" }).click();
       await expect(panel.getByRole("listitem")).toHaveCount(14);
 
-      // Then the panel fits inside the screen and scrolls, and the link can be scrolled to
+      // Then the panel fits inside the screen, its button stays in view, and only the steps list scrolls
       const box = await panel.boundingBox();
       expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(400);
-      expect(
-        await panel.evaluate((el) => el.scrollHeight > el.clientHeight),
-      ).toBe(true);
-      const link = panel.getByTestId("remote-control-link");
-      await link.scrollIntoViewIfNeeded();
-      const linkBox = await link.boundingBox();
+      const linkBox = await panel
+        .getByTestId("remote-control-link")
+        .boundingBox();
       expect((linkBox?.y ?? 0) + (linkBox?.height ?? 0)).toBeLessThanOrEqual(
         400,
       );
+      expect(
+        await panel
+          .getByTestId("steps-list")
+          .evaluate((el) => el.scrollHeight > el.clientHeight),
+      ).toBe(true);
+      expect(
+        await panel.evaluate((el) => el.scrollHeight <= el.clientHeight),
+      ).toBe(true);
     } finally {
       await db.collection("sessions").deleteMany({});
       await db.collection("steps").deleteMany({});
       await client.close();
     }
   });
+});
+
+test("the state pill is coloured like the employee's room, and grey when it is not", async ({
+  context,
+  page,
+}) => {
+  // Given one session per room
+  const client = new MongoClient(
+    readFileSync(E2E_MONGO_URI_FILE, "utf8").trim(),
+  );
+  await client.connect();
+  const sessions = client.db(E2E_DB).collection("sessions");
+  await sessions.deleteMany({});
+  const states = ["working", "thinking", "needsPermission", "waiting"];
+  await sessions.insertMany(
+    states.map((state, i) => ({
+      machineId: "m1",
+      machineName: "Studio Mac",
+      sessionId: `s${i + 1}`,
+      cwd: `/Users/q/projects/p${i + 1}`,
+      state,
+      startedAt: new Date(),
+      changedAt: new Date(1000 + i),
+    })),
+  );
+  await signInAsOwner(context);
+
+  try {
+    await page.goto("/");
+    await expect
+      .poll(() =>
+        page.evaluate(() => window.__officeTestHooks?.getCharacters().length),
+      )
+      .toBe(4);
+    const panel = page.getByTestId("details-panel");
+    const pill = panel.getByTestId("state-pill");
+    const seen: Record<string, string> = {};
+
+    // When the owner opens each employee
+    for (const [i, state] of states.entries()) {
+      await clickEmployee(page, i + 1);
+      await expect(panel.getByTestId("folder")).toHaveText(
+        `~/projects/p${i + 1}`,
+      );
+      seen[state] = await pill.evaluate(
+        (el) => `${el.textContent}|${getComputedStyle(el).backgroundColor}`,
+      );
+    }
+
+    // Then each pill is worded and coloured for its room
+    expect(seen).toEqual({
+      working: "Working|rgb(55, 148, 255)",
+      thinking: "Thinking|rgb(155, 107, 255)",
+      needsPermission: "Needs permission|rgb(196, 119, 44)",
+      waiting: "Waiting|rgb(79, 168, 74)",
+    });
+  } finally {
+    await sessions.deleteMany({});
+    await client.close();
+  }
 });

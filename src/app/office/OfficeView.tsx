@@ -221,6 +221,7 @@ export function OfficeView() {
         <DetailsPanel
           session={selectedKey ? (sessions.get(selectedKey) ?? null) : null}
           offlineMachineIds={offlineIds}
+          sheet={isMobile}
           onClose={() => {
             setSelectedKey(null);
             officeState.selectedAgentId = null;
