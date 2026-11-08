@@ -14,10 +14,13 @@ const tabNames = (page: Page) =>
       tabs.map((tab) => (tab as HTMLElement).dataset.companyName),
     );
 
-/** Seeds one Mac with the given folders and one live session per start folder. */
+/** A session row to seed: Mac, id, start folder, state, and the time it went home when it did. */
+type SeedSession = [string, string, string, string, number?];
+
+/** Seeds Macs air and mini, their folder records and the given sessions. */
 async function seed(
-  folders: string[],
-  sessionRows: Array<[string, string, string]>,
+  folders: Array<[string, string]>,
+  sessionRows: SeedSession[],
 ) {
   const client = new MongoClient(
     readFileSync(E2E_MONGO_URI_FILE, "utf8").trim(),
@@ -25,29 +28,34 @@ async function seed(
   await client.connect();
   const db = client.db(E2E_DB);
   const now = Date.now();
+  const names: Record<string, string> = { air: "Air", mini: "Mini" };
   await db.collection("machines").deleteMany({});
-  await db.collection("machines").insertOne({
-    machineId: "air",
-    machineName: "Air",
-    lastSeenAt: new Date(now),
-  });
+  await db.collection("machines").insertMany(
+    Object.entries(names).map(([machineId, machineName]) => ({
+      machineId,
+      machineName,
+      lastSeenAt: new Date(now),
+    })),
+  );
   await seedFolders(
     db.collection("folders"),
-    folders.map((path) => ({ machineId: "air", path })),
+    folders.map(([machineId, path]) => ({ machineId, path })),
   );
   const sessions = db.collection("sessions");
   await sessions.deleteMany({});
   await sessions.insertMany(
-    sessionRows.map(([sessionId, cwd, state]) => ({
-      machineId: "air",
-      machineName: "Air",
+    sessionRows.map(([machineId, sessionId, cwd, state, endedAgo]) => ({
+      machineId,
+      machineName: names[machineId],
       sessionId,
       cwd,
       startCwd: cwd,
       state,
       deskName: sessionId,
+      hadPrompt: true,
       startedAt: new Date(now - 2 * HOUR),
       changedAt: new Date(now - 60_000),
+      ...(endedAgo === undefined ? {} : { endedAt: new Date(now - endedAgo) }),
     })),
   );
   return {
@@ -69,14 +77,14 @@ test("switching company mode off on git-repos makes its children companies for e
   // Given one company, git-repos, holding two projects and a session started at git-repos itself
   const { cleanup } = await seed(
     [
-      "/Users/q/git-repos",
-      "/Users/q/git-repos/personal",
-      "/Users/q/git-repos/workspace",
+      ["air", "/Users/q/git-repos"],
+      ["air", "/Users/q/git-repos/personal"],
+      ["air", "/Users/q/git-repos/workspace"],
     ],
     [
-      ["app", "/Users/q/git-repos/personal/app", "working"],
-      ["tool", "/Users/q/git-repos/workspace/tool", "idle"],
-      ["root", "/Users/q/git-repos", "idle"],
+      ["air", "app", "/Users/q/git-repos/personal/app", "working"],
+      ["air", "tool", "/Users/q/git-repos/workspace/tool", "idle"],
+      ["air", "root", "/Users/q/git-repos", "idle"],
     ],
   );
   await signInAsOwner(context);
@@ -272,10 +280,10 @@ test("switching off the home folder turns the folders below it into companies", 
 }) => {
   // Given sessions in two folders below home, grouped under one company at home
   const { cleanup } = await seed(
-    ["/Users/q"],
+    [["air", "/Users/q"]],
     [
-      ["a", "/Users/q/git-repos/a", "working"],
-      ["b", "/Users/q/notes/b", "idle"],
+      ["air", "a", "/Users/q/git-repos/a", "working"],
+      ["air", "b", "/Users/q/notes/b", "idle"],
     ],
   );
   await signInAsOwner(context);
@@ -294,6 +302,120 @@ test("switching off the home folder turns the folders below it into companies", 
 
     // Then each folder below home is a company
     await expect.poll(() => tabNames(page)).toEqual(["git-repos", "notes"]);
+  } finally {
+    await cleanup();
+  }
+});
+
+/** The company tab names of one Mac's group in the strip. */
+const macTabs = (page: Page, machineId: string) =>
+  page
+    .getByTestId(`mac-group-${machineId}`)
+    .getByTestId("company-tab")
+    .evaluateAll((tabs) =>
+      tabs.map((tab) => (tab as HTMLElement).dataset.companyName),
+    );
+
+test("sessions in a switched-off folder move to Other on that Mac only, and Other leaves when the folder is switched back on", async ({
+  context,
+  page,
+}) => {
+  // Given both Macs hold a company ws with a live session, and Air also has a session started at ws itself
+  const { cleanup } = await seed(
+    [
+      ["air", "/Users/q/ws"],
+      ["air", "/Users/q/ws/app"],
+      ["mini", "/Users/q/ws"],
+      ["mini", "/Users/q/ws/app"],
+    ],
+    [
+      ["air", "at-ws", "/Users/q/ws", "idle"],
+      ["air", "in-app", "/Users/q/ws/app", "working"],
+      ["mini", "m-in-app", "/Users/q/ws/app", "working"],
+    ],
+  );
+  await signInAsOwner(context);
+
+  try {
+    await page.goto("/");
+    await expect.poll(() => macTabs(page, "air")).toEqual(["ws"]);
+    await expect.poll(() => macTabs(page, "mini")).toEqual(["ws"]);
+
+    // When the owner switches ws off on Air
+    await page.getByTestId("open-drawer").click();
+    await page
+      .getByTestId("drawer-mac-air")
+      .getByTestId("drawer-company-ws")
+      .getByRole("switch")
+      .click();
+
+    // Then Air's session at ws is in Other, which sorts last; Mini is untouched
+    await expect.poll(() => macTabs(page, "air")).toEqual(["app", "Other"]);
+    expect(await macTabs(page, "mini")).toEqual(["ws"]);
+    const other = page
+      .getByTestId("mac-group-air")
+      .locator('[data-company-name="Other"]');
+    await expect(other.getByLabel("1 idle")).toHaveText("1");
+
+    // And Other has no switch in the drawer
+    await expect(
+      page
+        .getByTestId("drawer-mac-air")
+        .getByTestId("drawer-company-Other")
+        .getByRole("switch"),
+    ).toHaveCount(0);
+
+    // When the owner switches ws back on
+    await page
+      .getByTestId("drawer-mac-air")
+      .getByTestId("drawer-off-ws")
+      .getByRole("switch")
+      .click();
+
+    // Then Other is gone
+    await expect.poll(() => macTabs(page, "air")).toEqual(["ws"]);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("a session that went home today in a switched-off folder keeps Other in the strip, and the went-home list works inside it", async ({
+  context,
+  page,
+}) => {
+  // Given Air's only session at ws went home today, and a live one lives below
+  const { cleanup } = await seed(
+    [
+      ["air", "/Users/q/ws"],
+      ["air", "/Users/q/ws/app"],
+    ],
+    [
+      ["air", "gone", "/Users/q/ws", "wentHome", 60_000],
+      ["air", "in-app", "/Users/q/ws/app", "idle"],
+    ],
+  );
+  await signInAsOwner(context);
+
+  try {
+    await page.goto("/");
+    await expect.poll(() => macTabs(page, "air")).toEqual(["ws"]);
+
+    // When ws is switched off
+    await page.getByTestId("open-drawer").click();
+    await page.getByTestId("drawer-company-ws").getByRole("switch").click();
+    await expect.poll(() => macTabs(page, "air")).toEqual(["app", "Other"]);
+
+    // And the owner opens Other
+    await page.keyboard.press("Escape");
+    await page.locator('[data-company-name="Other"]').click();
+
+    // Then no one is at work there, and the departure is listed
+    await expect
+      .poll(() =>
+        page.evaluate(() => window.__officeTestHooks?.getCharacters().length),
+      )
+      .toBe(0);
+    await expect(page.getByTestId("went-home-list")).toContainText("gone");
   } finally {
     await cleanup();
   }

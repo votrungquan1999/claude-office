@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { MacOverview } from "@/shared/overview";
+import { buildOverview, type MacOverview } from "@/shared/overview";
 import { CompanyStrip } from "./CompanyStrip";
 
 const company = (
@@ -137,5 +137,48 @@ describe("the company strip", () => {
     );
     expect(screen.queryAllByTestId("company-tab")).toHaveLength(0);
     expect(screen.getByRole("navigation", { name: "Companies" })).toBeTruthy();
+  });
+
+  it("shows Other as the last tab of its Mac with its four counts, from sessions started in a switched-off folder", () => {
+    // Given g is off, with a company below it and two sessions started at g itself
+    const T = "2026-11-09T10:00:00.000Z";
+    const session = (id: string, cwd: string, state: "working" | "idle") => ({
+      machineId: "m1",
+      machineName: "Air",
+      sessionId: id,
+      cwd,
+      startCwd: cwd,
+      state,
+      startedAt: T,
+      changedAt: T,
+    });
+    const overview = buildOverview({
+      folders: [{ machineId: "m1", path: "/g", companyMode: false }],
+      sessions: [
+        session("a", "/g/a", "idle"),
+        session("x", "/g", "working"),
+        session("y", "/g", "idle"),
+      ],
+      machines: [{ machineId: "m1", machineName: "Air", lastSeenAt: T }],
+      offlineMachineIds: new Set(),
+      departures: [],
+    });
+
+    // When the strip renders
+    render(
+      <CompanyStrip
+        macs={overview.macs}
+        selectedKey={null}
+        onSelect={() => {}}
+        onOpenDrawer={() => {}}
+      />,
+    );
+
+    // Then Other comes after a, with the counts of the two sessions
+    const tabs = screen.getAllByTestId("company-tab");
+    expect(tabs.map((tab) => tab.dataset.companyName)).toEqual(["a", "Other"]);
+    const other = within(tabs[1] as HTMLElement);
+    expect(other.getByLabelText("1 working")).toBeTruthy();
+    expect(other.getByLabelText("1 idle")).toBeTruthy();
   });
 });

@@ -237,10 +237,10 @@ describe("the company drawer", () => {
       "false",
     );
 
-    // And Other has no switch
-    expect(
-      within(screen.getByTestId("drawer-company-Other")).queryByRole("switch"),
-    ).toBeNull();
+    // And Other has no switch and counts the session started at g itself as idle
+    const other = within(screen.getByTestId("drawer-company-Other"));
+    expect(other.queryByRole("switch")).toBeNull();
+    expect(other.getByLabelText("1 idle")).toBeTruthy();
 
     // When the owner presses a's switch and g's switch
     fireEvent.click(a.getByRole("switch"));

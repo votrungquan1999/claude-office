@@ -60,6 +60,25 @@ describe("the company tree", () => {
     });
   });
 
+  it("lists Other for a Mac that has a switched-off folder even when no session is placed in it", () => {
+    // Given /w switched off with a session below it only, and a second Mac with nothing switched off
+    const tree = buildCompanyTree({
+      folders: [
+        { machineId: "m1", path: "/w", companyMode: false },
+        { machineId: "m2", path: "/p", companyMode: true },
+      ],
+      sessions: [session("deep", "/w/x/y")],
+      machineIds: new Set(["m1", "m2"]),
+    });
+
+    // Then the first Mac lists Other after its company, and the second has none
+    expect(tree.companies.map((c) => [c.machineId, c.name, c.other])).toEqual([
+      ["m1", "x", false],
+      ["m1", "Other", true],
+      ["m2", "p", false],
+    ]);
+  });
+
   it("hands the company job down at any depth when each level is switched off in turn", () => {
     // Given /a off, /a/b off, and sessions in /a/b/c/d and /a/z
     const tree = buildCompanyTree({
@@ -72,7 +91,10 @@ describe("the company tree", () => {
     });
 
     // Then the grandchildren become the companies
-    expect(tree.companies.map((c) => c.path)).toEqual(["/a/b/c", "/a/z"]);
+    expect(tree.companies.filter((c) => !c.other).map((c) => c.path)).toEqual([
+      "/a/b/c",
+      "/a/z",
+    ]);
     expect(tree.companyOf(session("one", "/a/b/c/d"))).toMatchObject({
       companyName: "c",
       project: "d",

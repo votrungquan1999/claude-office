@@ -193,6 +193,24 @@ export function buildCompanyTree(input: CompanyTreeInput): CompanyTree {
   }
   const others = new Map<string, Company>();
   /**
+   * The Other company of a Mac, made on first use.
+   * @param machineId - The Mac.
+   * @returns Its Other company.
+   */
+  const otherOf = (machineId: string): Company => {
+    const other = others.get(machineId) ?? {
+      key: `${machineId}\0\0other`,
+      machineId,
+      name: "Other",
+      path: null,
+      other: true,
+    };
+    others.set(machineId, other);
+    return other;
+  };
+  // A Mac with a switched-off folder always lists Other, so the drawer has a row for sessions that land there later.
+  for (const { machineId } of switchedOff) otherOf(machineId);
+  /**
    * Places one session.
    * @param session - The session to place.
    * @returns Its company and project, or null for an unknown Mac.
@@ -215,14 +233,7 @@ export function buildCompanyTree(input: CompanyTreeInput): CompanyTree {
       };
     }
     // The session's own folder is switched off, so no company holds it.
-    const other = others.get(session.machineId) ?? {
-      key: `${session.machineId}\0\0other`,
-      machineId: session.machineId,
-      name: "Other",
-      path: null,
-      other: true,
-    };
-    others.set(session.machineId, other);
+    const other = otherOf(session.machineId);
     return {
       companyKey: other.key,
       companyName: other.name,
