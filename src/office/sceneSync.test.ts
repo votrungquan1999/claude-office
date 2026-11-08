@@ -4,6 +4,7 @@ import type { SessionDto } from "@/shared/session";
 import { loadOffice } from "@/test/load-office";
 import type { OfficeState } from "./engine/officeState";
 import { createSceneSync } from "./sceneSync";
+import { TileType } from "./types";
 
 function session(
   machineId: string,
@@ -241,6 +242,86 @@ describe("scene sync", () => {
       const tileRoom =
         areaTiles?.[standing[0].tileRow * cols + standing[0].tileCol];
       expect(tileRoom).toBe("working");
+    });
+
+    it("counts the employees of each room, so a room over its seats has more employees than seats and the extra ones stand inside it", () => {
+      // Given a Needs permission room with two sessions more than it has seats
+      const office = loadOffice();
+      const sync = createSceneSync(office);
+      const seatsInRoom = [...office.seats.keys()].filter(
+        (uid) => office.seatZone(uid) === "needsPermission",
+      ).length;
+      const sessions = Array.from({ length: seatsInRoom + 2 }, (_, n) =>
+        session(
+          "m1",
+          "Mac",
+          `s${n}`,
+          "/w",
+          "2026-11-08T10:00:00.000Z",
+          "needsPermission",
+        ),
+      );
+
+      // When they all arrive
+      sync.apply(sessions, { firstLoad: true });
+
+      // Then the room counts every one of them, and the two without a seat stand inside it
+      expect(seatsInRoom).toBe(12);
+      expect(sync.roomCounts()).toEqual({ needsPermission: 14 });
+      const standing = office
+        .getCharacters()
+        .filter((ch) => ch.seatId === null);
+      expect(standing).toHaveLength(2);
+      const { cols, areaTiles } = office.getLayout();
+      expect(
+        standing.map((ch) => areaTiles?.[ch.tileRow * cols + ch.tileCol]),
+      ).toEqual(["needsPermission", "needsPermission"]);
+    });
+
+    it("keeps every extra employee inside its room even when the room's floor has no free tile left", () => {
+      // Given far more Needs permission sessions than the room has seats and floor tiles
+      const office = loadOffice();
+      const sync = createSceneSync(office);
+      const sessions = Array.from({ length: 150 }, (_, n) =>
+        session(
+          "m1",
+          "Mac",
+          `s${n}`,
+          "/w",
+          "2026-11-08T10:00:00.000Z",
+          "needsPermission",
+        ),
+      );
+
+      // When they all arrive
+      sync.apply(sessions, { firstLoad: true });
+
+      // Then every employee without a seat is standing inside the Needs permission room
+      expect(sync.roomCounts()).toEqual({ needsPermission: 150 });
+      const standing = office
+        .getCharacters()
+        .filter((ch) => ch.seatId === null);
+      expect(standing).toHaveLength(138);
+      const { cols, areaTiles } = office.getLayout();
+      const rooms = new Set(
+        standing.map((ch) => areaTiles?.[ch.tileRow * cols + ch.tileCol]),
+      );
+      expect([...rooms]).toEqual(["needsPermission"]);
+      expect(
+        standing.every((ch) => ch.standingRoom === "needsPermission"),
+      ).toBe(true);
+      // And none stands in a doorway, a gap with walls on both sides
+      const { tiles } = office.getLayout();
+      const wall = (c: number, r: number) =>
+        tiles[r * cols + c] === TileType.WALL;
+      const inDoorway = standing.filter(
+        (ch) =>
+          (wall(ch.tileCol - 1, ch.tileRow) &&
+            wall(ch.tileCol + 1, ch.tileRow)) ||
+          (wall(ch.tileCol, ch.tileRow - 1) &&
+            wall(ch.tileCol, ch.tileRow + 1)),
+      );
+      expect(inDoorway).toHaveLength(0);
     });
 
     it("makes a seated employee walk onto the floor of a full room and free its old seat", () => {

@@ -11,6 +11,8 @@ interface RoomSignsProps {
   containerRef: React.RefObject<HTMLDivElement | null>;
   zoom: number;
   panRef: React.RefObject<{ x: number; y: number }>;
+  /** Reads the employees in each room, by room label, every frame. */
+  roomCounts: () => Record<string, number>;
 }
 
 interface RoomAnchor {
@@ -57,6 +59,32 @@ export function roomAnchors(officeState: OfficeState): RoomAnchor[] {
 }
 
 /**
+ * How many seats each room has.
+ * @param officeState - The scene holding the seats.
+ * @returns Seat counts by room label.
+ */
+function seatsByRoom(officeState: OfficeState): Record<string, number> {
+  const seats: Record<string, number> = {};
+  for (const uid of officeState.seats.keys()) {
+    const room = officeState.seatZone(uid);
+    if (room) seats[room] = (seats[room] ?? 0) + 1;
+  }
+  return seats;
+}
+
+/**
+ * The sign's text: the room's name, followed by "employees / seats" only when more employees are there than seats.
+ * @param room - The room.
+ * @param employees - Employees in the room.
+ * @param seats - Seats in the room.
+ * @returns The text to show.
+ */
+export function signText(room: Room, employees: number, seats: number): string {
+  const name = ROOM_DISPLAY_NAMES[room] ?? room;
+  return employees > seats ? `${name} ${employees} / ${seats}` : name;
+}
+
+/**
  * DOM signs naming each room, kept over their room as the camera pans and zooms.
  * @param props - The scene and the camera.
  * @returns The signs.
@@ -66,8 +94,11 @@ export function RoomSigns({
   containerRef,
   zoom,
   panRef,
+  roomCounts,
 }: RoomSignsProps) {
   const [, setTick] = useState(0);
+  // The layout's seats never change, so they are counted once.
+  const [seats] = useState(() => seatsByRoom(officeState));
   useEffect(() => {
     let frame = 0;
     const tick = () => {
@@ -78,6 +109,7 @@ export function RoomSigns({
     return () => cancelAnimationFrame(frame);
   }, []);
 
+  const counts = roomCounts();
   const el = containerRef.current;
   if (!el) return null;
   const project = overlayProjection(
@@ -88,6 +120,8 @@ export function RoomSigns({
     window.devicePixelRatio || 1,
   );
 
+  // A full-size sign suits a tile of 1 CSS px per world px; on a phone the tile is smaller and the sign shrinks with it.
+  const scale = Math.min(1, zoom / (window.devicePixelRatio || 1));
   return (
     <>
       {roomAnchors(officeState).map((anchor) => (
@@ -95,13 +129,21 @@ export function RoomSigns({
           key={anchor.room}
           data-testid="room-sign"
           data-room={anchor.room}
-          className="pixel-panel pointer-events-none absolute -translate-x-1/2 px-8 py-2 text-xs whitespace-nowrap"
+          className="pixel-panel pointer-events-none absolute -translate-x-1/2 whitespace-nowrap"
           style={{
             left: project.toScreenX(anchor.worldX),
             top: project.toScreenY(anchor.worldY),
+            fontSize: 18 * scale,
+            lineHeight: 1.33,
+            padding: `${2 * scale}px ${8 * scale}px`,
+            borderWidth: Math.max(1, 2 * scale),
           }}
         >
-          {ROOM_DISPLAY_NAMES[anchor.room] ?? anchor.room}
+          {signText(
+            anchor.room,
+            counts[anchor.room] ?? 0,
+            seats[anchor.room] ?? 0,
+          )}
         </div>
       ))}
     </>

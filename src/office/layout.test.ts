@@ -38,6 +38,26 @@ describe("the office layout", () => {
     expect(seatsByRoom.has("none")).toBe(false);
   });
 
+  it("leaves each room enough open floor for the employees beyond its seats to stand on", () => {
+    // Given the office and its walkable tiles
+    const office = loadOffice();
+    const { cols, areaTiles } = office.getLayout();
+
+    // When we count the walkable tiles of each room that are not seats
+    const floorByRoom = new Map<string, number>();
+    for (const { col, row } of office.walkableTiles) {
+      const room = areaTiles?.[row * cols + col];
+      if (room && office.getSeatAtTile(col, row) === null) {
+        floorByRoom.set(room, (floorByRoom.get(room) ?? 0) + 1);
+      }
+    }
+
+    // Then every room has at least 30 of them
+    for (const room of ROOM_ORDER) {
+      expect(floorByRoom.get(room) ?? 0).toBeGreaterThanOrEqual(30);
+    }
+  });
+
   it("lets an employee walk from any seat to any other, through the doorways", () => {
     // Given the office and a walking map where only seat tiles are entered on purpose
     const office = loadOffice();

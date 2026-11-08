@@ -198,6 +198,7 @@ export function OfficeView() {
               containerRef={containerRef}
               zoom={zoom}
               panRef={panRef}
+              roomCounts={() => sceneSync.roomCounts()}
             />
             <ToolOverlay
               officeState={officeState}

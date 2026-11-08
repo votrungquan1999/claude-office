@@ -4,6 +4,7 @@ import { TILE_SIZE } from "./constants";
 import type { OfficeState } from "./engine/officeState";
 import { ROOM_OF_STATE, Room } from "./rooms";
 import { getLoadedCharacterCount } from "./sprites/spriteData";
+import { TileType } from "./types";
 
 export interface SceneSyncOptions {
   /** The clock used to time state changes; injectable for tests. */
@@ -24,6 +25,8 @@ export interface SceneSync {
   sessionKeyOf(id: number): string | undefined;
   /** The renderer ids of every employee, in arrival order. */
   agentIds(): number[];
+  /** How many employees each room holds, by the room they were last sent to. */
+  roomCounts(): Record<string, number>;
 }
 
 interface Employee {
@@ -80,29 +83,45 @@ export function createSceneSync(
     return undefined;
   }
 
-  /** A walkable tile of the room that is not a seat and has nobody on it. */
-  function freeFloorIn(room: string): { col: number; row: number } | undefined {
+  /** Whether the tile sits in a gap of a wall (walls on both sides), where a stander would block the way. */
+  function isDoorway(col: number, row: number): boolean {
+    const { cols, tiles } = office.getLayout();
+    const wall = (c: number, r: number) =>
+      tiles[r * cols + c] === TileType.WALL;
+    return (
+      (wall(col - 1, row) && wall(col + 1, row)) ||
+      (wall(col, row - 1) && wall(col, row + 1))
+    );
+  }
+
+  /** A walkable floor tile of the room that is not a seat or a doorway; a free one first, else any. */
+  function floorIn(room: string): { col: number; row: number } | undefined {
     const { cols, areaTiles } = office.getLayout();
     const taken = new Set(
       office.getCharacters().map((ch) => `${ch.tileCol},${ch.tileRow}`),
     );
-    return office.walkableTiles.find(
+    const floor = office.walkableTiles.filter(
       ({ col, row }) =>
         areaTiles?.[row * cols + col] === room &&
         office.getSeatAtTile(col, row) === null &&
-        !taken.has(`${col},${row}`),
+        !isDoorway(col, row),
+    );
+    return (
+      floor.find(({ col, row }) => !taken.has(`${col},${row}`)) ?? floor[0]
     );
   }
 
   /** Gives up the employee's seat and puts it on the room's floor; arrivals appear there, others walk. */
   function standInRoom(id: number, room: string, arriving: boolean): void {
     const character = office.characters.get(id);
-    const tile = freeFloorIn(room);
-    if (!character || !tile) return;
+    if (!character) return;
     const seat = character.seatId ? office.seats.get(character.seatId) : null;
     if (seat) seat.assigned = false;
     character.seatId = null;
+    // Even on a full floor the employee belongs to the room, so its wandering stays inside it.
     character.standingRoom = room;
+    const tile = floorIn(room);
+    if (!tile) return;
     if (!arriving) {
       office.walkToTile(id, tile.col, tile.row);
       return;
@@ -196,5 +215,12 @@ export function createSceneSync(
     sessionKeyOf: (id) =>
       [...employees.entries()].find(([, employee]) => employee.id === id)?.[0],
     agentIds: () => [...employees.values()].map((employee) => employee.id),
+    roomCounts() {
+      const counts: Record<string, number> = {};
+      for (const { room } of employees.values()) {
+        counts[room] = (counts[room] ?? 0) + 1;
+      }
+      return counts;
+    },
   };
 }

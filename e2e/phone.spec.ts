@@ -151,6 +151,48 @@ test.describe("the office on a phone", () => {
     await expect(cards.first()).toContainText("one:");
   });
 
+  test("hangs each room sign on its wall row without covering a seat, or the employee on it, in the room's first desk row", async ({
+    page,
+  }) => {
+    // When the owner opens the office on a phone
+    await openOffice(page);
+
+    // Then no sign overlaps a seat tile of its room's first desk row or the employee standing there
+    const overlaps = await page.evaluate(() => {
+      const hooks = window.__officeTestHooks;
+      const canvas = document
+        .querySelector('[data-testid="office-canvas"]')
+        ?.getBoundingClientRect();
+      if (!hooks || !canvas) throw new Error("no office hooks");
+      const tilePx = (16 * hooks.getZoom()) / window.devicePixelRatio;
+      const seats = hooks.getSeats();
+      const hits: string[] = [];
+      const signs = [...document.querySelectorAll('[data-testid="room-sign"]')];
+      for (const sign of signs) {
+        const room = (sign as HTMLElement).dataset.room ?? "";
+        const box = sign.getBoundingClientRect();
+        const roomSeats = seats.filter((seat) => seat.areaLabel === room);
+        const firstRow = Math.min(...roomSeats.map((seat) => seat.row));
+        for (const seat of roomSeats.filter((s) => s.row === firstRow)) {
+          const center = hooks.getTileCenter(seat.col, seat.row);
+          if (!center) continue;
+          const left = canvas.x + center.x - tilePx / 2;
+          // The employee standing on the seat (and a speech bubble above) reaches two tiles up
+          const top = canvas.y + center.y - tilePx / 2 - 2 * tilePx;
+          const overlap =
+            box.left < left + tilePx &&
+            box.right > left &&
+            box.top < top + 3 * tilePx &&
+            box.bottom > top;
+          if (overlap) hits.push(`${room} seat ${seat.col},${seat.row}`);
+        }
+      }
+      return { hits, signs: signs.length };
+    });
+    expect(overlaps.signs).toBe(4);
+    expect(overlaps.hits).toEqual([]);
+  });
+
   test("tapping a card opens that session's details, and tapping another switches to it", async ({
     page,
   }) => {
