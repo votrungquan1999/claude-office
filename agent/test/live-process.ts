@@ -7,10 +7,11 @@ export interface ProcessInfo {
   procStart: string;
 }
 
-/** `ps -o lstart` text for a pid. */
+/** `ps -o lstart` text for a pid, in UTC like Claude Code records it. */
 export function startTimeOf(pid: number): string {
   return execFileSync("ps", ["-p", String(pid), "-o", "lstart="], {
     encoding: "utf8",
+    env: { ...process.env, LC_ALL: "C", TZ: "UTC" },
   }).trim();
 }
 

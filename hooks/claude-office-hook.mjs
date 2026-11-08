@@ -109,12 +109,12 @@ export function reduceEvent(data, hookTs, env) {
   return event;
 }
 
-/** `ps -o lstart` of a pid in the C locale with spaces collapsed; undefined when ps cannot say. */
+/** `ps -o lstart` of a pid in the C locale in UTC with spaces collapsed; undefined when ps cannot say. */
 function startOf(pid) {
   try {
     const text = execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], {
       encoding: "utf8",
-      env: { ...process.env, LC_ALL: "C" },
+      env: { ...process.env, LC_ALL: "C", TZ: "UTC" },
       stdio: ["ignore", "pipe", "ignore"],
       timeout: 500,
     });

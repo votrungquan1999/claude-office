@@ -22,8 +22,8 @@ function normalize(text: string): string {
 export async function readProcessTable(): Promise<ProcessTable> {
   const { stdout } = await run("ps", ["-A", "-o", "pid=,lstart="], {
     maxBuffer: 16 * 1024 * 1024,
-    // A fixed locale keeps the start time in the format the comparison expects.
-    env: { ...process.env, LC_ALL: "C" },
+    // A fixed locale and UTC keep the start time in the format and zone Claude Code records.
+    env: { ...process.env, LC_ALL: "C", TZ: "UTC" },
   });
   const table: ProcessTable = new Map();
   for (const line of stdout.split("\n")) {
