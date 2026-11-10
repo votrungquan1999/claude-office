@@ -114,6 +114,8 @@ export interface SeedFolder {
   companyMode?: boolean;
   /** False for a folder the agent found deleted. */
   existsOnMac?: boolean;
+  /** Whether Claude Code trusts the folder; left out when the Mac cannot tell. */
+  cliTrusted?: boolean;
 }
 
 /**
@@ -128,13 +130,16 @@ export async function seedFolders(
   await folders.deleteMany({});
   if (records.length === 0) return;
   await folders.insertMany(
-    records.map(({ machineId, path, companyMode, existsOnMac }) => ({
-      machineId,
-      path,
-      companyMode: companyMode ?? true,
-      firstSeenAt: new Date(),
-      ...(existsOnMac === undefined ? {} : { existsOnMac }),
-    })),
+    records.map(
+      ({ machineId, path, companyMode, existsOnMac, cliTrusted }) => ({
+        machineId,
+        path,
+        companyMode: companyMode ?? true,
+        firstSeenAt: new Date(),
+        ...(existsOnMac === undefined ? {} : { existsOnMac }),
+        ...(cliTrusted === undefined ? {} : { cliTrusted }),
+      }),
+    ),
   );
 }
 
@@ -187,6 +192,10 @@ export interface SeedSession {
   bridgeSessionId?: string;
   /** A kept employee whose window closed. */
   notRunning?: true;
+  /** A hire stopped at the folder-trust question. */
+  waitingAtMac?: true;
+  /** A hire whose window is still opening. */
+  starting?: true;
   stateSince?: Date;
 }
 

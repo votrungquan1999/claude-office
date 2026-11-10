@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
 import {
   clearCommands,
+  clickEmployee,
+  employeeLabelled,
   readCommands,
   seedFolders,
   seedSessions,
@@ -164,6 +166,110 @@ test("a hire stays in the dialog until its order resolves: not sent after 30 s, 
   await expect(page.getByTestId("hire-dialog")).toHaveCount(0, {
     timeout: 10_000,
   });
+});
+
+test("the dialog warns that a hire will wait at the Mac when the chosen folder is not trusted, and not for a trusted or unjudged one", async ({
+  context,
+  page,
+}) => {
+  // Given three folders on the online Mac: refused, trusted and unjudged
+  await withE2eDb(async (db) => {
+    await seedFolders(db.collection("folders"), [
+      { machineId: "m-up", path: "/work/app", existsOnMac: true },
+      {
+        machineId: "m-up",
+        path: "/work/refused",
+        existsOnMac: true,
+        cliTrusted: false,
+      },
+      {
+        machineId: "m-up",
+        path: "/work/trusted",
+        existsOnMac: true,
+        cliTrusted: true,
+      },
+    ]);
+  });
+  await signInAsOwner(context);
+  await page.goto("/");
+  await waitForEmployees(page, 1);
+  await page.getByTestId("hire-button").click();
+
+  // When the owner picks the refused folder
+  await page.getByTestId("hire-folder").selectOption("/work/refused");
+
+  // Then the dialog warns that the hire will wait at the Mac
+  await expect(page.getByTestId("hire-trust-warning")).toContainText(
+    "will wait at the Mac for you to trust this folder",
+  );
+
+  // And the trusted folder and the unjudged one show no warning
+  await page.getByTestId("hire-folder").selectOption("/work/trusted");
+  await expect(page.getByTestId("hire-trust-warning")).toHaveCount(0);
+  await page.getByTestId("hire-folder").selectOption("/work/app");
+  await expect(page.getByTestId("hire-trust-warning")).toHaveCount(0);
+});
+
+test("a hire waiting at the Mac sits in Needs permission and lights the company's badge, a starting one counts as Idle, and the details card says what each waits for", async ({
+  context,
+  page,
+}) => {
+  // Given one waiting and one starting hire in the online Mac's company
+  await withE2eDb(async (db) => {
+    await seedSessions(db.collection("sessions"), [
+      {
+        sessionId: "s-wait",
+        machineId: "m-up",
+        machineName: "Up Mac",
+        cwd: "/work/app",
+        startCwd: "/work/app",
+        state: "needsPermission",
+        deskName: "Fix the login bug",
+        kept: "hired",
+        waitingAtMac: true,
+      },
+      {
+        sessionId: "s-start",
+        machineId: "m-up",
+        machineName: "Up Mac",
+        cwd: "/work/app",
+        startCwd: "/work/app",
+        state: "idle",
+        deskName: "Write the docs",
+        kept: "hired",
+        starting: true,
+      },
+    ]);
+  });
+  await signInAsOwner(context);
+
+  // When the owner opens the office
+  await page.goto("/");
+  await waitForEmployees(page, 2);
+
+  // Then the company counts one needing permission with a badge, and one idle
+  const company = page.getByTestId("company-tab").first();
+  await expect(company.getByLabel("1 needs permission")).toBeVisible();
+  await expect(company.getByLabel("1 idle")).toBeVisible();
+  await expect(company.getByTestId("company-badge")).toHaveText("1");
+
+  // And selecting the waiting employee says what to do at the Mac, with no Remote Control line
+  await clickEmployee(page, await employeeLabelled(page, "Fix the login bug"));
+  const panel = page.getByTestId("details-panel");
+  await expect(panel.getByTestId("state-pill")).toHaveText(
+    "Waiting at the Mac",
+  );
+  await expect(panel.getByTestId("launch-note")).toContainText(
+    "trust the folder",
+  );
+  await expect(panel).not.toContainText("Remote Control");
+
+  // And the starting employee reads Starting
+  await clickEmployee(page, await employeeLabelled(page, "Write the docs"));
+  await expect(panel.getByTestId("state-pill")).toHaveText("Starting");
+  await expect(panel.getByTestId("launch-note")).toHaveText(
+    "Starting on the Mac.",
+  );
 });
 
 test("on a short screen the dialog scrolls, so the Hire button can still be reached", async ({

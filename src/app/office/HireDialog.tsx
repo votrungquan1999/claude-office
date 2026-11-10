@@ -91,6 +91,13 @@ export function HireDialog({
   const folder = macFolders.includes(pickedFolder)
     ? pickedFolder
     : (macFolders[0] ?? "");
+  // Unknown trust gives no warning: the Mac could not read it.
+  const untrusted = folders.some(
+    (record) =>
+      record.machineId === pickedMac &&
+      record.path === folder &&
+      record.cliTrusted === false,
+  );
   const sending = posting || phase.phase === "pending";
   const canSubmit =
     !sending && pickedMac !== "" && folder !== "" && message.trim() !== "";
@@ -191,6 +198,12 @@ export function HireDialog({
             className="border-2 border-border bg-bg-dark p-6"
           />
         </label>
+        {untrusted && (
+          <p data-testid="hire-trust-warning" className="text-xs">
+            Claude Code has not trusted this folder yet: the new employee will
+            wait at the Mac for you to trust this folder.
+          </p>
+        )}
         {outcome && (
           <p
             role="status"

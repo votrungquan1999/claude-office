@@ -40,10 +40,12 @@ export async function postHire(
 /**
  * The owner hires into a new folder of a Mac and the agent opens the window.
  * @param mac - A Mac started as `machine-air` by the harness.
+ * @param message - The first message.
  * @returns The folder hired into and the new session's id.
  */
 export async function hireOnto(
   mac: Awaited<ReturnType<MacHarness["setUpMac"]>>,
+  message = "Hello",
 ) {
   const folder = mac.fake.makeFolder("app");
   await (await getDb()).collection("folders").insertOne({
@@ -52,7 +54,7 @@ export async function hireOnto(
     companyMode: true,
     firstSeenAt: new Date(),
   });
-  const { body } = await postHire(MACHINE_ID, folder, "Hello");
+  const { body } = await postHire(MACHINE_ID, folder, message);
   await mac.agent.pollCommands();
   return { folder, sessionId: body?.sessionId ?? "" };
 }

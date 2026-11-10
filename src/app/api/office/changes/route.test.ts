@@ -172,6 +172,69 @@ describe("the office changes API", () => {
     ).toEqual({ "/gone": false, "/unchecked": undefined });
   });
 
+  it("passes on whether Claude Code trusts each folder, and none for a folder the Mac could not judge", async () => {
+    // Given a trusted, a refused and an unjudged folder
+    const db = await getDb();
+    await db.collection("folders").deleteMany({});
+    await db.collection("folders").insertMany(
+      [
+        ["/yes", true],
+        ["/no", false],
+        ["/unknown", undefined],
+      ].map(([path, cliTrusted]) => ({
+        machineId: "m1",
+        path,
+        companyMode: true,
+        firstSeenAt: new Date(T0),
+        ...(cliTrusted === undefined ? {} : { cliTrusted }),
+      })),
+    );
+
+    // When the owner asks for the changes
+    const body = changesResponseSchema.parse(
+      await (await GET(changesRequest(ownerHeaders))).json(),
+    );
+
+    // Then each folder carries its own answer
+    expect(
+      Object.fromEntries(body.folders.map((f) => [f.path, f.cliTrusted])),
+    ).toEqual({ "/yes": true, "/no": false, "/unknown": undefined });
+    expect(body.folders.find((f) => f.path === "/unknown")).not.toHaveProperty(
+      "cliTrusted",
+    );
+  });
+
+  it("passes on which employees are waiting at the Mac or starting", async () => {
+    // Given a waiting row, a starting row and a plain open row
+    const db = await getDb();
+    await db.collection("sessions").deleteMany({});
+    await seedSession("plain", new Date(T0));
+    await seedSession("waiting", new Date(T0));
+    await seedSession("starting", new Date(T0));
+    await db
+      .collection("sessions")
+      .updateOne({ sessionId: "waiting" }, { $set: { waitingAtMac: true } });
+    await db
+      .collection("sessions")
+      .updateOne({ sessionId: "starting" }, { $set: { starting: true } });
+
+    // When the owner asks for the changes
+    const body = changesResponseSchema.parse(
+      await (await GET(changesRequest(ownerHeaders))).json(),
+    );
+
+    // Then each flag reaches the browser on its own row only
+    expect(
+      body.sessions
+        .map((s) => [s.sessionId, s.waitingAtMac, s.starting])
+        .sort(),
+    ).toEqual([
+      ["plain", undefined, undefined],
+      ["starting", undefined, true],
+      ["waiting", true, undefined],
+    ]);
+  });
+
   it("answers only the owner", async () => {
     // Given a stored session
     await seedSession("s1", new Date(T0));

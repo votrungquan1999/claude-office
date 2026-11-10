@@ -15,11 +15,7 @@ import {
   readMachineId,
   writeAgentFile,
 } from "./config";
-import {
-  type FolderDocument,
-  FolderRecorder,
-  refreshFolderExistence,
-} from "./folders";
+import { type FolderDocument, FolderRecorder, refreshFolders } from "./folders";
 import { startHeartbeat } from "./heartbeat";
 import { startKanbanWatch } from "./kanban-watch";
 import { cleanLaunchFiles, KeptDesks } from "./kept";
@@ -39,6 +35,7 @@ import {
   type TerminalOpener,
 } from "./terminal-launch";
 import { SessionTracker } from "./tracker";
+import { readTrustMap } from "./trust";
 import { createWriteWatchdog } from "./write-watchdog";
 import { SessionWriter } from "./writer";
 
@@ -210,6 +207,18 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
   const previousMachine = await db
     .collection("machines")
     .findOne({ machineId });
+  let trustUnreadable = false;
+  /** Reads the trust answers, saying so once per unreadable spell. */
+  const readTrust = () => {
+    const trust = readTrustMap(home);
+    if (!trust && !trustUnreadable) {
+      log(
+        "claude-office agent: Claude Code's trust file is unreadable; folders show no trust warning",
+      );
+    }
+    trustUnreadable = !trust;
+    return trust;
+  };
   const heartbeat = startHeartbeat({
     machines: db.collection("machines"),
     sessions: db.collection("sessions"),
@@ -217,9 +226,10 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
     machineName,
     agentVersion: options.agentVersion ?? readPackageVersion(),
     afterBeat: () =>
-      refreshFolderExistence(
+      refreshFolders(
         db.collection<FolderDocument>("folders"),
         machineId,
+        readTrust(),
       ).catch((error: unknown) =>
         log(
           `folder check failed: ${error instanceof Error ? error.message : String(error)}`,

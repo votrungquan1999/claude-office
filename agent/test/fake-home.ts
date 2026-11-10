@@ -38,6 +38,14 @@ export interface FakeHome {
   removeSession(sessionId: string): void;
   /** Creates a real folder under the fake home, as a start folder that exists on the Mac. */
   makeFolder(name: string): string;
+  /** Creates a folder that is a git repo root (it holds a `.git` folder). */
+  makeGitRoot(name: string): string;
+  /** Records Claude Code's trust answer for a folder in `~/.claude.json`, keeping the rest of the file. */
+  trust(path: string, trusted: boolean): void;
+  /** Deletes `~/.claude.json`, as on a Mac where Claude Code never ran. */
+  removeClaudeJson(): void;
+  /** The raw bytes of `~/.claude.json`, to prove the agent never wrote it. */
+  readClaudeJson(): string;
   /** Writes `~/.claude/projects/<project>/<sessionId>.jsonl`; strings are written as-is. */
   addTranscript(
     sessionId: string,
@@ -122,6 +130,31 @@ export function makeFakeHome(machineId: string): FakeHome {
       const path = join(home, "work", name);
       mkdirSync(path, { recursive: true });
       return path;
+    },
+    makeGitRoot(name) {
+      const path = join(home, "work", name);
+      mkdirSync(join(path, ".git"), { recursive: true });
+      return path;
+    },
+    trust(path, trusted) {
+      const file = join(home, ".claude.json");
+      const current = JSON.parse(readFileSync(file, "utf8"));
+      writeFileSync(
+        file,
+        JSON.stringify({
+          ...current,
+          projects: {
+            ...current.projects,
+            [path]: { hasTrustDialogAccepted: trusted },
+          },
+        }),
+      );
+    },
+    removeClaudeJson() {
+      rmSync(join(home, ".claude.json"), { force: true });
+    },
+    readClaudeJson() {
+      return readFileSync(join(home, ".claude.json"), "utf8");
     },
     addTranscript(sessionId, records, project = "-work-project") {
       const dir = join(home, ".claude", "projects", project);

@@ -458,4 +458,44 @@ describe("the details panel", () => {
     expect(screen.queryByTestId("remote-control-link")).toBeNull();
     expect(screen.queryByText("Remote Control off")).toBeNull();
   });
+
+  it("says 'Waiting at the Mac' with what to do there for a hire stopped at the folder-trust question, and offers no Remote Control line or approval box", () => {
+    // Given a hired employee waiting at the Mac in the Needs permission state
+    open(
+      session({
+        state: "needsPermission",
+        kept: "hired",
+        waitingAtMac: true,
+        deskName: "Fix the login bug",
+      }),
+    );
+
+    // Then the band says it and the card names the folder trust and the window, with nothing to approve or open
+    expect(screen.getByTestId("state-pill").textContent).toBe(
+      "Waiting at the Mac",
+    );
+    expect(screen.getByTestId("state-band").dataset.state).toBe("waitingAtMac");
+    expect(screen.getByTestId("launch-note").textContent).toContain(
+      "trust the folder",
+    );
+    expect(screen.getByTestId("launch-note").textContent).toContain(
+      "click the window",
+    );
+    expect(screen.queryByTestId("wants-to-run")).toBeNull();
+    expect(screen.queryByTestId("remote-control-link")).toBeNull();
+    expect(screen.queryByText("Remote Control off")).toBeNull();
+  });
+
+  it("says 'Starting' for a hire opening in a trusted folder, and keeps that over 'Mac offline'", () => {
+    // Given a starting hired employee on a Mac that is offline
+    open(session({ state: "idle", kept: "hired", starting: true }), ["m1"]);
+
+    // Then the band says Starting, the note says it is starting on the Mac, and there is no link
+    expect(screen.getByTestId("state-pill").textContent).toBe("Starting");
+    expect(screen.getByTestId("launch-note").textContent).toBe(
+      "Starting on the Mac.",
+    );
+    expect(screen.queryByTestId("remote-control-link")).toBeNull();
+    expect(screen.queryByText("Remote Control off")).toBeNull();
+  });
 });

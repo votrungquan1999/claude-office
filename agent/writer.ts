@@ -42,6 +42,10 @@ export interface SessionDoc {
   kept?: "hired" | "woken";
   /** Set while a kept employee's window is closed. */
   notRunning?: true;
+  /** Set while the window waits at the folder-trust question. */
+  waitingAtMac?: true;
+  /** Set while the window opens in a trusted folder. */
+  starting?: true;
 }
 
 export interface WriterOptions {
@@ -371,6 +375,8 @@ function toUpdate(doc: SessionDoc, steps: StepDoc[]): AnyBulkWriteOperation {
     ...(doc.deskName ? [] : ["deskName"]),
     ...(doc.kept ? [] : ["kept"]),
     ...(doc.notRunning ? [] : ["notRunning"]),
+    ...(doc.waitingAtMac ? [] : ["waitingAtMac"]),
+    ...(doc.starting ? [] : ["starting"]),
   ];
   if (steps.length === 0) {
     return {

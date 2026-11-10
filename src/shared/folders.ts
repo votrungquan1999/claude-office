@@ -8,6 +8,8 @@ export const folderDtoSchema = z.object({
   companyMode: z.boolean(),
   /** Whether the folder is still on the Mac; absent until the agent first checks. */
   existsOnMac: z.boolean().optional(),
+  /** Whether Claude Code trusts the folder; absent when the Mac cannot tell. */
+  cliTrusted: z.boolean().optional(),
 });
 
 export type FolderDto = z.infer<typeof folderDtoSchema>;

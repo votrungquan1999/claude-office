@@ -101,7 +101,7 @@ describe("a hired employee whose Terminal window closed", () => {
   it("is still at its desk with its mark and name after the agent restarts while the window is closed", async () => {
     // Given a hired employee named from its first message whose window then closed
     const first = await setUpMac("machine-air", "Quan's MacBook Air");
-    const { folder, sessionId } = await hireOnto(first);
+    const { folder, sessionId } = await hireOnto(first, "Fix the login bug");
     const running = await processes.live();
     first.terminal.startSession(sessionId, {
       cwd: folder,

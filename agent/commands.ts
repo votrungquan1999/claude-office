@@ -16,6 +16,7 @@ import {
   writeHireFiles,
 } from "./terminal-launch";
 import type { SessionTracker } from "./tracker";
+import { readTrustMap, resolveTrust } from "./trust";
 
 /** How long the Terminal opener may take; a hung `open` would otherwise block every later order. */
 const OPENER_TIMEOUT_MS = 30_000;
@@ -186,10 +187,13 @@ export function createCommandPoller(
       launchedAt,
       filesPresent: true,
     });
+    const trust = readTrustMap(home);
     tracker.trackHired({
       sessionId: order.sessionId,
       folder: order.folder,
       launchedAt,
+      message: order.firstMessage ?? "",
+      trusted: trust ? resolveTrust(order.folder, trust) : undefined,
     });
     return undefined;
   };

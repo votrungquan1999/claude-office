@@ -68,6 +68,15 @@ Stop it for now: `launchctl bootout gui/$(id -u)/dev.quanvo.claude-office.agent`
 
 Remove it by hand: run that `bootout`, delete `~/Library/LaunchAgents/dev.quanvo.claude-office.agent.plist`, and optionally delete `~/.claude-office/` (config, address file and logs). Then remove the hooks and the link as described in step 4.
 
+## Terminal windows the office opens
+
+When the owner hires an employee from the office, the agent opens a Terminal window on this Mac. Two things to know:
+
+- **Click the window before typing.** The window may not be focused when it opens, so keystrokes can go to the app that was in front. Why: macOS lets a script open a window but does not always give it focus.
+- **The trust question defaults to "No, exit".** In a folder Claude Code has not trusted, the window stops at "Do you trust this folder?". Choosing the default ends Claude Code, so pick "Yes" to let the employee start. Why: the office shows that hire as "waiting at the Mac" until Claude Code registers, and it waits indefinitely if the window is closed instead.
+
+The agent only reads `~/.claude.json` to warn about untrusted folders; it never writes to it.
+
 ## Optional: name paste-only desks with an Anthropic key
 
 A session whose first message is only pasted text shows "Pasted text" on its desk. To have a short name written from the paste instead, add an Anthropic API key to `~/.claude-office/config.json`, next to the two database fields:

@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import type { Collection } from "mongodb";
+import { resolveTrust, type TrustMap } from "./trust";
 
 /** A start folder of one Mac as stored in the `folders` collection. */
 export interface FolderDocument {
@@ -10,6 +11,8 @@ export interface FolderDocument {
   firstSeenAt: Date;
   /** Whether the folder is still on the Mac; absent until the agent first checks. */
   existsOnMac?: boolean;
+  /** Whether Claude Code trusts the folder; absent when the Mac cannot tell. */
+  cliTrusted?: boolean;
 }
 
 export interface FolderRecorderOptions {
@@ -61,29 +64,44 @@ export class FolderRecorder {
 }
 
 /**
- * Records which of this Mac's known folders still exist; only changed values are written.
+ * Records which of this Mac's known folders still exist and whether Claude Code trusts them; only changed values are written.
  * @param folders - The folders collection.
  * @param machineId - This Mac.
+ * @param trust - Trust answers read from `~/.claude.json`; undefined when they cannot be read, which clears every folder's trust.
  */
-export async function refreshFolderExistence(
+export async function refreshFolders(
   folders: Collection<FolderDocument>,
   machineId: string,
+  trust: TrustMap | undefined,
 ): Promise<void> {
   const records = await folders
-    .find({ machineId }, { projection: { path: 1, existsOnMac: 1 } })
+    .find(
+      { machineId },
+      { projection: { path: 1, existsOnMac: 1, cliTrusted: 1 } },
+    )
     .toArray();
   const changed = records.flatMap((record) => {
     const exists = existsSync(record.path);
-    return exists === record.existsOnMac
-      ? []
-      : [
-          {
-            updateOne: {
-              filter: { machineId, path: record.path },
-              update: { $set: { existsOnMac: exists } },
+    const trusted = trust ? resolveTrust(record.path, trust) : undefined;
+    if (exists === record.existsOnMac && trusted === record.cliTrusted) {
+      return [];
+    }
+    return [
+      {
+        updateOne: {
+          filter: { machineId, path: record.path },
+          update: {
+            $set: {
+              existsOnMac: exists,
+              ...(trusted === undefined ? {} : { cliTrusted: trusted }),
             },
+            ...(trusted === undefined
+              ? { $unset: { cliTrusted: true as const } }
+              : {}),
           },
-        ];
+        },
+      },
+    ];
   });
   if (changed.length > 0) await folders.bulkWrite(changed);
 }

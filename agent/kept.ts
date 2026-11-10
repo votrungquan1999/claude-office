@@ -83,6 +83,8 @@ interface SessionRowDocument {
   tags?: TagDoc[];
   notRunning?: boolean;
   stateSince?: Date;
+  waitingAtMac?: boolean;
+  starting?: boolean;
 }
 
 /** A kept desk of this Mac as stored on the previous run. */
@@ -98,6 +100,8 @@ export interface StoredKept {
   /** Set when the desk was already showing "not running". */
   notRunning: boolean;
   stateSince?: Date;
+  /** Set while Claude Code had not registered yet: what the desk showed. */
+  launchWait?: "waiting" | "starting";
 }
 
 /**
@@ -133,5 +137,7 @@ export async function loadKept(
     })),
     notRunning: row.notRunning === true,
     stateSince: row.stateSince,
+    ...(row.waitingAtMac ? { launchWait: "waiting" as const } : {}),
+    ...(row.starting ? { launchWait: "starting" as const } : {}),
   }));
 }

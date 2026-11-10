@@ -28,6 +28,8 @@ interface SessionRow {
   stateSince?: Date;
   kept?: SessionDto["kept"];
   notRunning?: true;
+  waitingAtMac?: true;
+  starting?: true;
   changedAt: Date;
 }
 
@@ -37,6 +39,7 @@ interface FolderDocument {
   companyMode: boolean;
   firstSeenAt: Date;
   existsOnMac?: boolean;
+  cliTrusted?: boolean;
 }
 
 interface MachineRow {
@@ -94,6 +97,8 @@ function toDto(row: SessionRow): SessionDto {
     ...(row.stateSince ? { stateSince: row.stateSince.toISOString() } : {}),
     ...(row.kept ? { kept: row.kept } : {}),
     ...(row.notRunning ? { notRunning: true as const } : {}),
+    ...(row.waitingAtMac ? { waitingAtMac: true as const } : {}),
+    ...(row.starting ? { starting: true as const } : {}),
     changedAt: row.changedAt.toISOString(),
   };
 }
@@ -157,12 +162,15 @@ export async function GET(request: NextRequest) {
       lastSeenAt: machine.lastSeenAt.toISOString(),
       ...(machine.agentVersion ? { agentVersion: machine.agentVersion } : {}),
     })),
-    folders: folders.map(({ machineId, path, companyMode, existsOnMac }) => ({
-      machineId,
-      path,
-      companyMode,
-      ...(existsOnMac === undefined ? {} : { existsOnMac }),
-    })),
+    folders: folders.map(
+      ({ machineId, path, companyMode, existsOnMac, cliTrusted }) => ({
+        machineId,
+        path,
+        companyMode,
+        ...(existsOnMac === undefined ? {} : { existsOnMac }),
+        ...(cliTrusted === undefined ? {} : { cliTrusted }),
+      }),
+    ),
     cursor: cursor.toISOString(),
     serverNow: new Date().toISOString(),
   };

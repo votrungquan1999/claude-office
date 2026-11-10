@@ -41,6 +41,8 @@ const BAND_STYLES = {
   wentHome: { background: "bg-pill-offline", text: "text-text" },
   offline: { background: "bg-pill-offline", text: "text-text" },
   notRunning: { background: "bg-pill-offline", text: "text-text" },
+  waitingAtMac: { background: "bg-room-permission", text: "text-bg-dark" },
+  starting: { background: "bg-room-idle", text: "text-bg-dark" },
 } satisfies Record<string, BandStyle>;
 
 /** Tags shown on the card before the rest fold into "+N". */
@@ -60,6 +62,10 @@ function bandOf(
     return { text: "Went home", key: "wentHome" };
   // Still true when the Mac is offline: the window closed before that.
   if (session.notRunning) return { text: "Not running", key: "notRunning" };
+  // A window the office opened that Claude Code has not registered yet outranks the Mac being offline.
+  if (session.waitingAtMac)
+    return { text: "Waiting at the Mac", key: "waitingAtMac" };
+  if (session.starting) return { text: "Starting", key: "starting" };
   if (offline) return { text: "Mac offline", key: "offline" };
   // Thinking shares the Working room but keeps its own wording.
   if (session.state === "thinking")
@@ -181,6 +187,7 @@ function Card({
   const nowMs = useNow() + serverOffsetMs;
   // A session with no process has nothing left to control, so it gets no link and no "off" message.
   const ended = session.state === "wentHome" || session.notRunning === true;
+  const launching = session.waitingAtMac === true || session.starting === true;
   const offline = offlineMachineIds.has(session.machineId);
   const approving = session.state === "needsPermission" && !offline;
   const band = bandOf(session, offline);
@@ -191,7 +198,8 @@ function Card({
     (offline && !session.notRunning) || !session.stateSince
       ? null
       : formatElapsed(nowMs - Date.parse(session.stateSince));
-  const box = offline || session.notRunning ? null : boxOf(session, nowMs);
+  const box =
+    offline || session.notRunning || launching ? null : boxOf(session, nowMs);
   const tags = session.tags ?? [];
   return (
     <aside
@@ -264,7 +272,14 @@ function Card({
             {session.currentTodo}
           </p>
         )}
-        {ended ? null : remoteControl ? (
+        {launching && (
+          <p data-testid="launch-note" className="shrink-0 text-xs">
+            {session.waitingAtMac
+              ? "The window is asking whether to trust the folder. At the Mac, trust the folder, then click the window before typing."
+              : "Starting on the Mac."}
+          </p>
+        )}
+        {ended || launching ? null : remoteControl ? (
           <a
             data-testid="remote-control-link"
             href={remoteControl}

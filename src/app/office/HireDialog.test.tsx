@@ -252,4 +252,45 @@ describe("the hire dialog", () => {
     submitWith();
     await vi.waitFor(() => expect(outcome()).toMatch(/check the Mac/i));
   });
+
+  it("warns that the hire will wait at the Mac for the owner to trust a folder Claude Code has not trusted, and says nothing for a trusted or unknown folder", () => {
+    // Given the dialog with a refused, a trusted and an unjudged folder
+    render(
+      <HireDialog
+        macs={macs}
+        folders={[
+          {
+            machineId: "up",
+            path: "/work/refused",
+            companyMode: true,
+            cliTrusted: false,
+          },
+          {
+            machineId: "up",
+            path: "/work/trusted",
+            companyMode: true,
+            cliTrusted: true,
+          },
+          { machineId: "up", path: "/work/unknown", companyMode: true },
+        ]}
+        initialMachineId="up"
+        initialFolder="/work/refused"
+        onClose={() => {}}
+      />,
+    );
+
+    // Then the refused folder shows the warning
+    expect(screen.getByTestId("hire-trust-warning").textContent).toContain(
+      "will wait at the Mac for you to trust this folder",
+    );
+
+    // When the owner picks the trusted, then the unjudged folder
+    for (const path of ["/work/trusted", "/work/unknown"]) {
+      fireEvent.change(screen.getByTestId("hire-folder"), {
+        target: { value: path },
+      });
+      // Then no warning shows
+      expect(screen.queryByTestId("hire-trust-warning")).toBeNull();
+    }
+  });
 });

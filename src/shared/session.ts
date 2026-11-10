@@ -64,6 +64,10 @@ export const sessionDtoSchema = z.object({
   kept: z.enum(["hired", "woken"]).optional(),
   /** A kept employee whose Terminal window closed: still at its desk, idle, with nothing running. Absent means running. */
   notRunning: z.literal(true).optional(),
+  /** A hired or woken employee whose window is probably at the folder-trust question; the owner answers it at the Mac. */
+  waitingAtMac: z.literal(true).optional(),
+  /** A hired or woken employee whose window is opening in a trusted folder; Claude Code has not registered yet. */
+  starting: z.literal(true).optional(),
   changedAt: z.string(),
 });
 

@@ -135,8 +135,12 @@ interface Tracked {
   tags: TagDoc[];
   /** Set while the owner keeps the session at its desk. */
   kept?: "hired" | "woken";
+  /** Set from the moment the office opens the window until Claude Code registers: whether it waits at the trust question or is just starting. */
+  launchWait?: "waiting" | "starting";
   /** Set by a restart that could not read the registry: whether the window still runs is unknown until the registry can be read. */
   unverified?: boolean;
+  /** When the office opened the window `launchWait` is waiting on, by the Mac's clock. */
+  launchedAt?: number;
   /** The name a previous run stored, used until a better one is known. */
   storedDeskName?: string;
   /** The room last published (Working and Thinking are one), to tell when the session changes room. */
@@ -275,14 +279,16 @@ export class SessionTracker {
   }
 
   /**
-   * Restores kept desks whose process is gone, as idle desks marked not running.
-   * @param desks - The stored kept desks that no live registry entry matches.
+   * Restores kept desks that no live registry entry matches: closed windows as idle desks marked not running, and windows that never registered as waiting or starting again.
+   * @param desks - The stored kept desks.
    * @param endedAt - When their processes are taken to have ended, for desks not already marked.
    */
   seedKept(desks: StoredKept[], endedAt: number): void {
     for (const desk of desks) {
       const tracked = this.track(desk.sessionId);
-      tracked.interactive = true;
+      // A window that never registered keeps waiting for its registry entry instead of showing as closed.
+      tracked.interactive = desk.launchWait === undefined;
+      tracked.launchWait = desk.launchWait;
       tracked.kept = desk.kept;
       tracked.cwd = desk.cwd;
       tracked.startCwd = desk.startCwd;
@@ -290,10 +296,13 @@ export class SessionTracker {
       tracked.hadPrompt = desk.hadPrompt;
       tracked.tags = [...desk.tags];
       tracked.storedDeskName = desk.deskName;
-      if (isRegistryReadable(this.options.home)) {
+      if (
+        desk.launchWait === undefined &&
+        isRegistryReadable(this.options.home)
+      ) {
         tracked.endedAt = endedAt;
         tracked.endedHookTs = endedAt;
-      } else {
+      } else if (desk.launchWait === undefined) {
         // No entry can be called missing without a readable registry, so the desk keeps running until a pass can tell.
         tracked.unverified = true;
       }
@@ -307,19 +316,28 @@ export class SessionTracker {
   }
 
   /**
-   * Tracks a session the office just opened in a Terminal window, so its desk appears once Claude Code registers it.
-   * @param hire - The session, its start folder and when its window opened.
+   * Tracks a session the office just opened in a Terminal window and publishes its desk as waiting at the Mac or starting.
+   * @param hire - The session, its start folder, when its window opened, its first message and whether the folder is trusted.
    */
   trackHired(hire: {
     sessionId: string;
     folder: string;
     launchedAt: number;
+    /** The first message, used only to name the desk. */
+    message: string;
+    /** Whether Claude Code trusts the folder; undefined when the Mac cannot tell. */
+    trusted: boolean | undefined;
   }): void {
     const tracked = this.track(hire.sessionId);
     tracked.cwd = hire.folder;
     tracked.startCwd = hire.folder;
     tracked.startedAt = hire.launchedAt;
+    tracked.launchedAt = hire.launchedAt;
     tracked.kept = "hired";
+    // An unknown trust is shown as waiting: a window stopped at the question is the one thing the owner must act on.
+    tracked.launchWait = hire.trusted === true ? "starting" : "waiting";
+    tracked.firstMessage = firstRealMessage(hire.message);
+    this.publish(hire.sessionId, tracked);
   }
 
   /**
@@ -559,6 +577,18 @@ export class SessionTracker {
       tracked.bridgeSessionId = entry?.bridgeSessionId;
       tracked.bridgeHookTs = -Infinity;
     }
+    // With no readable registry the window's own hooks are the only proof it started; a woken desk ignores hooks older than its window, which belong to the old process.
+    if (
+      tracked.launchWait &&
+      !tracked.interactive &&
+      (starting || event.hook_event_name === "UserPromptSubmit") &&
+      (tracked.kept !== "woken" ||
+        event.hookTs > (tracked.launchedAt ?? Number.POSITIVE_INFINITY)) &&
+      !isRegistryReadable(this.options.home)
+    ) {
+      tracked.launchWait = undefined;
+      tracked.interactive = true;
+    }
     tracked.startedAt ??= event.hookTs;
     // A straggler stamped before an event already applied must not move the state back.
     const late = event.hookTs < tracked.lastHookTs;
@@ -723,7 +753,11 @@ export class SessionTracker {
         if (entry.cwd) tracked.startCwd = entry.cwd;
         tracked.bridgeSessionId = entry.bridgeSessionId;
         tracked.process = { pid: entry.pid, procStart: entry.procStart };
-      } else if (entry || isRegistryReadable(this.options.home)) {
+        tracked.launchWait = undefined;
+      } else if (
+        entry ||
+        (isRegistryReadable(this.options.home) && !tracked.launchWait)
+      ) {
         return;
       }
       // With no readable registry the kind is unknown, so the hooks alone decide that the session shows.
@@ -744,12 +778,18 @@ export class SessionTracker {
     tracked.unwritten = [];
     // A kept employee whose process ended stays at its desk instead of going home.
     const notRunning = tracked.endedAt !== undefined && tracked.kept;
+    // A window the office opened is not a session yet: it waits at the trust question or is still starting.
+    const launching = tracked.interactive ? undefined : tracked.launchWait;
     // Compared on the published state: a went-home session keeps its memory state.
-    const state: SessionState = notRunning
-      ? "idle"
-      : tracked.endedAt === undefined
-        ? tracked.memory.state
-        : "wentHome";
+    const state: SessionState = launching
+      ? launching === "waiting"
+        ? "needsPermission"
+        : "idle"
+      : notRunning
+        ? "idle"
+        : tracked.endedAt === undefined
+          ? tracked.memory.state
+          : "wentHome";
     const room = notRunning ? "notRunning" : roomOf(state);
     if (tracked.publishedRoom !== room) {
       tracked.publishedRoom = room;
@@ -785,6 +825,8 @@ export class SessionTracker {
           : { hadPrompt: tracked.hadPrompt }),
         ...(tracked.kept ? { kept: tracked.kept } : {}),
         ...(notRunning ? { notRunning: true as const } : {}),
+        ...(launching === "waiting" ? { waitingAtMac: true as const } : {}),
+        ...(launching === "starting" ? { starting: true as const } : {}),
       },
       steps,
     );
