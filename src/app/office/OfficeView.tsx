@@ -9,7 +9,7 @@ import { OfficeState } from "@/office/engine/officeState";
 import { fitZoom } from "@/office/fitZoom";
 import { useIsMobile } from "@/office/hooks/useIsMobile";
 import { useIsSidewaysPhone } from "@/office/hooks/useIsSidewaysPhone";
-import { offlineMachineIds } from "@/office/offline";
+import { macBlock, offlineMachineIds } from "@/office/offline";
 import { createSceneSync } from "@/office/sceneSync";
 import { installTestHooks } from "@/office/testHooks";
 import { dayStartOf, todaysDepartures } from "@/office/wentHome";
@@ -31,6 +31,7 @@ import { CompactCompanyButton, CompanyStrip } from "./CompanyStrip";
 import { ConnectionStatus } from "./ConnectionStatus";
 import { postCompanyMode } from "./companyMode";
 import { DetailsPanel } from "./DetailsPanel";
+import { HireDialog, type HireMac } from "./HireDialog";
 import {
   applyOverrides,
   type ModeOverrides,
@@ -175,6 +176,7 @@ export function OfficeView() {
     selection: SHOW_ALL,
   });
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [hireOpen, setHireOpen] = useState(false);
   const drawerButtonRef = useRef<HTMLButtonElement>(null);
   const [now, setNow] = useState(() => new Date());
   // How far the server's clock is ahead of this browser's, from the latest answer.
@@ -292,18 +294,22 @@ export function OfficeView() {
   /** Folds one answer into the sessions and the scene. */
   const onAnswer = (answer: ChangesResponse, firstLoad: boolean) => {
     setServerOffsetMs(Date.parse(answer.serverNow) - Date.now());
+    const sessions = mergeSessions(
+      firstLoad ? new Map() : dataRef.current.sessions,
+      answer.sessions,
+    );
     commit(
       {
-        sessions: mergeSessions(
-          firstLoad ? new Map() : dataRef.current.sessions,
-          answer.sessions,
-        ),
+        sessions,
         machines: answer.machines,
         folders: answer.folders,
         // A switch stays in force until an answer agrees, so a poll already in flight cannot flip it back.
         overrides: settleOverrides(dataRef.current.overrides, answer.folders),
         // Judged against the server's clock: the phone's may be minutes off.
-        offline: offlineMachineIds(answer.machines, answer.serverNow),
+        offline: offlineMachineIds(answer.machines, answer.serverNow, [
+          ...[...sessions.values()].map((session) => session.machineId),
+          ...answer.folders.map((folder) => folder.machineId),
+        ]),
       },
       firstLoad,
     );
@@ -458,6 +464,26 @@ export function OfficeView() {
     tagPick,
   );
   const tagFilter = <TagFilter view={tagFilterView} onSelect={selectTag} />;
+  const viewedCompany = overview.macs
+    .flatMap((mac) => mac.companies)
+    .find((entry) => entry.company.key === companyKey)?.company;
+  // Judged on the server's clock, like the offline badge.
+  const serverNowIso = new Date(now.getTime() + serverOffsetMs).toISOString();
+  const hireMacs: HireMac[] = machines.map((machine) => ({
+    machineId: machine.machineId,
+    machineName: machine.machineName,
+    block: macBlock(machine, serverNowIso),
+  }));
+  const hireButton = (
+    <button
+      type="button"
+      data-testid="hire-button"
+      onClick={() => setHireOpen(true)}
+      className="h-40 shrink-0 border-2 border-border bg-btn-bg px-10 text-sm hover:bg-btn-hover"
+    >
+      Hire
+    </button>
+  );
   const selectedSession = selectedKey
     ? (sessions.get(selectedKey) ?? null)
     : null;
@@ -474,7 +500,12 @@ export function OfficeView() {
           onSelect={selectCompany}
           onOpenDrawer={openDrawer}
           drawerButtonRef={drawerButtonRef}
-          trailing={tagFilter}
+          trailing={
+            <>
+              {tagFilter}
+              {hireButton}
+            </>
+          }
         />
       )}
       <div
@@ -545,6 +576,15 @@ export function OfficeView() {
             }
             onClose={closeDrawer}
             extra={sideways ? tagFilter : undefined}
+          />
+        )}
+        {hireOpen && (
+          <HireDialog
+            macs={hireMacs}
+            folders={folders}
+            initialMachineId={viewedCompany?.machineId ?? null}
+            initialFolder={viewedCompany?.path ?? null}
+            onClose={() => setHireOpen(false)}
           />
         )}
         <DetailsPanel

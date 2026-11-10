@@ -6,6 +6,8 @@ export const folderDtoSchema = z.object({
   path: z.string(),
   /** Whether the folder groups its sub-folders into one company. */
   companyMode: z.boolean(),
+  /** Whether the folder is still on the Mac; absent until the agent first checks. */
+  existsOnMac: z.boolean().optional(),
 });
 
 export type FolderDto = z.infer<typeof folderDtoSchema>;

@@ -5,6 +5,7 @@ import { E2E_DB, E2E_MONGO_URI_FILE } from "./constants";
 import {
   employeeLabelled,
   keepOneCompany,
+  seedOnlineMachine,
   signInAsOwner,
   waitForEmployees,
 } from "./helpers";
@@ -18,6 +19,7 @@ const LONG_NAME =
 
 /** Three sessions on one Mac, each with a very long desk name and folder. */
 async function seed(sessions: Collection) {
+  await seedOnlineMachine("m1", "A rather long Mac computer name");
   await sessions.deleteMany({});
   const base = {
     machineId: "m1",
@@ -510,6 +512,8 @@ test.describe("the office on a sideways phone", () => {
       Math.abs(heights.canvas - (heights.screen - heights.bar)),
     ).toBeLessThanOrEqual(2);
     expect(await zoomOf(page)).toBeGreaterThanOrEqual(2);
+    // And the folded strip has no Hire button
+    await expect(page.getByTestId("hire-button")).toHaveCount(0);
 
     // When the owner taps the button
     await compact.tap();

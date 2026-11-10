@@ -1,8 +1,8 @@
-# Claude Office (version 0.2.0)
+# Claude Office (version 0.3.0)
 
-A watch-only pixel-art office web app that shows every interactive Claude Code session on every set-up Mac of the owner, viewable from a Mac browser or a phone. Public repo `votrungquan1999/claude-office`, branch `main`, MIT licence.
+A pixel-art office web app that shows every interactive Claude Code session on every set-up Mac of the owner, viewable from a Mac browser or a phone, and lets the owner hire a new employee on an online Mac. Public repo `votrungquan1999/claude-office`, branch `main`, MIT licence.
 
-This file is the living spec for the whole app (version 0.2.0); its folder is named `office-v1`.
+This file is the living spec for the whole app (version 0.3.0); its folder is named `office-v1`.
 
 Design background lives in `docs/brainstorm/`. Where it disagrees with this file, this file wins.
 
@@ -159,6 +159,19 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 - A resumed session returns to the office.
 - A session whose process died, or whose pid now belongs to another session, goes home; a session found already dead when the agent starts is dated no later than the Mac's last heartbeat.
 
+### Hiring
+
+- The Hire button sits in the company strip. Its dialog opens on the viewed company's Mac and folder and asks for a Mac, one of that Mac's known folders and a first message. The message is sent verbatim, leading spaces and indentation included; a blank one is refused, and one over 100,000 characters is refused with a 400 ("message too long") that the dialog turns into a plain sentence.
+- Only folders the Mac has already shown the office, and that still exist there, are listed; the agent checks existence at start and every heartbeat.
+- A Mac that is offline or has no record counts as offline; one whose agent is older than 0.3.0 or reports no version is greyed with "update this Mac's agent". Neither can be picked, and the server refuses them with a 409.
+- Submitting writes one order to the `commands` collection. The agent polls every second, claims its own Mac's fresh orders by the database clock, erases the message from the order, and opens a Terminal window running `claude --remote-control --session-id <id>` in the folder with the message as its first prompt.
+- The script file holds no message text: the message sits in a private file next to it that the script deletes as soon as it has read it, and both files are deleted once the session's registry entry appears. While Claude runs, the first message is an argument of its process, so `ps` shows it to anyone logged in to that Mac.
+- The agent checks every order right after claiming it against one schema per kind (a UUID session id, an absolute folder and a non-blank message within the length limit). A row that fails ends failed with `invalidOrder` ("The Mac refused the order as not valid.") and nothing runs, and the claim only takes kinds the agent knows. A hire also goes only into a folder on the Mac's own folder list (`folders` collection); any other folder ends the order `invalidOrder` even when it exists. The session id is quoted in the script, and launch file names are built only from a UUID.
+- The employee's desk appears when Claude Code registers the session, in the folder's company, marked kept (`hired`); a kept session is never dropped for waiting too long for its registry entry.
+- The form scrolls inside the dialog on a short screen (a phone turned sideways, the keyboard up), so the Hire button stays reachable. The dialog stays open and locked from the click until the order resolves, and sends one order however often the button is pressed. It shows the reason when the order fails (folder missing, Claude Code not found, the window could not open, the agent restarted before the window opened). The Terminal opener gets 30 seconds; past that the order fails as "the window could not open" and the agent goes on to the next order. "Not sent" appears only when the office reports the order unclaimed after 30 seconds by the database clock (or no longer known), after which nothing runs later. After 35 seconds without an answer from the office it says the office lost contact and that the Mac may still run the hire. An order still claimed 2 minutes after it was given stops the polling and tells the owner to check the Mac. It closes itself when the window opened.
+- An order the agent claimed but never finished when it restarts is marked failed `interrupted`; nothing opens late.
+- There is no Hire button on a sideways phone, where the strip folds into one button.
+
 ### Remote Control
 
 - The details card shows an "Open Remote Control" button linking to `https://claude.ai/code/<bridgeSessionId>` in a new tab (ids containing `/`, `?` or `#` give no link), or a muted "Remote Control off".
@@ -201,7 +214,7 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 ### Repo front page
 
 - A visitor to the GitHub repo sees a centred title and description, badges (checks, licence, Node 24+, macOS agent), a walking-office GIF, desktop, phone and details-card screenshots, a features list, a quick start, how it works, what never leaves the Mac, an FAQ, requirements, deploy and Mac setup steps, and a link to CONTRIBUTING.
-- The public version is 0.2.0 in `package.json` and in all public text; there is no release.
+- The public version is 0.3.0 in `package.json` and in all public text; there is no release.
 - A GitHub Actions workflow runs lint, type-check and the unit tests on pushes to `main` and on pull requests (not for Markdown-only changes); it does not run the end-to-end tests. Bug reports use an issue form.
 - `npm run capture` rebuilds the README images (including a 1280x640 social preview) from a local Playwright run of a seeded office.
 - A unit test checks the image sizes, README links and anchors, the workflow and issue-form YAML, and the version.
@@ -214,12 +227,13 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 - Free text that is stored: the first message (60 characters), the Haiku desk name, Bash and Agent descriptions, search patterns, web queries and domains, file names, the session's name and folder paths.
 - The folder of each step (`file_dir`) stays on the Mac; only each repo tag's name, key and parent folder name are stored and sent.
 - The agent's config, address and desk-name cache files are created readable only by the user.
+- The first message of a hire passes through the database: the agent erases it from the order when it claims the order, and an order no Mac claims is deleted with its message after about 10 minutes. On the Mac it lives in a file readable only by the user, which the window's script deletes as soon as it has read it (and which is deleted too if the window could not open, on dismiss, or at the next agent start).
 
 ## How the pieces fit
 
 - **Hook:** `hooks/claude-office-hook.mjs` reduces each event and posts it to the loopback agent found through `~/.claude-office/agent.json`.
 - **Agent:** TypeScript run with `node --import tsx` under `agent/`; tracks sessions, steps, desk names, start folders, repo tags, the time in each state and the heartbeat, and writes to MongoDB only when something changes.
-- **Database:** the `claude-office` database; sessions carry their last 5 steps, full steps live in their own collection, folder records in `folders`; every write stamps `changedAt` with the server's clock.
+- **Database:** the `claude-office` database; sessions carry their last 5 steps, full steps live in their own collection, folder records in `folders`, hire orders in `commands`; every write stamps `changedAt` with the server's clock.
 - **Web app:** Next.js with better-auth (Google); the office page loads once, then polls the changes API. Companies, projects and the strip, drawer and tag filter are computed in the browser.
 - **Renderer:** pixel-agents v1.5.0 (commit b1bafd0, MIT) copied into `src/office/` with its licence and credits; characters credit JIK-A-4 MetroCity (CC0).
 - **Shared code:** `src/shared/` holds the schemas, step text, desk-name, asks, company, overview and tag rules used by both sides.
@@ -229,6 +243,7 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 - Poll about 3 s while visible; changes overlap 5 s; registry check about 5 s; heartbeat about 60 s; Mac offline after about 3 min.
 - Agent self-exit after about 5 min without a database write; held-session eviction after 10 min.
 - Steps, sessions and Mac records expire 7 days after last seen; the agent renews open sessions at most daily. Folder records do not expire.
+- Hire orders: the agent polls every 1 s and picks up an order created within the last 30 s; the Terminal opener gets 30 s before the order fails; the dialog polls every 2 s, reports lost contact after 35 s without an answer and "check the Mac" for an order claimed over 2 min ago; an unclaimed order expires after 10 min, a claimed one after 1 day; the folder-existence refresh runs at start and every 60 s.
 - Connect code life 10 min; at most 5 open codes.
 - Steps API pages default to 50, at most 200.
 - Haiku: 10 s per request, one retry after 30 s, 500 cached answers.
@@ -270,7 +285,7 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 - **Same-named repo tags show `parent/name`:** chosen over a cryptic key prefix; the parent folder's name reveals nothing new.
 - **A bad Haiku key is not cached:** fixing a mistyped key and restarting names sessions that failed before.
 - **Sideways phone sheet scrolls as a whole:** the steps would otherwise shrink to nothing behind "More steps".
-- **Version 0.2.0, no release:** a larger version number would overstate how finished the app is.
+- **Version 0.3.0, no release:** a larger version number would overstate how finished the app is.
 - **Mutation survivors:** survivors get tests unless they change no visible behavior.
 - **Hook install stays in this repo;** moving it to AI-rules is later work.
 
@@ -291,13 +306,14 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 ## Not built yet
 
 - Non-interactive sessions (`claude -p`, scheduled prompts, Agent SDK runs).
-- Messaging sessions, auto-wake, hiring sessions, stop buttons, controlled updates, teams, push notifications, one-line summaries, per-session cost.
+- Messaging sessions, auto-wake, waking a closed session, stop buttons, controlled updates, teams, push notifications, one-line summaries, per-session cost.
 - A session inspector.
 - Desk clusters by project inside a room; seats fill in order today.
 - An uninstall command.
 
 ## Open items
 
+- Each Mac's agent must be updated to 0.3.0 before it can take orders; until then the office greys out hiring for it.
 - Follow `SETUP.md` on the owner's Mac and confirm a live session shows at the deployed office from the Mac and a phone; then pull the new version on each Mac and restart its agent (`launchctl kickstart -k gui/$(id -u)/dev.quanvo.claude-office.agent`); the hooks follow the checkout through the `~/.claude/claude-office` link.
 - Turn on private vulnerability reporting in the GitHub repo settings.
 - Check the first GitHub Actions run after the push; the workflow was not run on GitHub.
@@ -306,13 +322,13 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 
 ## Key files
 
-- `src/proxy.ts`, `src/lib/auth.ts`, `src/lib/require-owner.ts`: sign-in gate.
+- `src/proxy.ts`, `src/lib/auth.ts`, `src/lib/require-owner.ts`: sign-in gate; `src/lib/require-online-mac.ts`: refuses orders for a Mac that cannot take them.
 - `src/office/` (`sceneSync.ts`, `rooms.ts`, `offline.ts`, `wentHome.ts`, `remoteControl.ts`, `engine/`, `components/`, `hooks/useIsSidewaysPhone.ts`): office rendering and scene sync.
-- `src/app/office/`: office page (`OfficeView.tsx`), `CompanyStrip.tsx`, `CompanyDrawer.tsx`, `TagFilter.tsx`, `RoomSigns.tsx`, `DetailsPanel.tsx`, `StepsList.tsx`, `elapsed.ts`, went-home list, polling hook, connection status.
-- `src/app/api/office/changes`, `src/app/api/office/steps`, `src/app/api/office/folders/company-mode`, `src/app/api/connect/`: office and connect APIs.
-- `src/shared/`: session, session-state, hook-event, step-text, desk-name, asks, folders, companies, overview, tag-labels, tag-filter and connect schemas and rules.
+- `src/app/office/`: office page (`OfficeView.tsx`), `CompanyStrip.tsx`, `CompanyDrawer.tsx`, `TagFilter.tsx`, `HireDialog.tsx`, `useOrderStatus.ts`, `RoomSigns.tsx`, `DetailsPanel.tsx`, `StepsList.tsx`, `elapsed.ts`, went-home list, polling hook, connection status.
+- `src/app/api/office/changes`, `src/app/api/office/steps`, `src/app/api/office/folders/company-mode`, `src/app/api/office/hire`, `src/app/api/office/commands/[id]`, `src/app/api/connect/`: office and connect APIs.
+- `src/shared/`: commands, session, session-state, hook-event, step-text, desk-name, asks, folders, companies, overview, tag-labels, tag-filter and connect schemas and rules.
 - `hooks/claude-office-hook.mjs`: the hook.
-- `agent/`: `session-state.ts`, `tracker.ts`, `steps.ts`, `writer.ts`, `reconcile.ts`, `transcript.ts`, `folders.ts`, `repo-resolver.ts`, `paste-namer.ts`, `config.ts`, `heartbeat.ts`, `write-watchdog.ts`, `kanban-watch.ts`, `start-agent.ts`, `main.ts`.
+- `agent/`: `session-state.ts`, `tracker.ts`, `steps.ts`, `writer.ts`, `reconcile.ts`, `transcript.ts`, `folders.ts`, `repo-resolver.ts`, `paste-namer.ts`, `commands.ts`, `terminal-launch.ts`, `kept.ts`, `config.ts`, `heartbeat.ts`, `write-watchdog.ts`, `kanban-watch.ts`, `start-agent.ts`, `main.ts`.
 - `agent/setup/`: connect, hook install, launchd install.
 - `scripts/generate-office-layout.ts` (`npm run layout`), `scripts/capture-readme-images.ts` (`npm run capture`), `public/assets/office-layout.json`.
 - `README.md`, `CONTRIBUTING.md`, `SETUP.md`, `THIRD_PARTY_NOTICES.md`, `.github/`, `docs/images/`, `e2e/`.

@@ -38,6 +38,8 @@ export interface SessionDoc {
   hadPrompt?: boolean;
   /** When the session entered its current room, by the Mac's clock. */
   stateSince?: Date;
+  /** Set while the owner keeps the employee at its desk. */
+  kept?: "hired" | "woken";
 }
 
 export interface WriterOptions {
@@ -365,6 +367,7 @@ function toUpdate(doc: SessionDoc, steps: StepDoc[]): AnyBulkWriteOperation {
     ...(doc.bridgeSessionId ? [] : ["bridgeSessionId"]),
     // A removed card with no fallback name must not leave its old title on the desk.
     ...(doc.deskName ? [] : ["deskName"]),
+    ...(doc.kept ? [] : ["kept"]),
   ];
   if (steps.length === 0) {
     return {

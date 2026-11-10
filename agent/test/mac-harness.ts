@@ -8,7 +8,9 @@ import { sessionHeadersFor } from "@/test/owner-session";
 import { useTestAuth } from "@/test/use-test-auth";
 import { useTestMongo } from "@/test/use-test-mongo";
 import { type RunningAgent, startAgent } from "../start-agent";
+import type { TerminalOpener } from "../terminal-launch";
 import { type FakeHome, makeFakeHome } from "./fake-home";
+import { createFakeTerminal, type FakeTerminal } from "./fake-terminal";
 
 const OWNER = "owner@example.com";
 // Large windows: nothing flushes on its own; each test calls flush() instead of waiting.
@@ -47,10 +49,23 @@ export interface MacHarness {
       anthropic?: { baseUrl: string; apiKey?: string; retryMs?: number };
       /** Restarts an agent on a home that already exists (the harness does not delete it twice). */
       fake?: FakeHome;
+      /** Replaces the recording fake Terminal; the real one is never used in tests. */
+      terminalOpener?: TerminalOpener;
+      /** How long the Terminal opener may take before an order fails. */
+      openerTimeoutMs?: number;
+      /** The claude binary hires run; a path that exists by default. */
+      claudePath?: string;
+      /** The version the agent reports; the repo's own version when absent. */
+      agentVersion?: string;
       /** Receives the agent's log lines; they go to stderr when absent. */
       log?: (message: string) => void;
     },
-  ): Promise<{ fake: FakeHome; agent: RunningAgent }>;
+  ): Promise<{
+    fake: FakeHome;
+    agent: RunningAgent;
+    /** Records what the agent opened and plays the part of the started Claude Code. */
+    terminal: FakeTerminal;
+  }>;
   /** Starts a fake Anthropic server on a free port; `reply` decides each answer. */
   startFakeAnthropic(
     reply: (
@@ -80,6 +95,7 @@ export function useMacHarness(): MacHarness {
     await db.collection("sessions").deleteMany({});
     await db.collection("machines").deleteMany({});
     await db.collection("folders").deleteMany({});
+    await db.collection("commands").deleteMany({});
   });
   afterEach(async () => {
     for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
@@ -91,6 +107,7 @@ export function useMacHarness(): MacHarness {
       if (!options?.fake) cleanups.push(() => fake.remove());
       // Registry and transcript files that exist before the agent starts.
       await options?.beforeStart?.(fake);
+      const terminal = createFakeTerminal(fake);
       const agent = await startAgent({
         home: fake.home,
         mongo: {
@@ -102,6 +119,11 @@ export function useMacHarness(): MacHarness {
         reorderMs: IDLE_MS,
         reconcileMs: IDLE_MS,
         heartbeatMs: IDLE_MS,
+        commandPollMs: IDLE_MS,
+        agentVersion: options?.agentVersion,
+        terminalOpener: options?.terminalOpener ?? terminal.open,
+        openerTimeoutMs: options?.openerTimeoutMs,
+        claudePath: options?.claudePath ?? process.execPath,
         kanbanPollMs: 50,
         now: options?.now,
         anthropicApiKey: options?.anthropic?.apiKey,
@@ -110,7 +132,7 @@ export function useMacHarness(): MacHarness {
         log: options?.log,
       });
       cleanups.push(() => agent.stop());
-      return { fake, agent };
+      return { fake, agent, terminal };
     },
     async startFakeAnthropic(reply) {
       const requests: RecordedRequest[] = [];

@@ -32,6 +32,10 @@ describe("the agent giving up when it cannot write", () => {
       computerName: "Stale Mac",
       now: () => clock,
       onStale,
+      // A test must never open a real Terminal window.
+      terminalOpener: async () => {
+        throw new Error("no Terminal in tests");
+      },
       log: () => {},
     });
     cleanups.push(() => agent.stop());

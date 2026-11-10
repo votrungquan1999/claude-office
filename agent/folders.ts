@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import type { Collection } from "mongodb";
 
 /** A start folder of one Mac as stored in the `folders` collection. */
@@ -7,6 +8,8 @@ export interface FolderDocument {
   /** Whether the folder groups its sub-folders into one company; the owner switches it. */
   companyMode: boolean;
   firstSeenAt: Date;
+  /** Whether the folder is still on the Mac; absent until the agent first checks. */
+  existsOnMac?: boolean;
 }
 
 export interface FolderRecorderOptions {
@@ -55,4 +58,32 @@ export class FolderRecorder {
   async flush(): Promise<void> {
     await Promise.all(this.pending);
   }
+}
+
+/**
+ * Records which of this Mac's known folders still exist; only changed values are written.
+ * @param folders - The folders collection.
+ * @param machineId - This Mac.
+ */
+export async function refreshFolderExistence(
+  folders: Collection<FolderDocument>,
+  machineId: string,
+): Promise<void> {
+  const records = await folders
+    .find({ machineId }, { projection: { path: 1, existsOnMac: 1 } })
+    .toArray();
+  const changed = records.flatMap((record) => {
+    const exists = existsSync(record.path);
+    return exists === record.existsOnMac
+      ? []
+      : [
+          {
+            updateOne: {
+              filter: { machineId, path: record.path },
+              update: { $set: { existsOnMac: exists } },
+            },
+          },
+        ];
+  });
+  if (changed.length > 0) await folders.bulkWrite(changed);
 }

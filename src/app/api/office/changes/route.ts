@@ -26,6 +26,7 @@ interface SessionRow {
   tags?: Array<{ name: string; key: string; parent?: string }>;
   hadPrompt?: boolean;
   stateSince?: Date;
+  kept?: SessionDto["kept"];
   changedAt: Date;
 }
 
@@ -34,12 +35,14 @@ interface FolderDocument {
   path: string;
   companyMode: boolean;
   firstSeenAt: Date;
+  existsOnMac?: boolean;
 }
 
 interface MachineRow {
   machineId: string;
   machineName: string;
   lastSeenAt: Date;
+  agentVersion?: string;
 }
 
 /**
@@ -88,6 +91,7 @@ function toDto(row: SessionRow): SessionDto {
       : {}),
     ...(row.hadPrompt === undefined ? {} : { hadPrompt: row.hadPrompt }),
     ...(row.stateSince ? { stateSince: row.stateSince.toISOString() } : {}),
+    ...(row.kept ? { kept: row.kept } : {}),
     changedAt: row.changedAt.toISOString(),
   };
 }
@@ -149,11 +153,13 @@ export async function GET(request: NextRequest) {
       machineId: machine.machineId,
       machineName: machine.machineName,
       lastSeenAt: machine.lastSeenAt.toISOString(),
+      ...(machine.agentVersion ? { agentVersion: machine.agentVersion } : {}),
     })),
-    folders: folders.map(({ machineId, path, companyMode }) => ({
+    folders: folders.map(({ machineId, path, companyMode, existsOnMac }) => ({
       machineId,
       path,
       companyMode,
+      ...(existsOnMac === undefined ? {} : { existsOnMac }),
     })),
     cursor: cursor.toISOString(),
     serverNow: new Date().toISOString(),

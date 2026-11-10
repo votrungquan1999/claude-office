@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { type BrowserContext, expect, type Page, test } from "@playwright/test";
-import { type Collection, MongoClient } from "mongodb";
+import { type Collection, type Db, type Document, MongoClient } from "mongodb";
 import {
   E2E_BASE_URL,
   E2E_DB,
@@ -112,6 +112,8 @@ export interface SeedFolder {
   machineId: string;
   path: string;
   companyMode?: boolean;
+  /** False for a folder the agent found deleted. */
+  existsOnMac?: boolean;
 }
 
 /**
@@ -126,11 +128,12 @@ export async function seedFolders(
   await folders.deleteMany({});
   if (records.length === 0) return;
   await folders.insertMany(
-    records.map(({ machineId, path, companyMode }) => ({
+    records.map(({ machineId, path, companyMode, existsOnMac }) => ({
       machineId,
       path,
       companyMode: companyMode ?? true,
       firstSeenAt: new Date(),
+      ...(existsOnMac === undefined ? {} : { existsOnMac }),
     })),
   );
 }
@@ -152,8 +155,17 @@ export function keepOneCompany(machineId: string, path: string): void {
       await client.close();
     }
   };
-  test.beforeEach(() => withFolders([{ machineId, path }]));
-  test.afterEach(() => withFolders([]));
+  // A Mac with no record counts as offline, so the spec's Mac gets a fresh one.
+  test.beforeEach(async () => {
+    await withFolders([{ machineId, path }]);
+    await seedOnlineMachine(machineId, "Studio Mac");
+  });
+  test.afterEach(async () => {
+    await withFolders([]);
+    await withE2eDb(async (db) => {
+      await db.collection("machines").deleteMany({ machineId });
+    });
+  });
 }
 
 /** A session as the specs seed it; everything but the id has a default. */
@@ -192,4 +204,71 @@ export async function seedSessions(
       ...rest,
     })),
   );
+}
+
+/**
+ * Runs a callback against the e2e database with its own short-lived connection.
+ * @param run - Receives the database.
+ * @returns What the callback returned.
+ */
+export async function withE2eDb<T>(run: (db: Db) => Promise<T>): Promise<T> {
+  const client = new MongoClient(
+    readFileSync(E2E_MONGO_URI_FILE, "utf8").trim(),
+  );
+  await client.connect();
+  try {
+    return await run(client.db(E2E_DB));
+  } finally {
+    await client.close();
+  }
+}
+
+/** Every order row, oldest first. */
+export function readCommands(): Promise<Document[]> {
+  return withE2eDb((db) =>
+    db.collection("commands").find({}).sort({ createdAt: 1 }).toArray(),
+  );
+}
+
+/** Empties the orders, so rows never leak between specs. */
+export function clearCommands(): Promise<void> {
+  return withE2eDb(async (db) => {
+    await db.collection("commands").deleteMany({});
+  });
+}
+
+/**
+ * Edits one order row, as the Mac's agent would.
+ * @param id - The order.
+ * @param fields - Fields to set.
+ */
+export function updateCommand(
+  id: unknown,
+  fields: Record<string, unknown>,
+): Promise<void> {
+  return withE2eDb(async (db) => {
+    await db
+      .collection("commands")
+      .updateOne({ _id: id as never }, { $set: fields });
+  });
+}
+
+/**
+ * Gives a Mac a fresh record, so the office counts it online; a Mac with no record counts as offline.
+ * @param machineId - The Mac.
+ * @param machineName - Its label.
+ */
+export function seedOnlineMachine(
+  machineId: string,
+  machineName: string,
+): Promise<void> {
+  return withE2eDb(async (db) => {
+    await db.collection("machines").updateOne(
+      { machineId },
+      {
+        $set: { machineName, lastSeenAt: new Date(), agentVersion: "0.3.0" },
+      },
+      { upsert: true },
+    );
+  });
 }

@@ -28,6 +28,11 @@ export async function ensureIndexes(db: Db): Promise<void> {
   await db
     .collection("folders")
     .createIndex({ machineId: 1, path: 1 }, { unique: true });
+  const commands = db.collection("commands");
+  // Serves each agent's "my pending orders" claim.
+  await commands.createIndex({ machineId: 1, status: 1, createdAt: 1 });
+  // An unclaimed order dies with its message after ten minutes; the claim moves the date out a day.
+  await commands.createIndex({ expireAt: 1 }, { expireAfterSeconds: 0 });
   const steps = db.collection("steps");
   // Serves "older steps of this session" paging, newest first.
   await steps.createIndex({

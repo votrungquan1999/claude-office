@@ -126,6 +126,8 @@ interface Tracked {
   process?: { pid?: number; procStart?: string };
   /** Repos worked in so far; only grows. */
   tags: TagDoc[];
+  /** Set while the owner keeps the session at its desk (hired from the office). */
+  kept?: "hired" | "woken";
   /** The room last published (Working and Thinking are one), to tell when the session changes room. */
   publishedRoom?: string;
   /** When the session entered `publishedRoom`, by the Mac's clock. */
@@ -259,6 +261,22 @@ export class SessionTracker {
   }
 
   /**
+   * Tracks a session the office just opened in a Terminal window, so its desk appears once Claude Code registers it.
+   * @param hire - The session, its start folder and when its window opened.
+   */
+  trackHired(hire: {
+    sessionId: string;
+    folder: string;
+    launchedAt: number;
+  }): void {
+    const tracked = this.track(hire.sessionId);
+    tracked.cwd = hire.folder;
+    tracked.startCwd = hire.folder;
+    tracked.startedAt = hire.launchedAt;
+    tracked.kept = "hired";
+  }
+
+  /**
    * Corrects what hooks could not see: a session whose process is gone goes home, and a fresher registry status replaces a stale state.
    * @param entries - The registry as it is now.
    * @param isRunning - Whether a recorded process is still the one running.
@@ -345,7 +363,7 @@ export class SessionTracker {
 
   /** A held session goes when the registry says it is not interactive, or it has been silent too long to still be waiting for its entry. */
   private shouldEvictHeld(sessionId: string, tracked: Tracked): boolean {
-    if (tracked.interactive || tracked.timer) return false;
+    if (tracked.interactive || tracked.timer || tracked.kept) return false;
     const entry = findRegistryEntry(this.options.home, sessionId);
     if (entry) return !isShownEntry(entry);
     // Without a registry the hooks alone show the session, so only an ended one can go.
@@ -642,6 +660,7 @@ export class SessionTracker {
         currentTodo: tracked.steps.todo,
         ...(tracked.tags.length ? { tags: tracked.tags } : {}),
         hadPrompt: tracked.hadPrompt,
+        ...(tracked.kept ? { kept: tracked.kept } : {}),
       },
       steps,
     );

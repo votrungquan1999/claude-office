@@ -1,8 +1,12 @@
 import { randomBytes } from "node:crypto";
-import { rmSync } from "node:fs";
+import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { MongoClient } from "mongodb";
+import { z } from "zod";
 import { ensureIndexes } from "../src/db/indexes";
+import type { CommandDocument } from "../src/shared/commands";
+import { createCommandPoller, failInterrupted } from "./commands";
 import { readComputerName } from "./computer-name";
 import {
   type AgentFile,
@@ -11,9 +15,14 @@ import {
   readMachineId,
   writeAgentFile,
 } from "./config";
-import { type FolderDocument, FolderRecorder } from "./folders";
+import {
+  type FolderDocument,
+  FolderRecorder,
+  refreshFolderExistence,
+} from "./folders";
 import { startHeartbeat } from "./heartbeat";
 import { startKanbanWatch } from "./kanban-watch";
+import { KeptDesks } from "./kept";
 import { PasteNamer } from "./paste-namer";
 import { readProcessStart } from "./process-start";
 import {
@@ -21,11 +30,27 @@ import {
   reconcileSessions,
   seedRunningSessions,
 } from "./reconcile";
+import { listRegistry } from "./registry";
 import { createRepoResolver } from "./repo-resolver";
 import { startListener } from "./server";
+import {
+  openInTerminal,
+  removeLaunchFiles,
+  sweepLaunchFiles,
+  type TerminalOpener,
+} from "./terminal-launch";
 import { SessionTracker } from "./tracker";
 import { createWriteWatchdog } from "./write-watchdog";
 import { SessionWriter } from "./writer";
+
+const packageJsonSchema = z.object({ version: z.string() });
+
+/** The version in the repo's package.json, which the agent runs from. */
+function readPackageVersion(): string {
+  const file = fileURLToPath(new URL("../package.json", import.meta.url));
+  return packageJsonSchema.parse(JSON.parse(readFileSync(file, "utf8")))
+    .version;
+}
 
 export interface AgentOptions {
   home: string;
@@ -52,6 +77,16 @@ export interface AgentOptions {
   anthropicBaseUrl?: string;
   /** How long to wait before the one retry of a failed name request. */
   anthropicRetryMs?: number;
+  /** Opens a script in a Terminal window; tests pass a recording fake. */
+  terminalOpener?: TerminalOpener;
+  /** How long the Terminal opener may take before the order fails; 30 s when absent. */
+  openerTimeoutMs?: number;
+  /** The claude binary a hired window runs; found on the agent's PATH when absent. */
+  claudePath?: string;
+  /** The version the agent reports; read from package.json when absent. */
+  agentVersion?: string;
+  /** How often the web's orders are looked for. */
+  commandPollMs?: number;
   log?: (message: string) => void;
 }
 
@@ -62,6 +97,8 @@ export interface RunningAgent {
   reconcile(): Promise<void>;
   /** Stamps this Mac's last-seen time now. */
   heartbeat(): Promise<void>;
+  /** Claims and runs this Mac's waiting orders now. */
+  pollCommands(): Promise<void>;
   /** Gives up (see `onStale`) when no database write has succeeded for too long. */
   checkWriteHealth(): void;
   stop(): Promise<void>;
@@ -177,6 +214,16 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
     sessions: db.collection("sessions"),
     machineId,
     machineName,
+    agentVersion: options.agentVersion ?? readPackageVersion(),
+    afterBeat: () =>
+      refreshFolderExistence(
+        db.collection<FolderDocument>("folders"),
+        machineId,
+      ).catch((error: unknown) =>
+        log(
+          `folder check failed: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+      ),
     intervalMs: options.heartbeatMs ?? 60_000,
     log,
     onWriteOk: watchdog.markWrite,
@@ -197,7 +244,18 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
   const staleTimer = setInterval(watchdog.check, 30_000);
   staleTimer.unref();
 
-  const reconcile = () => reconcileSessions(home, tracker);
+  // The pass that sees a hired window's registry entry also deletes its launch files.
+  const kept = new KeptDesks();
+  const reconcile = async () => {
+    await reconcileSessions(home, tracker);
+    // Claude Code has read the message by the time it registers, so the launch files are no longer needed.
+    const registered = new Set(listRegistry(home).map((e) => e.sessionId));
+    for (const launch of kept.withFiles()) {
+      if (!registered.has(launch.sessionId)) continue;
+      removeLaunchFiles(home, launch.sessionId);
+      kept.filesRemoved(launch.sessionId);
+    }
+  };
   const reconcileTimer = setInterval(
     () =>
       // A failed pass (for example `ps` unavailable) is retried at the next tick.
@@ -209,6 +267,36 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
     options.reconcileMs ?? 5000,
   );
   reconcileTimer.unref();
+
+  // Orders the previous run claimed are over: no window is opened late.
+  const commands = db.collection<CommandDocument>("commands");
+  await failInterrupted(commands, machineId);
+  sweepLaunchFiles(home);
+  const commandPoller = createCommandPoller({
+    commands,
+    folders: db.collection<FolderDocument>("folders"),
+    machineId,
+    home,
+    tracker,
+    kept,
+    opener: options.terminalOpener ?? openInTerminal,
+    openerTimeoutMs: options.openerTimeoutMs,
+    claudePath: options.claudePath,
+    now,
+    log,
+  });
+  const commandTimer = setInterval(
+    () =>
+      void commandPoller
+        .poll()
+        .catch((error: unknown) =>
+          log(
+            `order poll failed: ${error instanceof Error ? error.message : String(error)}`,
+          ),
+        ),
+    options.commandPollMs ?? 1000,
+  );
+  commandTimer.unref();
 
   const token = randomBytes(24).toString("hex");
   const listener = await startListener(token, (body) => tracker.ingest(body));
@@ -226,6 +314,7 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
       await tracker.settleNames();
     },
     reconcile,
+    pollCommands: commandPoller.poll,
     heartbeat: heartbeat.beat,
     checkWriteHealth: watchdog.check,
     async stop() {
@@ -234,6 +323,7 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
       kanban.stop();
       clearInterval(reconcileTimer);
       clearInterval(staleTimer);
+      clearInterval(commandTimer);
       heartbeat.stop();
       tracker.stop();
       writer.stop();

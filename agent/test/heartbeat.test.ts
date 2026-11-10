@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { getDb } from "@/db/mongo";
 import { useMacHarness } from "./mac-harness";
@@ -29,5 +31,30 @@ describe("a Mac says it is still here", () => {
       started?.lastSeenAt.getTime(),
     );
     expect(await machines.countDocuments({ machineId: "machine-air" })).toBe(1);
+  }, 60_000);
+
+  it("reports the agent's version with every heartbeat, the repo's own by default", async () => {
+    // Given a Mac on the default version and one told to report another
+    const pkg = JSON.parse(
+      readFileSync(join(process.cwd(), "package.json"), "utf8"),
+    );
+    await setUpMac("machine-air", "Air");
+    const mini = await setUpMac("machine-mini", "Mini", {
+      agentVersion: "9.9.9",
+    });
+    const machines = (await getDb()).collection("machines");
+
+    // Then each record carries the version, and it is rewritten on the next beat
+    expect(
+      (await machines.findOne({ machineId: "machine-air" }))?.agentVersion,
+    ).toBe(pkg.version);
+    await machines.updateOne(
+      { machineId: "machine-mini" },
+      { $unset: { agentVersion: "" } },
+    );
+    await mini.agent.heartbeat();
+    expect(
+      (await machines.findOne({ machineId: "machine-mini" }))?.agentVersion,
+    ).toBe("9.9.9");
   }, 60_000);
 });

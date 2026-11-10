@@ -60,6 +60,8 @@ export const sessionDtoSchema = z.object({
   hadPrompt: z.boolean().optional(),
   /** When the session entered its current room (Working and Thinking count as one), by the Mac's clock; absent on older rows. */
   stateSince: z.string().optional(),
+  /** Set while the owner keeps the employee at its desk after hiring it; absent for every other session. */
+  kept: z.enum(["hired", "woken"]).optional(),
   changedAt: z.string(),
 });
 
@@ -70,6 +72,8 @@ export const machineDtoSchema = z.object({
   machineId: z.string(),
   machineName: z.string(),
   lastSeenAt: z.string(),
+  /** The agent's version; absent from agents older than the one that reports it. */
+  agentVersion: z.string().optional(),
 });
 
 export type MachineDto = z.infer<typeof machineDtoSchema>;

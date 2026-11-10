@@ -88,6 +88,65 @@ describe("the office changes API", () => {
     ]);
   });
 
+  it("tells the browser which employees the owner keeps at their desks", async () => {
+    // Given one kept session and one plain one
+    await seedSession("kept-one", new Date(T0));
+    await seedSession("plain", new Date(T0));
+    await (await getDb())
+      .collection("sessions")
+      .updateOne({ sessionId: "kept-one" }, { $set: { kept: "hired" } });
+
+    // When the owner asks for the changes
+    const body = changesResponseSchema.parse(
+      await (await GET(changesRequest(ownerHeaders))).json(),
+    );
+
+    // Then only the kept one carries the mark
+    expect(body.sessions.map((s) => [s.sessionId, s.kept]).sort()).toEqual([
+      ["kept-one", "hired"],
+      ["plain", undefined],
+    ]);
+  });
+
+  it("passes on each Mac's agent version and whether each folder still exists", async () => {
+    // Given a Mac that reports a version and a folder the agent found missing
+    const db = await getDb();
+    await db.collection("machines").deleteMany({});
+    await db.collection("folders").deleteMany({});
+    await db.collection("machines").insertOne({
+      machineId: "m1",
+      machineName: "Mac",
+      lastSeenAt: new Date(T0),
+      agentVersion: "0.3.0",
+    });
+    await db.collection("folders").insertMany([
+      {
+        machineId: "m1",
+        path: "/gone",
+        companyMode: true,
+        firstSeenAt: new Date(T0),
+        existsOnMac: false,
+      },
+      {
+        machineId: "m1",
+        path: "/unchecked",
+        companyMode: true,
+        firstSeenAt: new Date(T0),
+      },
+    ]);
+
+    // When the owner asks for the changes
+    const body = changesResponseSchema.parse(
+      await (await GET(changesRequest(ownerHeaders))).json(),
+    );
+
+    // Then both fields arrive, and an unchecked folder carries none
+    expect(body.machines[0]?.agentVersion).toBe("0.3.0");
+    expect(
+      Object.fromEntries(body.folders.map((f) => [f.path, f.existsOnMac])),
+    ).toEqual({ "/gone": false, "/unchecked": undefined });
+  });
+
   it("answers only the owner", async () => {
     // Given a stored session
     await seedSession("s1", new Date(T0));

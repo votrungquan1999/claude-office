@@ -36,6 +36,8 @@ export interface FakeHome {
   updateSession(sessionId: string, patch: Partial<FakeSession>): void;
   /** Deletes a session's registry entry. */
   removeSession(sessionId: string): void;
+  /** Creates a real folder under the fake home, as a start folder that exists on the Mac. */
+  makeFolder(name: string): string;
   /** Writes `~/.claude/projects/<project>/<sessionId>.jsonl`; strings are written as-is. */
   addTranscript(
     sessionId: string,
@@ -110,6 +112,11 @@ export function makeFakeHome(machineId: string): FakeHome {
     },
     removeSession(sessionId) {
       rmSync(files.get(sessionId) ?? "", { force: true });
+    },
+    makeFolder(name) {
+      const path = join(home, "work", name);
+      mkdirSync(path, { recursive: true });
+      return path;
     },
     addTranscript(sessionId, records, project = "-work-project") {
       const dir = join(home, ".claude", "projects", project);

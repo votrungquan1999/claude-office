@@ -80,6 +80,51 @@ describe("one-off and SDK-driven runs never show up as employees", () => {
     const db = await getDb();
     expect(await db.collection("sessions").countDocuments()).toBe(1);
   });
+  it("keeps a running desk's name, start folder and Remote Control link when a claude -p run resumes it", async () => {
+    // Given a running terminal session with a name, a folder and a Remote Control link
+    const mac = await setUpMac("machine-air", "Quan's MacBook Air");
+    const folder = mac.fake.makeFolder("app");
+    const real = await processes.live();
+    mac.fake.addSession({
+      sessionId: "s1",
+      cwd: folder,
+      pid: real.pid,
+      procStart: real.procStart,
+      name: "Real name",
+      bridgeSessionId: "bridge-real",
+      startedAt: 1_700_000_000_000,
+    });
+    await runHook(mac.fake.home, {
+      session_id: "s1",
+      cwd: folder,
+      hook_event_name: "SessionStart",
+      source: "startup",
+    });
+    await mac.agent.reconcile();
+    await mac.agent.flush();
+
+    // When a newer hidden claude -p run of the same conversation registers
+    const printRun = await processes.live();
+    mac.fake.addSession({
+      sessionId: "s1",
+      cwd: "/elsewhere",
+      pid: printRun.pid,
+      procStart: printRun.procStart,
+      entrypoint: "sdk-cli",
+      name: "print name",
+      startedAt: 1_700_000_100_000,
+    });
+    await mac.agent.reconcile();
+    await mac.agent.flush();
+
+    // Then the desk keeps what the real session registered
+    expect((await officeSessions())[0]).toMatchObject({
+      sessionId: "s1",
+      deskName: "Real name",
+      bridgeSessionId: "bridge-real",
+      startCwd: folder,
+    });
+  });
   it("hides a claude-vscode session whose process was started with -p", async () => {
     // Given a live session registered as claude-vscode (inherited from the parent) whose command line is `claude -p`
     const mac = await setUpMac("machine-air", "Quan's MacBook Air");
