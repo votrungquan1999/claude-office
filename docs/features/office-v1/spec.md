@@ -111,7 +111,7 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 ### Every session, every Mac
 
 - Sessions from all set-up Macs appear in one office, each labelled with the Mac's computer name; the folder follows `cd` for the details card and ignores subagents' folders.
-- Only interactive sessions are shown; a session with no registry entry yet is held until one appears and is dropped after 10 quiet minutes if it never becomes interactive.
+- Only interactive sessions are shown; runs started with an `sdk-` entrypoint (`claude -p` and Agent SDK programs) are not, and neither is a session whose process command line has `-p` or `--print` before any `--` (a `claude -p` started inside a VS Code session inherits its `claude-vscode` entrypoint); command lines come from the single process-table read of each 5-second pass, and a hook between passes reads one cached lookup for that session's own entries (a gone process is not looked up again for 10 seconds); a hidden run that resumes a conversation the office shows neither brings its desk back nor changes its name, folder or Remote Control link; a session with no registry entry yet is held until one appears and is dropped after 10 quiet minutes if it never becomes interactive.
 - A session that is already running when the agent starts is picked up from `~/.claude/sessions` and its transcript.
 - `/clear` ends the old employee and a new one arrives.
 - Sessions that never got a prompt are left out of the Went home list.

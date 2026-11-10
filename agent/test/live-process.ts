@@ -22,14 +22,8 @@ export function startTimeOf(pid: number): string {
 export function useLiveProcesses() {
   const children: ChildProcess[] = [];
 
-  function start(): ChildProcess {
-    const child = spawn(
-      process.execPath,
-      ["-e", "setInterval(() => {}, 1e6)"],
-      {
-        stdio: "ignore",
-      },
-    );
+  function start(args: string[]): ChildProcess {
+    const child = spawn(process.execPath, args, { stdio: "ignore" });
     children.push(child);
     return child;
   }
@@ -38,9 +32,11 @@ export function useLiveProcesses() {
     for (const child of children.splice(0)) child.kill("SIGKILL");
   });
 
-  /** A process that stays alive until the test ends. */
-  async function live(): Promise<ProcessInfo & { kill(): Promise<void> }> {
-    const child = start();
+  /** A process that stays alive until the test ends; `args` replaces its command line after the binary. */
+  async function live(
+    args: string[] = ["-e", "setInterval(() => {}, 1e6)"],
+  ): Promise<ProcessInfo & { kill(): Promise<void> }> {
+    const child = start(args);
     await new Promise((resolve) => child.once("spawn", resolve));
     const pid = child.pid ?? 0;
     return {

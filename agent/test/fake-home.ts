@@ -12,6 +12,8 @@ export interface FakeSession {
   sessionId: string;
   cwd: string;
   kind?: string;
+  /** How Claude Code was started (`cli`, `sdk-cli`, ...); left out of the entry when absent. */
+  entrypoint?: string;
   name?: string;
   /** The process behind the session; defaults to a made-up one that does not exist. */
   pid?: number;
@@ -80,6 +82,9 @@ export function makeFakeHome(machineId: string): FakeHome {
               statusUpdatedAt: session.statusUpdatedAt ?? 1_700_000_000_000,
             }),
         kind: session.kind ?? "interactive",
+        ...(session.entrypoint === undefined
+          ? {}
+          : { entrypoint: session.entrypoint }),
         name: session.name ?? "made-up",
         bridgeSessionId: session.bridgeSessionId,
         // Keys Claude Code writes that the agent does not use.

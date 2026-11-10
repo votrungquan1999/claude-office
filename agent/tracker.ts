@@ -15,6 +15,7 @@ import type { PasteNamer } from "./paste-namer";
 import {
   findRegistryEntry,
   isRegistryReadable,
+  isShownEntry,
   type RegistryEntry,
 } from "./registry";
 import {
@@ -274,8 +275,10 @@ export class SessionTracker {
         continue;
       }
       if (tracked.endedAt !== undefined) continue;
+      // A hidden `claude -p` run of the same conversation must not lend its name, folder or link to the desk.
       const entry = entries.find(
-        (candidate) => candidate.sessionId === sessionId,
+        (candidate) =>
+          candidate.sessionId === sessionId && isShownEntry(candidate),
       );
       const process = entry
         ? { pid: entry.pid, procStart: entry.procStart }
@@ -344,7 +347,7 @@ export class SessionTracker {
   private shouldEvictHeld(sessionId: string, tracked: Tracked): boolean {
     if (tracked.interactive || tracked.timer) return false;
     const entry = findRegistryEntry(this.options.home, sessionId);
-    if (entry) return entry.kind !== "interactive";
+    if (entry) return !isShownEntry(entry);
     // Without a registry the hooks alone show the session, so only an ended one can go.
     if (!isRegistryReadable(this.options.home) && tracked.endedAt === undefined)
       return false;
@@ -409,6 +412,11 @@ export class SessionTracker {
 
   private apply(tracked: Tracked, event: HookEvent): void {
     const starting = event.hook_event_name === "SessionStart";
+    // A hidden run resuming a conversation must not bring its desk back or be counted as the employee.
+    if (!tracked.interactive || tracked.endedAt !== undefined) {
+      const entry = findRegistryEntry(this.options.home, event.session_id);
+      if (entry && !isShownEntry(entry)) return;
+    }
     if (tracked.endedHookTs !== undefined) {
       // Only a newer SessionStart (resume) reopens; anything else is a straggler from before the end.
       if (!starting || event.hookTs <= tracked.endedHookTs) return;
@@ -577,7 +585,7 @@ export class SessionTracker {
     if (!tracked.interactive) {
       // A session with no registry entry yet is held and re-checked on its next event.
       const entry = findRegistryEntry(this.options.home, sessionId);
-      if (entry?.kind === "interactive") {
+      if (entry && isShownEntry(entry)) {
         tracked.interactive = true;
         tracked.startedAt = entry.startedAt ?? tracked.startedAt;
         tracked.registryName = entry.name;

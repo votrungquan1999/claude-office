@@ -1,34 +1,58 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { Collection } from "mongodb";
-import { isRegistryReadable, listRegistry } from "./registry";
+import {
+  isRegistryReadable,
+  isShownEntry,
+  listRegistry,
+  type RegistryEntry,
+} from "./registry";
 import type { SessionTracker, TagDoc } from "./tracker";
 import { readTranscriptSeed } from "./transcript";
 import { EXPIRY_DAYS } from "./writer";
 
 const run = promisify(execFile);
 
-/** Start times by pid, as `ps -o lstart` prints them. */
-type ProcessTable = Map<number, string>;
+/** One running process: its start time as `ps -o lstart` prints it, and its command line. */
+interface ProcessInfo {
+  started: string;
+  args: string;
+}
+
+/** Every running process by pid. */
+type ProcessTable = Map<number, ProcessInfo>;
 
 function normalize(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
+/** One `ps -o pid=,lstart=,args=` line; a message with newlines in the arguments leaves lines that do not match and are skipped. */
+const PROCESS_LINE =
+  /^\s*(\d+)\s+([A-Z][a-z]{2} [A-Z][a-z]{2} +\d{1,2} \d{2}:\d{2}:\d{2} \d{4})\s*(.*)$/;
+
 /**
  * Reads every running process in one call.
- * @returns Each pid with its start time.
+ * @returns Each pid with its start time and command line.
  */
 export async function readProcessTable(): Promise<ProcessTable> {
-  const { stdout } = await run("ps", ["-A", "-o", "pid=,lstart="], {
-    maxBuffer: 16 * 1024 * 1024,
-    // A fixed locale and UTC keep the start time in the format and zone Claude Code records.
-    env: { ...process.env, LC_ALL: "C", TZ: "UTC" },
-  });
+  const { stdout } = await run(
+    "ps",
+    ["-ww", "-A", "-o", "pid=,lstart=,args="],
+    {
+      maxBuffer: 16 * 1024 * 1024,
+      // A fixed locale and UTC keep the start time in the format and zone Claude Code records.
+      env: { ...process.env, LC_ALL: "C", TZ: "UTC" },
+    },
+  );
   const table: ProcessTable = new Map();
   for (const line of stdout.split("\n")) {
-    const match = /^\s*(\d+)\s+(.*)$/.exec(line);
-    if (match) table.set(Number(match[1]), normalize(match[2]));
+    const match = PROCESS_LINE.exec(line);
+    if (match) {
+      table.set(Number(match[1]), {
+        started: normalize(match[2]),
+        args: match[3].trim(),
+      });
+    }
   }
   return table;
 }
@@ -43,12 +67,26 @@ function isRunning(
   table: ProcessTable,
 ): boolean {
   if (process.pid === undefined) return false;
-  const started = table.get(process.pid);
+  const started = table.get(process.pid)?.started;
   if (started === undefined) return false;
   if (process.procStart === undefined) return true;
   const recorded = normalize(process.procStart);
   // A start time in another locale cannot be compared, so such a session is judged by its pid alone.
   return !C_LOCALE_DATE.test(recorded) || recorded === started;
+}
+
+/**
+ * Takes a registry entry's command line from the process table, when the entry's process is the one running under its pid.
+ * @param table - The process table of this pass.
+ * @returns A lookup for `listRegistry`.
+ */
+export function argsFrom(
+  table: ProcessTable,
+): (entry: RegistryEntry) => string | undefined {
+  return (entry) =>
+    entry.pid !== undefined && isRunning(entry, table)
+      ? table.get(entry.pid)?.args
+      : undefined;
 }
 
 /**
@@ -61,7 +99,9 @@ export async function reconcileSessions(
   tracker: SessionTracker,
 ): Promise<void> {
   const table = await readProcessTable();
-  tracker.reconcile(listRegistry(home), (process) => isRunning(process, table));
+  tracker.reconcile(listRegistry(home, argsFrom(table)), (process) =>
+    isRunning(process, table),
+  );
 }
 
 export interface SeedOptions {
@@ -82,8 +122,8 @@ export interface SeedOptions {
 export async function seedRunningSessions(options: SeedOptions): Promise<void> {
   const { home, machineId, sessions, tracker, now, lastSeenAt } = options;
   const table = await readProcessTable();
-  const alive = listRegistry(home).filter(
-    (entry) => entry.kind === "interactive" && isRunning(entry, table),
+  const alive = listRegistry(home, argsFrom(table)).filter(
+    (entry) => isShownEntry(entry) && isRunning(entry, table),
   );
   // Tags a previous run stored, so a restart never shrinks them.
   const stored = await sessions
