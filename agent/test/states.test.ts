@@ -337,7 +337,9 @@ describe("an employee moves to the room matching its session", () => {
 
     it("stamps a room the registry moved the session to with the registry's status time, not the moment the agent noticed", async () => {
       // Given a live session the hooks announced at T0
-      let clock = T0;
+      // Hook events carry the real clock, so the scenario is anchored to it
+      const t0 = Date.now();
+      let clock = t0;
       const live = await processes.live();
       const { fake, agent } = await setUpMac(
         "machine-air",
@@ -350,7 +352,7 @@ describe("an employee moves to the room matching its session", () => {
         pid: live.pid,
         procStart: live.procStart,
         status: "idle",
-        statusUpdatedAt: T0,
+        statusUpdatedAt: t0,
       });
       await runHook(fake.home, {
         hook_event_name: "SessionStart",
@@ -360,18 +362,18 @@ describe("an employee moves to the room matching its session", () => {
       });
       await agent.flush();
 
-      // When the registry says busy since T0+50s and the agent notices at T0+100s
+      // When the registry says busy since t0+50s and the agent notices at t0+100s
       fake.updateSession("reg", {
         status: "busy",
-        statusUpdatedAt: T0 + 50_000,
+        statusUpdatedAt: t0 + 50_000,
       });
-      clock = T0 + 100_000;
+      clock = t0 + 100_000;
       await agent.reconcile();
       await agent.flush();
 
       // Then the office shows the room entered at the registry's time
       const [row] = await officeSessions();
-      expect(row?.stateSince).toBe(new Date(T0 + 50_000).toISOString());
+      expect(row?.stateSince).toBe(new Date(t0 + 50_000).toISOString());
     });
 
     it("stamps the moment a session goes home, both when its hook says so and when the Mac finds its process gone", async () => {

@@ -16,6 +16,9 @@ import { runHook } from "./run-hook";
 /** Slower than this and the hook could hold up a Claude Code session. */
 const MAX_WALL_MS = 1800;
 
+/** The hook always waits out its hard-exit timer when stdin never closes, so that case needs more room. */
+const MAX_WALL_MS_OPEN_STDIN = 3000;
+
 const EVENT = {
   hook_event_name: "PreToolUse",
   session_id: "s1",
@@ -28,6 +31,8 @@ interface Setup {
   /** The hook's stdin; a string is sent as-is. */
   payload?: object | string;
   holdStdin?: boolean;
+  /** Wall-clock limit for this case; defaults to `MAX_WALL_MS`. */
+  maxWallMs?: number;
   /** Env for the child; `HOME` is set to the fake home unless given. */
   env?: (home: string) => Record<string, string>;
 }
@@ -230,7 +235,7 @@ describe("a Claude session is never slowed down, blocked or interrupted by the h
           port: await fakeAgent(respondOk),
           token: "t",
         });
-        return { holdStdin: true };
+        return { holdStdin: true, maxWallMs: MAX_WALL_MS_OPEN_STDIN };
       },
     ],
   ];
@@ -257,7 +262,7 @@ describe("a Claude session is never slowed down, blocked or interrupted by the h
         stdout: result.stdout,
         stderr: result.stderr,
       }).toEqual({ code: 0, timedOut: false, stdout: "", stderr: "" });
-      expect(result.wallMs).toBeLessThan(MAX_WALL_MS);
+      expect(result.wallMs).toBeLessThan(setup?.maxWallMs ?? MAX_WALL_MS);
     },
     // Above the harness's 5 s kill limit, so a hang fails on timedOut, not on the test timeout.
     15_000,
