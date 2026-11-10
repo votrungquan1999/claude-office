@@ -22,7 +22,7 @@ import {
 } from "./folders";
 import { startHeartbeat } from "./heartbeat";
 import { startKanbanWatch } from "./kanban-watch";
-import { KeptDesks } from "./kept";
+import { cleanLaunchFiles, KeptDesks } from "./kept";
 import { PasteNamer } from "./paste-namer";
 import { readProcessStart } from "./process-start";
 import {
@@ -35,7 +35,6 @@ import { createRepoResolver } from "./repo-resolver";
 import { startListener } from "./server";
 import {
   openInTerminal,
-  removeLaunchFiles,
   sweepLaunchFiles,
   type TerminalOpener,
 } from "./terminal-launch";
@@ -175,7 +174,9 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
       onWriteOk: watchdog.markWrite,
     },
   );
+  const kept = new KeptDesks();
   const tracker = new SessionTracker({
+    onKeptMoved: (fromId, toId) => kept.moveKept(fromId, toId),
     home,
     machineId,
     machineName,
@@ -244,17 +245,11 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
   const staleTimer = setInterval(watchdog.check, 30_000);
   staleTimer.unref();
 
-  // The pass that sees a hired window's registry entry also deletes its launch files.
-  const kept = new KeptDesks();
   const reconcile = async () => {
     await reconcileSessions(home, tracker);
     // Claude Code has read the message by the time it registers, so the launch files are no longer needed.
     const registered = new Set(listRegistry(home).map((e) => e.sessionId));
-    for (const launch of kept.withFiles()) {
-      if (!registered.has(launch.sessionId)) continue;
-      removeLaunchFiles(home, launch.sessionId);
-      kept.filesRemoved(launch.sessionId);
-    }
+    cleanLaunchFiles(kept, home, registered);
   };
   const reconcileTimer = setInterval(
     () =>

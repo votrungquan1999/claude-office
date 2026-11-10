@@ -62,6 +62,8 @@ export const sessionDtoSchema = z.object({
   stateSince: z.string().optional(),
   /** Set while the owner keeps the employee at its desk after hiring it; absent for every other session. */
   kept: z.enum(["hired", "woken"]).optional(),
+  /** A kept employee whose Terminal window closed: still at its desk, idle, with nothing running. Absent means running. */
+  notRunning: z.literal(true).optional(),
   changedAt: z.string(),
 });
 

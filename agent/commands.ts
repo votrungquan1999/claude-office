@@ -180,6 +180,7 @@ export function createCommandPoller(
     const launchedAt = options.now();
     kept.add({
       sessionId: order.sessionId,
+      launchId: order.sessionId,
       folder: order.folder,
       kind: "hired",
       launchedAt,

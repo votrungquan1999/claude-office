@@ -425,4 +425,37 @@ describe("the details panel", () => {
     // Then no timer is left running
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  it("says 'Not running' with the time since the window closed, and shows no terminal box, Remote Control link or 'Remote Control off' line", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-09T10:00:00Z"));
+
+    // Given a kept employee whose window closed four minutes ago
+    open(
+      session({
+        state: "idle",
+        kept: "hired",
+        bridgeSessionId: "bridge-closed",
+        notRunning: true,
+        stateSince: "2026-11-09T09:56:00Z",
+        recentSteps: [
+          {
+            id: "a",
+            text: "Ran the build",
+            startedAt: "2026-11-09T09:50:00Z",
+            status: "ok",
+          },
+        ],
+      }),
+    );
+
+    // Then the band reads "Not running" with the time, and nothing offers a link or a status box
+    expect(screen.getByTestId("state-line").textContent).toBe(
+      "Not running · 4m 00s",
+    );
+    expect(screen.getByTestId("state-band").dataset.state).toBe("notRunning");
+    expect(screen.queryByTestId("terminal-box")).toBeNull();
+    expect(screen.queryByTestId("remote-control-link")).toBeNull();
+    expect(screen.queryByText("Remote Control off")).toBeNull();
+  });
 });

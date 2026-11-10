@@ -40,6 +40,7 @@ const BAND_STYLES = {
   idle: { background: "bg-room-idle", text: "text-bg-dark" },
   wentHome: { background: "bg-pill-offline", text: "text-text" },
   offline: { background: "bg-pill-offline", text: "text-text" },
+  notRunning: { background: "bg-pill-offline", text: "text-text" },
 } satisfies Record<string, BandStyle>;
 
 /** Tags shown on the card before the rest fold into "+N". */
@@ -57,6 +58,8 @@ function bandOf(
 ): { text: string; key: keyof typeof BAND_STYLES } {
   if (session.state === "wentHome")
     return { text: "Went home", key: "wentHome" };
+  // Still true when the Mac is offline: the window closed before that.
+  if (session.notRunning) return { text: "Not running", key: "notRunning" };
   if (offline) return { text: "Mac offline", key: "offline" };
   // Thinking shares the Working room but keeps its own wording.
   if (session.state === "thinking")
@@ -176,8 +179,8 @@ function Card({
 }: DetailsPanelProps & { session: SessionDto }) {
   // The browser's clock moved onto the server's, so a phone clock minutes off still shows right times.
   const nowMs = useNow() + serverOffsetMs;
-  // An ended session has nothing left to control, so it gets no link and no "off" message.
-  const ended = session.state === "wentHome";
+  // A session with no process has nothing left to control, so it gets no link and no "off" message.
+  const ended = session.state === "wentHome" || session.notRunning === true;
   const offline = offlineMachineIds.has(session.machineId);
   const approving = session.state === "needsPermission" && !offline;
   const band = bandOf(session, offline);
@@ -185,10 +188,10 @@ function Card({
   const remoteControl = remoteControlUrl(session.bridgeSessionId);
   // A Mac that is offline says nothing about how long the session has been in its state; rows from before the stamp have none.
   const inState =
-    offline || !session.stateSince
+    (offline && !session.notRunning) || !session.stateSince
       ? null
       : formatElapsed(nowMs - Date.parse(session.stateSince));
-  const box = offline ? null : boxOf(session, nowMs);
+  const box = offline || session.notRunning ? null : boxOf(session, nowMs);
   const tags = session.tags ?? [];
   return (
     <aside

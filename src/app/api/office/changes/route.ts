@@ -27,6 +27,7 @@ interface SessionRow {
   hadPrompt?: boolean;
   stateSince?: Date;
   kept?: SessionDto["kept"];
+  notRunning?: true;
   changedAt: Date;
 }
 
@@ -92,6 +93,7 @@ function toDto(row: SessionRow): SessionDto {
     ...(row.hadPrompt === undefined ? {} : { hadPrompt: row.hadPrompt }),
     ...(row.stateSince ? { stateSince: row.stateSince.toISOString() } : {}),
     ...(row.kept ? { kept: row.kept } : {}),
+    ...(row.notRunning ? { notRunning: true as const } : {}),
     changedAt: row.changedAt.toISOString(),
   };
 }

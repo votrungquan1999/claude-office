@@ -1,10 +1,12 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { Collection } from "mongodb";
+import { loadKept } from "./kept";
 import {
   isRegistryReadable,
   isShownEntry,
   listRegistry,
+  pickEntry,
   type RegistryEntry,
 } from "./registry";
 import type { SessionTracker, TagDoc } from "./tracker";
@@ -122,9 +124,19 @@ export interface SeedOptions {
 export async function seedRunningSessions(options: SeedOptions): Promise<void> {
   const { home, machineId, sessions, tracker, now, lastSeenAt } = options;
   const table = await readProcessTable();
-  const alive = listRegistry(home, argsFrom(table)).filter(
+  const aliveEntries = listRegistry(home, argsFrom(table)).filter(
     (entry) => isShownEntry(entry) && isRunning(entry, table),
   );
+  // A session can be listed twice (a resume leaves the old process's entry); it is seeded once, from the newest.
+  const alive = [...new Set(aliveEntries.map((entry) => entry.sessionId))].map(
+    (sessionId) =>
+      pickEntry(
+        aliveEntries.filter((entry) => entry.sessionId === sessionId),
+      ) as RegistryEntry,
+  );
+  // Read before seeding: a kept desk must be seeded with its mark or the writer would clear it.
+  const keptDesks = await loadKept(sessions, machineId);
+  const aliveIds = new Set(alive.map((entry) => entry.sessionId));
   // Tags a previous run stored, so a restart never shrinks them.
   const stored = await sessions
     .find(
@@ -162,21 +174,28 @@ export async function seedRunningSessions(options: SeedOptions): Promise<void> {
             ...(parent !== undefined ? { parent } : {}),
           })),
         bridgeSessionId: entry.bridgeSessionId ?? transcript.bridgeSessionId,
+        kept: keptDesks.find((desk) => desk.sessionId === entry.sessionId)
+          ?.kept,
         process: { pid: entry.pid, procStart: entry.procStart },
       };
     }),
+  );
+  // Sessions found dead ended no later than the last moment the Mac was known to be up.
+  const endedAt = new Date(Math.min(now(), lastSeenAt?.getTime() ?? now()));
+  // A kept desk whose process is gone stays, shown as not running.
+  tracker.seedKept(
+    keptDesks.filter((desk) => !aliveIds.has(desk.sessionId)),
+    endedAt.getTime(),
   );
   // One batched write for every seeded session.
   await tracker.flush();
   // Without a readable registry nothing can be called missing, so stored sessions stay as they are.
   if (!isRegistryReadable(home)) return;
-  // Sessions found dead ended no later than the last moment the Mac was known to be up.
-  const endedAt = new Date(Math.min(now(), lastSeenAt?.getTime() ?? now()));
   await sessions.updateMany(
     {
       machineId,
       endedAt: { $exists: false },
-      sessionId: { $nin: alive.map((entry) => entry.sessionId) },
+      sessionId: { $nin: [...aliveIds, ...keptDesks.map((d) => d.sessionId)] },
     },
     {
       $set: {

@@ -379,4 +379,52 @@ describe("a session whose process is gone goes home", () => {
       "idle",
     );
   }, 60_000);
+
+  it("counts a session as running while any registry entry for it is live, whichever file the registry lists first", async () => {
+    // Given one live process and two stale entries of the same session id, one listed before it and one after
+    const { fake, agent } = await setUpMac("machine-air", "Quan's MacBook Air");
+    const ids = ["stale-first", "stale-last"];
+    for (const sessionId of ids) {
+      const live = await processes.live();
+      // The registry lists files in name order, so the stale pid is spelled to sort before or after the live one
+      const stalePid =
+        sessionId === "stale-first"
+          ? Number(`1${"0".repeat(String(live.pid).length + 6)}`)
+          : Number(`${live.pid}0000`);
+      fake.addSession({
+        sessionId,
+        cwd: `/work/${sessionId}`,
+        pid: stalePid,
+      });
+      fake.addSession({
+        sessionId,
+        cwd: `/work/${sessionId}`,
+        pid: live.pid,
+        procStart: live.procStart,
+        bridgeSessionId: `bridge-${sessionId}`,
+      });
+      await runHook(fake.home, {
+        hook_event_name: "SessionStart",
+        session_id: sessionId,
+        cwd: `/work/${sessionId}`,
+        source: "startup",
+      });
+    }
+    await agent.flush();
+
+    // When the Mac checks its sessions
+    await agent.reconcile();
+    await agent.flush();
+
+    // Then both stay at their desks, linked through the live entry
+    const desks = await officeSessions();
+    expect(
+      desks
+        .map((d) => [d.sessionId, d.state, d.bridgeSessionId])
+        .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
+    ).toEqual([
+      ["stale-first", "idle", "bridge-stale-first"],
+      ["stale-last", "idle", "bridge-stale-last"],
+    ]);
+  }, 60_000);
 });

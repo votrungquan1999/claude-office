@@ -146,40 +146,47 @@ export function isRegistryReadable(home: string): boolean {
 }
 
 /**
- * Finds a running session in Claude Code's own registry (`~/.claude/sessions/<pid>.json`).
+ * Picks the entry that speaks for a session when the registry lists it more than once (a resume leaves the old process's entry behind).
+ * @param entries - Every entry of one session.
+ * @param isRunning - Whether an entry's process is alive; absent when that is not known.
+ * @returns A live entry (the newest started) when there is one, else the newest started.
+ */
+export function pickEntry(
+  entries: RegistryEntry[],
+  isRunning?: (entry: RegistryEntry) => boolean,
+): RegistryEntry | undefined {
+  const newest = (list: RegistryEntry[]) =>
+    list.reduce<RegistryEntry | undefined>(
+      (best, entry) =>
+        !best || (entry.startedAt ?? 0) > (best.startedAt ?? 0) ? entry : best,
+      undefined,
+    );
+  return (isRunning && newest(entries.filter(isRunning))) || newest(entries);
+}
+
+/**
+ * Finds a session in Claude Code's own registry (`~/.claude/sessions/<pid>.json`).
  * @param home - The user's home folder.
  * @param sessionId - The session to look for.
+ * @param isRunning - Whether an entry's process is alive, to prefer a live entry over a stale one.
  * @returns The entry, or undefined when the registry does not list it (yet).
  */
 export function findRegistryEntry(
   home: string,
   sessionId: string,
+  isRunning?: (entry: RegistryEntry) => boolean,
 ): RegistryEntry | undefined {
-  const dir = join(home, ".claude", "sessions");
-  let files: string[];
-  try {
-    files = readdirSync(dir).filter((file) => file.endsWith(".json"));
-  } catch {
-    return undefined;
-  }
-  for (const file of files) {
-    let raw: unknown;
-    try {
-      raw = JSON.parse(readFileSync(join(dir, file), "utf8"));
-    } catch {
-      // A file mid-write or removed since the listing: skip it.
-      continue;
-    }
-    const entry = registryEntrySchema.safeParse(raw);
-    if (entry.success && entry.data.sessionId === sessionId) {
-      // Hook time has no process table at hand: the cache, then one lookup for this entry.
-      const args = needsArgs(entry.data)
-        ? readProcessArgs(entry.data.pid as number, entry.data.procStart)
-        : undefined;
-      return args === undefined ? entry.data : { ...entry.data, args };
-    }
-  }
-  return undefined;
+  const matching = listRegistry(home)
+    .filter((entry) => entry.sessionId === sessionId)
+    .map((entry) => {
+      // Hook time has no process table at hand: the cache, then one lookup for this session's own entries.
+      const args =
+        entry.pid !== undefined && needsArgs(entry)
+          ? readProcessArgs(entry.pid, entry.procStart)
+          : undefined;
+      return args === undefined ? entry : { ...entry, args };
+    });
+  return pickEntry(matching, isRunning);
 }
 
 /**

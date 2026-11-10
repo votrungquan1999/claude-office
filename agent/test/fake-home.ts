@@ -105,6 +105,11 @@ export function makeFakeHome(machineId: string): FakeHome {
     updateSession(sessionId, patch) {
       const file = files.get(sessionId);
       if (!file) throw new Error(`no registry entry for ${sessionId}`);
+      // A process that moves to another conversation keeps its file and is found under the new id from then on.
+      if (patch.sessionId && patch.sessionId !== sessionId) {
+        files.delete(sessionId);
+        files.set(patch.sessionId, file);
+      }
       writeFileSync(
         file,
         JSON.stringify({ ...JSON.parse(readFileSync(file, "utf8")), ...patch }),

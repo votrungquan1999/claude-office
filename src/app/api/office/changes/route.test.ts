@@ -108,6 +108,31 @@ describe("the office changes API", () => {
     ]);
   });
 
+  it("tells the browser which kept employees are not running", async () => {
+    // Given a kept session whose window closed and one still running
+    await seedSession("closed", new Date(T0));
+    await seedSession("open", new Date(T0));
+    await (await getDb())
+      .collection("sessions")
+      .updateOne(
+        { sessionId: "closed" },
+        { $set: { kept: "hired", notRunning: true } },
+      );
+
+    // When the owner asks for the changes
+    const body = changesResponseSchema.parse(
+      await (await GET(changesRequest(ownerHeaders))).json(),
+    );
+
+    // Then only the closed one carries the flag
+    expect(
+      body.sessions.map((s) => [s.sessionId, s.notRunning]).sort(),
+    ).toEqual([
+      ["closed", true],
+      ["open", undefined],
+    ]);
+  });
+
   it("passes on each Mac's agent version and whether each folder still exists", async () => {
     // Given a Mac that reports a version and a folder the agent found missing
     const db = await getDb();

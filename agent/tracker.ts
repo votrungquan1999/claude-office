@@ -11,11 +11,13 @@ import { type HookEvent, hookEventSchema } from "../src/shared/hook-events";
 import type { SessionState } from "../src/shared/session-state";
 import type { FolderRecorder } from "./folders";
 import type { KanbanCard } from "./kanban-watch";
+import type { StoredKept } from "./kept";
 import type { PasteNamer } from "./paste-namer";
 import {
   findRegistryEntry,
   isRegistryReadable,
   isShownEntry,
+  pickEntry,
   type RegistryEntry,
 } from "./registry";
 import {
@@ -65,6 +67,8 @@ export interface SeedSession {
   process?: { pid?: number; procStart?: string };
   /** Repos the session worked in, as stored on a previous run (never shrinks). */
   tags?: TagDoc[];
+  /** The keep-at-desk mark a previous run stored. */
+  kept?: "hired" | "woken";
   /** Folders its transcript says it worked in, resolved to repos before the session is published. */
   stepDirs?: string[];
 }
@@ -90,6 +94,8 @@ export interface TrackerOptions {
   repos?: RepoResolver;
   /** Names paste-only desks; absent when the owner set no Anthropic key. */
   pasteNamer?: PasteNamer;
+  /** Told when a kept window's mark moves to another conversation. */
+  onKeptMoved?: (fromId: string, toId: string) => void;
 }
 
 interface Tracked {
@@ -108,7 +114,8 @@ interface Tracked {
   pasteHead?: string;
   /** The name Haiku (or the Mac's cache) gave a paste-only session. */
   pasteName?: string;
-  hadPrompt: boolean;
+  /** Undefined while unknown: a conversation resumed from an earlier agent run keeps the stored value. */
+  hadPrompt?: boolean;
   registryName?: string;
   memory: StateMemory;
   steps: StepMemory;
@@ -126,8 +133,12 @@ interface Tracked {
   process?: { pid?: number; procStart?: string };
   /** Repos worked in so far; only grows. */
   tags: TagDoc[];
-  /** Set while the owner keeps the session at its desk (hired from the office). */
+  /** Set while the owner keeps the session at its desk. */
   kept?: "hired" | "woken";
+  /** Set by a restart that could not read the registry: whether the window still runs is unknown until the registry can be read. */
+  unverified?: boolean;
+  /** The name a previous run stored, used until a better one is known. */
+  storedDeskName?: string;
   /** The room last published (Working and Thinking are one), to tell when the session changes room. */
   publishedRoom?: string;
   /** When the session entered `publishedRoom`, by the Mac's clock. */
@@ -179,6 +190,8 @@ export class SessionTracker {
   /** Paste-name requests still running; only `settleNames` waits for them, so a slow Anthropic never delays the seed. */
   private readonly naming = new Set<Promise<void>>();
   private stopped = false;
+  /** The liveness check of the latest reconcile pass, so lookups outside it also prefer a live entry. */
+  private isRunning?: IsRunning;
 
   constructor(private readonly options: TrackerOptions) {}
 
@@ -231,6 +244,7 @@ export class SessionTracker {
       tracked.pasteHead = seed.pasteHead;
       tracked.hadPrompt = seed.hadPrompt;
       tracked.bridgeSessionId = seed.bridgeSessionId;
+      tracked.kept = seed.kept;
       // A question only counts for a session the registry calls idle; busy and waiting say the turn goes on.
       tracked.memory = applyRegistryStatus(
         initialStateMemory(seed.asked && (seed.status ?? "idle") === "idle"),
@@ -261,6 +275,38 @@ export class SessionTracker {
   }
 
   /**
+   * Restores kept desks whose process is gone, as idle desks marked not running.
+   * @param desks - The stored kept desks that no live registry entry matches.
+   * @param endedAt - When their processes are taken to have ended, for desks not already marked.
+   */
+  seedKept(desks: StoredKept[], endedAt: number): void {
+    for (const desk of desks) {
+      const tracked = this.track(desk.sessionId);
+      tracked.interactive = true;
+      tracked.kept = desk.kept;
+      tracked.cwd = desk.cwd;
+      tracked.startCwd = desk.startCwd;
+      tracked.startedAt = desk.startedAt.getTime();
+      tracked.hadPrompt = desk.hadPrompt;
+      tracked.tags = [...desk.tags];
+      tracked.storedDeskName = desk.deskName;
+      if (isRegistryReadable(this.options.home)) {
+        tracked.endedAt = endedAt;
+        tracked.endedHookTs = endedAt;
+      } else {
+        // No entry can be called missing without a readable registry, so the desk keeps running until a pass can tell.
+        tracked.unverified = true;
+      }
+      // A desk already marked keeps the time its window closed.
+      if (desk.notRunning && desk.stateSince) {
+        tracked.publishedRoom = "notRunning";
+        tracked.stateSince = desk.stateSince.getTime();
+      }
+      this.publish(desk.sessionId, tracked);
+    }
+  }
+
+  /**
    * Tracks a session the office just opened in a Terminal window, so its desk appears once Claude Code registers it.
    * @param hire - The session, its start folder and when its window opened.
    */
@@ -282,6 +328,7 @@ export class SessionTracker {
    * @param isRunning - Whether a recorded process is still the one running.
    */
   reconcile(entries: RegistryEntry[], isRunning: IsRunning): void {
+    this.isRunning = isRunning;
     for (const [sessionId, tracked] of this.sessions) {
       if (!tracked.interactive) {
         // A held session is re-checked here too: its registry entry may have appeared since its last event.
@@ -294,14 +341,27 @@ export class SessionTracker {
       }
       if (tracked.endedAt !== undefined) continue;
       // A hidden `claude -p` run of the same conversation must not lend its name, folder or link to the desk.
-      const entry = entries.find(
-        (candidate) =>
-          candidate.sessionId === sessionId && isShownEntry(candidate),
+      const entry = pickEntry(
+        entries.filter(
+          (candidate) =>
+            candidate.sessionId === sessionId && isShownEntry(candidate),
+        ),
+        (candidate) => isRunning(candidate),
       );
       const process = entry
         ? { pid: entry.pid, procStart: entry.procStart }
         : tracked.process;
       tracked.process = process;
+      // The first readable registry settles a desk the restart could not judge.
+      if (tracked.unverified && isRegistryReadable(this.options.home)) {
+        tracked.unverified = undefined;
+        if (!entry) {
+          tracked.endedAt = this.options.now();
+          tracked.endedHookTs = this.options.now();
+          this.publish(sessionId, tracked);
+          continue;
+        }
+      }
       // A `--resume` elsewhere gives the registry a new start folder.
       if (entry?.cwd && entry.cwd !== tracked.startCwd) {
         tracked.startCwd = entry.cwd;
@@ -327,6 +387,14 @@ export class SessionTracker {
           (other) =>
             other.pid === known.pid && other.procStart === known.procStart,
         );
+      // A kept window that switches conversation keeps its desk; only the conversation it ran ends.
+      if (replaced && tracked.kept && known) {
+        const next = entries.find(
+          (other) =>
+            other.pid === known.pid && other.procStart === known.procStart,
+        );
+        if (next) this.moveKept(sessionId, tracked, next);
+      }
       // A resumed session whose process is not listed yet cannot be judged; the next pass will.
       if (!process && !replaced) continue;
       if (replaced || !process || !isRunning(process)) {
@@ -361,10 +429,52 @@ export class SessionTracker {
     }
   }
 
+  private entryOf(sessionId: string): RegistryEntry | undefined {
+    const { isRunning } = this;
+    return findRegistryEntry(
+      this.options.home,
+      sessionId,
+      isRunning && ((entry) => isRunning(entry)),
+    );
+  }
+
+  /**
+   * Hands a kept window's mark to the conversation its process now runs.
+   * @param fromId - The conversation the mark was on.
+   * @param from - Its state.
+   * @param entry - The registry entry the process now has.
+   */
+  private moveKept(fromId: string, from: Tracked, entry: RegistryEntry): void {
+    const untracked = !this.sessions.has(entry.sessionId);
+    const to = this.track(entry.sessionId);
+    if (untracked) to.hadPrompt = undefined;
+    to.interactive = true;
+    to.kept = from.kept;
+    to.process = { pid: entry.pid, procStart: entry.procStart };
+    to.registryName = entry.name;
+    to.bridgeSessionId = entry.bridgeSessionId;
+    to.cwd ??= entry.cwd ?? from.cwd;
+    to.startCwd ??= entry.cwd ?? from.startCwd;
+    to.startedAt ??= entry.startedAt ?? this.options.now();
+    // A resume into a session that had gone home brings its desk back, in the state the registry reports.
+    if (to.endedAt !== undefined) {
+      to.endedAt = undefined;
+      to.endedHookTs = undefined;
+      to.memory = applyRegistryStatus(
+        initialStateMemory(),
+        entry.status ?? "idle",
+      );
+      to.stateHookTs = -Infinity;
+    }
+    from.kept = undefined;
+    this.options.onKeptMoved?.(fromId, entry.sessionId);
+    this.publish(entry.sessionId, to);
+  }
+
   /** A held session goes when the registry says it is not interactive, or it has been silent too long to still be waiting for its entry. */
   private shouldEvictHeld(sessionId: string, tracked: Tracked): boolean {
     if (tracked.interactive || tracked.timer || tracked.kept) return false;
-    const entry = findRegistryEntry(this.options.home, sessionId);
+    const entry = this.entryOf(sessionId);
     if (entry) return !isShownEntry(entry);
     // Without a registry the hooks alone show the session, so only an ended one can go.
     if (!isRegistryReadable(this.options.home) && tracked.endedAt === undefined)
@@ -441,10 +551,13 @@ export class SessionTracker {
       tracked.endedAt = undefined;
       tracked.endedHookTs = undefined;
       // A resume may run in a new process; the old pid is dead, so the new one is learned from the registry.
-      const entry = findRegistryEntry(this.options.home, event.session_id);
+      const entry = this.entryOf(event.session_id);
       tracked.process = entry
         ? { pid: entry.pid, procStart: entry.procStart }
         : undefined;
+      // The old window's link is dead; the new process's own id arrives from the registry or a later hook.
+      tracked.bridgeSessionId = entry?.bridgeSessionId;
+      tracked.bridgeHookTs = -Infinity;
     }
     tracked.startedAt ??= event.hookTs;
     // A straggler stamped before an event already applied must not move the state back.
@@ -602,7 +715,7 @@ export class SessionTracker {
   private publish(sessionId: string, tracked: Tracked): void {
     if (!tracked.interactive) {
       // A session with no registry entry yet is held and re-checked on its next event.
-      const entry = findRegistryEntry(this.options.home, sessionId);
+      const entry = this.entryOf(sessionId);
       if (entry && isShownEntry(entry)) {
         tracked.interactive = true;
         tracked.startedAt = entry.startedAt ?? tracked.startedAt;
@@ -624,16 +737,22 @@ export class SessionTracker {
       cardTitle: card?.title,
       pasteName,
       firstMessage: tracked.firstMessage,
-      registryName: tracked.registryName,
+      registryName: tracked.registryName ?? tracked.storedDeskName,
     });
     this.options.folders?.record(tracked.startCwd ?? tracked.cwd);
     const steps = tracked.unwritten;
     tracked.unwritten = [];
+    // A kept employee whose process ended stays at its desk instead of going home.
+    const notRunning = tracked.endedAt !== undefined && tracked.kept;
     // Compared on the published state: a went-home session keeps its memory state.
-    const state: SessionState =
-      tracked.endedAt === undefined ? tracked.memory.state : "wentHome";
-    if (tracked.publishedRoom !== roomOf(state)) {
-      tracked.publishedRoom = roomOf(state);
+    const state: SessionState = notRunning
+      ? "idle"
+      : tracked.endedAt === undefined
+        ? tracked.memory.state
+        : "wentHome";
+    const room = notRunning ? "notRunning" : roomOf(state);
+    if (tracked.publishedRoom !== room) {
+      tracked.publishedRoom = room;
       tracked.stateSince = tracked.endedAt ?? this.options.now();
     }
     writer.submit(
@@ -647,20 +766,25 @@ export class SessionTracker {
         stateSince: new Date(tracked.stateSince ?? this.options.now()),
         startedAt: new Date(tracked.startedAt),
         ...(deskName ? { deskName } : {}),
-        ...(tracked.bridgeSessionId
+        ...(tracked.bridgeSessionId && !notRunning
           ? { bridgeSessionId: tracked.bridgeSessionId }
           : {}),
-        ...(tracked.endedAt === undefined
+        ...(tracked.endedAt === undefined || notRunning
           ? {}
           : { endedAt: new Date(tracked.endedAt) }),
-        runningSteps: [...tracked.steps.running.values()].map((step) => ({
-          text: step.text,
-          startedAt: new Date(step.startedAt),
-        })),
-        currentTodo: tracked.steps.todo,
+        runningSteps: notRunning
+          ? []
+          : [...tracked.steps.running.values()].map((step) => ({
+              text: step.text,
+              startedAt: new Date(step.startedAt),
+            })),
+        currentTodo: notRunning ? undefined : tracked.steps.todo,
         ...(tracked.tags.length ? { tags: tracked.tags } : {}),
-        hadPrompt: tracked.hadPrompt,
+        ...(tracked.hadPrompt === undefined
+          ? {}
+          : { hadPrompt: tracked.hadPrompt }),
         ...(tracked.kept ? { kept: tracked.kept } : {}),
+        ...(notRunning ? { notRunning: true as const } : {}),
       },
       steps,
     );

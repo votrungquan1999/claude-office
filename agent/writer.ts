@@ -40,6 +40,8 @@ export interface SessionDoc {
   stateSince?: Date;
   /** Set while the owner keeps the employee at its desk. */
   kept?: "hired" | "woken";
+  /** Set while a kept employee's window is closed. */
+  notRunning?: true;
 }
 
 export interface WriterOptions {
@@ -368,6 +370,7 @@ function toUpdate(doc: SessionDoc, steps: StepDoc[]): AnyBulkWriteOperation {
     // A removed card with no fallback name must not leave its old title on the desk.
     ...(doc.deskName ? [] : ["deskName"]),
     ...(doc.kept ? [] : ["kept"]),
+    ...(doc.notRunning ? [] : ["notRunning"]),
   ];
   if (steps.length === 0) {
     return {

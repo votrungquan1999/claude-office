@@ -181,6 +181,13 @@ export interface SeedSession {
   /** Repo tags as the agent sends them. */
   tags?: Array<{ name: string; key: string }>;
   endedAt?: Date;
+  /** Set while the owner keeps the employee at its desk. */
+  kept?: "hired" | "woken";
+  /** The Remote Control link of the window while it was open. */
+  bridgeSessionId?: string;
+  /** A kept employee whose window closed. */
+  notRunning?: true;
+  stateSince?: Date;
 }
 
 /**
