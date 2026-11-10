@@ -106,6 +106,16 @@ function readRecords(path: string, tail: boolean): TranscriptRecord[] {
   }
 }
 
+/**
+ * Whether a conversation's transcript is on the Mac.
+ * @param home - The user's home folder.
+ * @param sessionId - The conversation.
+ * @returns True when a transcript file for the session exists under any project folder.
+ */
+export function hasTranscript(home: string, sessionId: string): boolean {
+  return transcriptPath(home, sessionId) !== undefined;
+}
+
 function transcriptPath(home: string, sessionId: string): string | undefined {
   const projects = join(home, ".claude", "projects");
   let folders: string[];

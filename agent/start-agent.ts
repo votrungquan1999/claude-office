@@ -22,6 +22,7 @@ import { cleanLaunchFiles, KeptDesks } from "./kept";
 import { PasteNamer } from "./paste-namer";
 import { readProcessStart } from "./process-start";
 import {
+  isRunning,
   readProcessTable,
   reconcileSessions,
   seedRunningSessions,
@@ -257,8 +258,13 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
 
   const reconcile = async () => {
     await reconcileSessions(home, tracker);
-    // Claude Code has read the message by the time it registers, so the launch files are no longer needed.
-    const registered = new Set(listRegistry(home).map((e) => e.sessionId));
+    // Claude Code has read the message by the time its window registers; a woken session still has its old process's dead entry, which says nothing about the new window.
+    const table = await readProcessTable();
+    const registered = new Set(
+      listRegistry(home)
+        .filter((entry) => isRunning(entry, table))
+        .map((entry) => entry.sessionId),
+    );
     cleanLaunchFiles(kept, home, registered);
   };
   const reconcileTimer = setInterval(
@@ -280,6 +286,7 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
   const commandPoller = createCommandPoller({
     commands,
     folders: db.collection<FolderDocument>("folders"),
+    sessions: db.collection("sessions"),
     machineId,
     home,
     tracker,

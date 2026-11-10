@@ -10,7 +10,11 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildHireScript, writeHireFiles } from "./terminal-launch";
+import {
+  buildHireScript,
+  buildWakeScript,
+  writeHireFiles,
+} from "./terminal-launch";
 
 describe("the script a hired window runs", () => {
   it("reaches the folder and passes the message untouched to claude, whatever the folder name or message holds", () => {
@@ -150,6 +154,55 @@ describe("the message file of a hired window", () => {
     // Then the file was already gone when claude started
     expect(readFileSync(out, "utf8").trim()).toBe("gone");
     expect(existsSync(messageFile)).toBe(false);
+    rmSync(root, { recursive: true, force: true });
+  });
+});
+
+describe("the script a woken window runs", () => {
+  it("reaches the folder and resumes the conversation with Remote Control, whatever the folder name or session id holds", () => {
+    // Given a folder with a space and a quote, and a session id that is not a plain word
+    const root = mkdtempSync(join(tmpdir(), "wake-test-"));
+    const folder = join(root, "my app 'x'");
+    mkdirSync(folder);
+    const claude = join(root, "fake-claude");
+    writeFileSync(claude, '#!/bin/sh\nprintf "%s\\n" "$PWD" "$@" > "$OUT"\n', {
+      mode: 0o755,
+    });
+    const home = join(root, "home");
+    mkdirSync(home);
+    const out = join(root, "out.txt");
+    const run = (sessionId: string) => {
+      const script = join(root, "wake.command");
+      writeFileSync(
+        script,
+        buildWakeScript({ sessionId, folder, claudePath: claude }),
+      );
+      execFileSync("/bin/zsh", [script], { env: { ...process.env, OUT: out } });
+      return readFileSync(out, "utf8").split("\n");
+    };
+
+    // When the script runs for a plain id and for one with a semicolon and a quote
+    const plain = run("11111111-2222-3333-4444-555555555555");
+    const odd = run("x; touch pwned 'y'");
+
+    // Then claude ran in the folder with the id as one argument and `--remote-control`, and nothing else ran
+    expect(plain.slice(1, 4)).toEqual([
+      "--resume",
+      "11111111-2222-3333-4444-555555555555",
+      "--remote-control",
+    ]);
+    expect(plain[0].endsWith("my app 'x'")).toBe(true);
+    expect(odd.slice(1, 4)).toEqual([
+      "--resume",
+      "x; touch pwned 'y'",
+      "--remote-control",
+    ]);
+    expect(
+      readFileSync(
+        join(home, ".claude-office", "launch", "x; touch pwned 'y'.command"),
+        "utf8",
+      ),
+    ).not.toContain("$msg");
     rmSync(root, { recursive: true, force: true });
   });
 });

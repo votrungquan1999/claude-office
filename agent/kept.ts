@@ -8,7 +8,7 @@ export interface LaunchRecord {
   /** The session the launch files are named after; `sessionId` moves when the window switches conversation. */
   launchId: string;
   folder: string;
-  kind: "hired";
+  kind: "hired" | "woken";
   launchedAt: number;
   /** Whether the script and message files are still on disk. */
   filesPresent: boolean;
@@ -54,10 +54,10 @@ export class KeptDesks {
 }
 
 /**
- * Deletes the launch files of every kept window whose session has registered.
+ * Deletes the launch files of every kept window whose session has a live registry entry.
  * @param kept - The kept desks.
  * @param home - The user's home folder.
- * @param registered - Session ids that have a registry entry.
+ * @param registered - Session ids whose registry entry has a live process.
  */
 export function cleanLaunchFiles(
   kept: KeptDesks,
@@ -140,4 +140,45 @@ export async function loadKept(
     ...(row.waitingAtMac ? { launchWait: "waiting" as const } : {}),
     ...(row.starting ? { launchWait: "starting" as const } : {}),
   }));
+}
+
+/** What a stored session row holds that a woken desk keeps. */
+export interface StoredSession {
+  cwd: string;
+  startCwd?: string;
+  startedAt: Date;
+  hadPrompt: boolean;
+  deskName?: string;
+  tags: TagDoc[];
+}
+
+/**
+ * Reads one stored session of this Mac, so a conversation the agent no longer tracks can come back with its name and history.
+ * @param sessions - The sessions collection.
+ * @param machineId - This Mac.
+ * @param sessionId - The conversation.
+ * @returns The stored values, or undefined when no row exists.
+ */
+export async function loadSession(
+  sessions: Collection,
+  machineId: string,
+  sessionId: string,
+): Promise<StoredSession | undefined> {
+  const row = await sessions.findOne<SessionRowDocument>({
+    machineId,
+    sessionId,
+  });
+  if (!row) return undefined;
+  return {
+    cwd: row.cwd,
+    startCwd: row.startCwd,
+    startedAt: row.startedAt,
+    hadPrompt: row.hadPrompt === true,
+    deskName: row.deskName ?? undefined,
+    tags: (row.tags ?? []).map(({ name, key, parent }) => ({
+      name,
+      key,
+      ...(parent !== undefined ? { parent } : {}),
+    })),
+  };
 }

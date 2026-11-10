@@ -9,6 +9,7 @@ import {
   CommandStatus,
   type HireResponse,
   hireRequestSchema,
+  UNCLAIMED_ORDER_TTL_MS,
 } from "@/shared/commands";
 
 interface FolderRow {
@@ -16,9 +17,6 @@ interface FolderRow {
   path: string;
   existsOnMac?: boolean;
 }
-
-/** An order nobody picks up is deleted, message included, after this long. */
-const UNCLAIMED_ORDER_TTL_MS = 600_000;
 
 /**
  * The owner hires an employee: an order for a Mac's agent to open Claude Code in a folder.

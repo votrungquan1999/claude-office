@@ -64,7 +64,7 @@ const C_LOCALE_DATE =
   /^[A-Z][a-z]{2} [A-Z][a-z]{2} \d{1,2} \d{2}:\d{2}:\d{2} \d{4}$/;
 
 /** Alive means the pid exists and still belongs to the process the registry recorded (pids get reused). */
-function isRunning(
+export function isRunning(
   process: { pid?: number; procStart?: string },
   table: ProcessTable,
 ): boolean {

@@ -85,6 +85,36 @@ export function buildHireScript(
 }
 
 /**
+ * The script a woken window runs: it resumes the conversation in the folder it started in.
+ * @param wake - The conversation, its start folder and the claude binary.
+ * @returns The script text.
+ */
+export function buildWakeScript(
+  wake: Pick<HireLaunch, "sessionId" | "folder" | "claudePath">,
+): string {
+  return [
+    "#!/bin/zsh",
+    `cd ${shellQuote(wake.folder)} || exit 1`,
+    `exec ${shellQuote(wake.claudePath)} --resume ${idWord(wake.sessionId)} --remote-control`,
+    "",
+  ].join("\n");
+}
+
+/**
+ * Writes the private script of a wake.
+ * @param wake - The conversation to resume.
+ * @returns The path of the script to open.
+ */
+export function writeWakeFile(
+  wake: Pick<HireLaunch, "home" | "sessionId" | "folder" | "claudePath">,
+): string {
+  const script = launchFile(wake.home, wake.sessionId, "command");
+  mkdirSync(launchDir(wake.home), { recursive: true, mode: 0o700 });
+  writeFileAtomic(script, buildWakeScript(wake), 0o700);
+  return script;
+}
+
+/**
  * Writes the private script and message files of a hire.
  * @param launch - The hire.
  * @returns The path of the script to open.

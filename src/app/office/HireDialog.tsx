@@ -35,6 +35,8 @@ const FAILURE_TEXT: Record<CommandFailReason, string> = {
     "The Mac's agent restarted before the window opened.",
   [CommandFailReason.ConversationNotFound]: "The conversation was not found.",
   [CommandFailReason.OpenElsewhere]: "That conversation is open elsewhere.",
+  [CommandFailReason.CannotCheckOpen]:
+    "The Mac could not check whether that conversation is open elsewhere.",
   [CommandFailReason.InvalidOrder]: "The Mac refused the order as not valid.",
 };
 

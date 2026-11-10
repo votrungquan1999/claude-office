@@ -30,7 +30,7 @@ import { CompanyDrawer } from "./CompanyDrawer";
 import { CompactCompanyButton, CompanyStrip } from "./CompanyStrip";
 import { ConnectionStatus } from "./ConnectionStatus";
 import { postCompanyMode } from "./companyMode";
-import { DetailsPanel } from "./DetailsPanel";
+import { DetailsPanel, type WakeState } from "./DetailsPanel";
 import { HireDialog, type HireMac } from "./HireDialog";
 import {
   applyOverrides,
@@ -44,6 +44,7 @@ import { RoomSigns } from "./RoomSigns";
 import { TagFilter } from "./TagFilter";
 import { useOfficeChanges } from "./useOfficeChanges";
 import { WentHomeList } from "./WentHomeList";
+import { postWake } from "./wake";
 
 /**
  * The last path segment of a folder.
@@ -177,6 +178,8 @@ export function OfficeView() {
   });
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [hireOpen, setHireOpen] = useState(false);
+  // Wake orders by session, so selecting another employee and back shows the same pending order and outcome.
+  const [wakes, setWakes] = useState<Map<string, WakeState>>(new Map());
   const drawerButtonRef = useRef<HTMLButtonElement>(null);
   const [now, setNow] = useState(() => new Date());
   // How far the server's clock is ahead of this browser's, from the latest answer.
@@ -487,6 +490,21 @@ export function OfficeView() {
   const selectedSession = selectedKey
     ? (sessions.get(selectedKey) ?? null)
     : null;
+  const wakeSelected = async () => {
+    if (!selectedSession) return;
+    const key = sessionKey(selectedSession);
+    setWakes((current) => new Map(current).set(key, { sending: true }));
+    const result = await postWake({
+      machineId: selectedSession.machineId,
+      sessionId: selectedSession.sessionId,
+    });
+    setWakes((current) =>
+      new Map(current).set(
+        key,
+        result.ok ? { orderId: result.order.orderId } : { error: result.error },
+      ),
+    );
+  };
   const departures = todaysDepartures([...sessions.values()], now).filter(
     (session) => overview.tree.companyOf(session)?.companyKey === companyKey,
   );
@@ -597,6 +615,20 @@ export function OfficeView() {
           }
           tagLabels={tagFilterView.labels}
           offlineMachineIds={offlineIds}
+          folders={folders}
+          macBlock={
+            selectedSession
+              ? macBlock(
+                  machines.find(
+                    (machine) =>
+                      machine.machineId === selectedSession.machineId,
+                  ),
+                  serverNowIso,
+                )
+              : undefined
+          }
+          wake={selectedKey ? wakes.get(selectedKey) : undefined}
+          onWake={() => void wakeSelected()}
           sheet={isMobile}
           onClose={() => {
             setSelectedKey(null);

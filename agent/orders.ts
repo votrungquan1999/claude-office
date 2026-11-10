@@ -17,10 +17,24 @@ export const hireOrderSchema = z.object({
 
 export type HireOrder = z.infer<typeof hireOrderSchema>;
 
+/** What a wake order must hold; the folder it carries is not used, the Mac resumes in the folder it stored for the conversation. */
+export const wakeOrderSchema = z.object({
+  kind: z.literal(CommandKind.Wake),
+  sessionId: sessionIdSchema,
+});
+
+export type WakeOrder = z.infer<typeof wakeOrderSchema>;
+
 /** Order kinds this agent knows; the claim never takes any other. */
-export const KNOWN_ORDER_KINDS: CommandKind[] = [CommandKind.Hire];
+export const KNOWN_ORDER_KINDS: CommandKind[] = [
+  CommandKind.Hire,
+  CommandKind.Wake,
+];
 
 /** Any order the agent can run. */
-export const orderSchema = z.discriminatedUnion("kind", [hireOrderSchema]);
+export const orderSchema = z.discriminatedUnion("kind", [
+  hireOrderSchema,
+  wakeOrderSchema,
+]);
 
 export type Order = z.infer<typeof orderSchema>;

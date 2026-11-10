@@ -3,6 +3,7 @@ import { z } from "zod";
 /** Order kinds the web can give a Mac's agent. */
 export enum CommandKind {
   Hire = "hire",
+  Wake = "wake",
 }
 
 /** Where an order is in its life. */
@@ -21,6 +22,7 @@ export enum CommandFailReason {
   Interrupted = "interrupted",
   ConversationNotFound = "conversationNotFound",
   OpenElsewhere = "openElsewhere",
+  CannotCheckOpen = "cannotCheckOpen",
   InvalidOrder = "invalidOrder",
 }
 
@@ -59,6 +61,14 @@ export const hireRequestSchema = z.object({
 
 export type HireRequest = z.infer<typeof hireRequestSchema>;
 
+/** The owner's request to wake a went-home or not-running employee. */
+export const wakeRequestSchema = z.object({
+  machineId: z.string().min(1),
+  sessionId: z.string().min(1),
+});
+
+export type WakeRequest = z.infer<typeof wakeRequestSchema>;
+
 /** The hire route's answer: the order to follow and the session its desk will have. */
 export const hireResponseSchema = z.object({
   orderId: z.string(),
@@ -66,6 +76,14 @@ export const hireResponseSchema = z.object({
 });
 
 export type HireResponse = z.infer<typeof hireResponseSchema>;
+
+/** The wake route's answer: the order to follow and the session it wakes. */
+export const wakeResponseSchema = z.object({
+  orderId: z.string(),
+  sessionId: z.string(),
+});
+
+export type WakeResponse = z.infer<typeof wakeResponseSchema>;
 
 /** What the owner may read of an order; never the message. */
 export const orderStatusSchema = z.object({
@@ -79,3 +97,6 @@ export type OrderStatus = z.infer<typeof orderStatusSchema>;
 
 /** How long an order may wait before the office calls it "not sent"; the Mac never runs an order older than this. */
 export const NOT_SENT_AFTER_MS = 30_000;
+
+/** An order nobody picks up is deleted, message included, after this long. */
+export const UNCLAIMED_ORDER_TTL_MS = 600_000;

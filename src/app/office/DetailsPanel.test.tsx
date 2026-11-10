@@ -6,7 +6,9 @@ import {
   render,
   screen,
 } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { MacBlock } from "@/office/offline";
 import type { SessionDto } from "@/shared/session";
 import { DetailsPanel } from "./DetailsPanel";
 
@@ -39,6 +41,23 @@ function open(
       offlineMachineIds={new Set(offline)}
       sheet={false}
       onClose={vi.fn()}
+    />,
+  );
+}
+
+/** Opens the panel with the wake props the page passes. */
+function openWithWake(
+  s: SessionDto,
+  props: Partial<ComponentProps<typeof DetailsPanel>> = {},
+) {
+  return render(
+    <DetailsPanel
+      session={s}
+      tagLabels={new Map()}
+      offlineMachineIds={new Set()}
+      sheet={false}
+      onClose={vi.fn()}
+      {...props}
     />,
   );
 }
@@ -497,5 +516,205 @@ describe("the details panel", () => {
     );
     expect(screen.queryByTestId("remote-control-link")).toBeNull();
     expect(screen.queryByText("Remote Control off")).toBeNull();
+  });
+
+  it("offers Wake for a went-home or not-running employee, never for a running, waiting or starting one, and one click sends one wake", () => {
+    // Given the panel for each kind of employee
+    const wakeable = [
+      session({ state: "wentHome", endedAt: new Date().toISOString() }),
+      session({ state: "idle", kept: "hired", notRunning: true }),
+    ];
+    const notWakeable = [
+      session({ state: "thinking" }),
+      session({ state: "needsPermission", kept: "hired", waitingAtMac: true }),
+      session({ state: "idle", kept: "hired", starting: true }),
+    ];
+
+    // Then only the first two show a Wake button
+    for (const s of notWakeable) {
+      openWithWake(s, { onWake: vi.fn() });
+      expect(screen.queryByTestId("wake-button")).toBeNull();
+      cleanup();
+    }
+
+    // When the owner clicks Wake, and again while the page's wake is still in flight
+    const onWake = vi.fn();
+    for (const s of wakeable) {
+      openWithWake(s, { onWake });
+      expect(screen.getByTestId("wake-button").textContent).toBe("Wake");
+      cleanup();
+    }
+    const { rerender } = openWithWake(wakeable[0], { onWake });
+    fireEvent.click(screen.getByTestId("wake-button"));
+    rerender(
+      <DetailsPanel
+        session={wakeable[0]}
+        tagLabels={new Map()}
+        offlineMachineIds={new Set()}
+        sheet={false}
+        onClose={vi.fn()}
+        onWake={onWake}
+        wake={{ sending: true }}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("wake-button"));
+
+    // Then one wake went out and the button reads disabled while it is in flight
+    expect(onWake).toHaveBeenCalledTimes(1);
+    expect(
+      (screen.getByTestId("wake-button") as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+
+  it("disables Wake for an offline Mac and for an out-of-date agent, saying to update it, and keeps it enabled for a Mac that can take orders", () => {
+    const wentHome = session({
+      state: "wentHome",
+      endedAt: new Date().toISOString(),
+    });
+
+    // Given the panel on a Mac that is online and current
+    openWithWake(wentHome, { onWake: vi.fn() });
+    // Then Wake works and nothing explains a block
+    expect(
+      (screen.getByTestId("wake-button") as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect(screen.queryByTestId("wake-note")).toBeNull();
+    cleanup();
+
+    // Given an offline Mac
+    openWithWake(wentHome, { onWake: vi.fn(), macBlock: MacBlock.Offline });
+    // Then Wake is disabled
+    expect(
+      (screen.getByTestId("wake-button") as HTMLButtonElement).disabled,
+    ).toBe(true);
+    cleanup();
+
+    // Given an agent that is out of date
+    openWithWake(wentHome, { onWake: vi.fn(), macBlock: MacBlock.Outdated });
+    // Then Wake is disabled and the card says to update the agent
+    expect(
+      (screen.getByTestId("wake-button") as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(screen.getByTestId("wake-note").textContent).toMatch(
+      /update this Mac's agent/i,
+    );
+  });
+
+  it("warns that the employee will wait at the Mac when its start folder is not trusted, and not for a trusted or unjudged one", () => {
+    const wentHome = session({
+      state: "wentHome",
+      endedAt: new Date().toISOString(),
+      startCwd: "/work/app",
+      cwd: "/work/app/src",
+    });
+    const record = (path: string, cliTrusted?: boolean) => ({
+      machineId: "m1",
+      path,
+      companyMode: true,
+      ...(cliTrusted === undefined ? {} : { cliTrusted }),
+    });
+
+    // Given the start folder is refused, then trusted, then unjudged
+    openWithWake(wentHome, { folders: [record("/work/app", false)] });
+    expect(screen.getByTestId("wake-trust-warning").textContent).toContain(
+      "will wait at the Mac for you to trust this folder",
+    );
+    cleanup();
+    openWithWake(wentHome, { folders: [record("/work/app", true)] });
+    expect(screen.queryByTestId("wake-trust-warning")).toBeNull();
+    cleanup();
+    openWithWake(wentHome, {
+      folders: [record("/work/app"), record("/work/app/src", false)],
+    });
+
+    // Then only the refused start folder warns (the later cwd is not the start folder)
+    expect(screen.queryByTestId("wake-trust-warning")).toBeNull();
+  });
+
+  describe("the outcome of a wake order", () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+    const wentHome = () =>
+      session({ state: "wentHome", endedAt: new Date().toISOString() });
+
+    it("says 'Waking…' while pending and disables Wake, then 'Not woken: open elsewhere' when the Mac refused it", async () => {
+      // Given an order the Mac has not picked up, then one it failed as open elsewhere
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ status: "pending", ageMs: 100 })),
+        )
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              status: "failed",
+              reason: "openElsewhere",
+              ageMs: 3000,
+            }),
+          ),
+        );
+      vi.stubGlobal("fetch", fetchMock);
+      vi.useFakeTimers();
+
+      // When the panel follows the order
+      openWithWake(wentHome(), { wake: { orderId: "o1" }, onWake: vi.fn() });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      // Then it says waking and the button is disabled
+      expect(screen.getByTestId("wake-outcome").textContent).toBe("Waking…");
+      expect(
+        (screen.getByTestId("wake-button") as HTMLButtonElement).disabled,
+      ).toBe(true);
+
+      // When the next answer says it failed
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
+
+      // Then the card says why, and Wake can be tried again
+      expect(screen.getByTestId("wake-outcome").textContent).toBe(
+        "Not woken: open elsewhere.",
+      );
+      expect(
+        (screen.getByTestId("wake-button") as HTMLButtonElement).disabled,
+      ).toBe(false);
+    });
+
+    it("shows the server's refusal as sent, and 'Not sent' for an order the Mac never picked up", async () => {
+      // Given a refusal text from the server
+      openWithWake(wentHome(), {
+        wake: { error: "That Mac is offline." },
+        onWake: vi.fn(),
+      });
+
+      // Then it shows
+      expect(screen.getByTestId("wake-outcome").textContent).toBe(
+        "That Mac is offline.",
+      );
+      cleanup();
+
+      // Given an order the office reports unclaimed after 30 s
+      vi.stubGlobal(
+        "fetch",
+        vi
+          .fn()
+          .mockResolvedValue(
+            new Response(JSON.stringify({ status: "pending", ageMs: 31_000 })),
+          ),
+      );
+      vi.useFakeTimers();
+      openWithWake(wentHome(), { wake: { orderId: "o2" }, onWake: vi.fn() });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      // Then the card says it was not sent
+      expect(screen.getByTestId("wake-outcome").textContent).toMatch(
+        /^Not sent/,
+      );
+    });
   });
 });
