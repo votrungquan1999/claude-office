@@ -1,6 +1,6 @@
-import { randomUUID } from "node:crypto";
 import type { NextRequest } from "next/server";
 import { getDb } from "@/db/mongo";
+import { insertOrder } from "@/lib/insert-order";
 import { refuseUnlessMacOnline } from "@/lib/require-online-mac";
 import { requireOwner } from "@/lib/require-owner";
 import {
@@ -8,8 +8,7 @@ import {
   CommandKind,
   CommandStatus,
   NOT_SENT_AFTER_MS,
-  UNCLAIMED_ORDER_TTL_MS,
-  type WakeResponse,
+  type OrderResponse,
   wakeRequestSchema,
 } from "@/shared/commands";
 
@@ -80,26 +79,13 @@ export async function POST(request: NextRequest) {
       { status: 409 },
     );
   }
-  const orderId = randomUUID();
-  await orders.updateOne(
-    { _id: orderId },
-    [
-      {
-        $set: {
-          machineId: { $literal: machineId },
-          kind: CommandKind.Wake,
-          status: CommandStatus.Pending,
-          sessionId: { $literal: sessionId },
-          // `--resume` finds the transcript under the folder the session started in.
-          folder: { $literal: row.startCwd ?? row.cwd },
-          // The database clock, so the 30 s pickup rule never depends on this server's.
-          createdAt: "$$NOW",
-          expireAt: { $add: ["$$NOW", UNCLAIMED_ORDER_TTL_MS] },
-        },
-      },
-    ],
-    { upsert: true },
-  );
-  const answer: WakeResponse = { orderId, sessionId };
+  const orderId = await insertOrder(db, {
+    machineId,
+    kind: CommandKind.Wake,
+    sessionId,
+    // `--resume` finds the transcript under the folder the session started in.
+    folder: row.startCwd ?? row.cwd,
+  });
+  const answer: OrderResponse = { orderId, sessionId };
   return Response.json(answer);
 }

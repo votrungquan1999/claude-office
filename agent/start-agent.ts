@@ -285,8 +285,8 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
   sweepLaunchFiles(home);
   const commandPoller = createCommandPoller({
     commands,
-    folders: db.collection<FolderDocument>("folders"),
     sessions: db.collection("sessions"),
+    folders: db.collection<FolderDocument>("folders"),
     machineId,
     home,
     tracker,

@@ -1,15 +1,13 @@
 import { randomUUID } from "node:crypto";
 import type { NextRequest } from "next/server";
 import { getDb } from "@/db/mongo";
+import { insertOrder } from "@/lib/insert-order";
 import { refuseUnlessMacOnline } from "@/lib/require-online-mac";
 import { requireOwner } from "@/lib/require-owner";
 import {
-  type CommandDocument,
   CommandKind,
-  CommandStatus,
-  type HireResponse,
   hireRequestSchema,
-  UNCLAIMED_ORDER_TTL_MS,
+  type OrderResponse,
 } from "@/shared/commands";
 
 interface FolderRow {
@@ -50,28 +48,14 @@ export async function POST(request: NextRequest) {
   if (!known || known.existsOnMac === false) {
     return Response.json({ error: "unknown folder" }, { status: 400 });
   }
-  const orderId = randomUUID();
   const sessionId = randomUUID();
-  // Literals so a message starting with "$" is never read as a field path by the pipeline.
-  await db.collection<CommandDocument>("commands").updateOne(
-    { _id: orderId },
-    [
-      {
-        $set: {
-          machineId: { $literal: machineId },
-          kind: CommandKind.Hire,
-          status: CommandStatus.Pending,
-          sessionId,
-          folder: { $literal: folder },
-          firstMessage: { $literal: firstMessage },
-          // The database clock, so the 30 s pickup rule never depends on this server's.
-          createdAt: "$$NOW",
-          expireAt: { $add: ["$$NOW", UNCLAIMED_ORDER_TTL_MS] },
-        },
-      },
-    ],
-    { upsert: true },
-  );
-  const answer: HireResponse = { orderId, sessionId };
+  const orderId = await insertOrder(db, {
+    machineId,
+    kind: CommandKind.Hire,
+    sessionId,
+    folder,
+    firstMessage,
+  });
+  const answer: OrderResponse = { orderId, sessionId };
   return Response.json(answer);
 }

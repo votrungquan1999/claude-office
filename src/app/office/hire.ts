@@ -1,9 +1,10 @@
 import {
   type HireRequest,
-  type HireResponse,
-  hireResponseSchema,
   MAX_FIRST_MESSAGE_CHARS,
+  type OrderResponse,
+  orderResponseSchema,
 } from "@/shared/commands";
+import { type OrderResult, postOrder } from "./post-order";
 
 /** Server refusals that are not already plain sentences. */
 const REFUSAL_TEXT: Record<string, string> = {
@@ -15,9 +16,7 @@ const REFUSAL_TEXT: Record<string, string> = {
 };
 
 /** What the hire request came to: the order to follow, or why it was refused. */
-export type HireResult =
-  | { ok: true; order: HireResponse }
-  | { ok: false; error: string };
+export type HireResult = OrderResult<OrderResponse>;
 
 /**
  * Sends one hire to the server.
@@ -25,22 +24,11 @@ export type HireResult =
  * @returns The order, or the refusal's text.
  */
 export async function postHire(request: HireRequest): Promise<HireResult> {
-  try {
-    const response = await fetch("/api/office/hire", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(request),
-    });
-    if (response.ok) {
-      return {
-        ok: true,
-        order: hireResponseSchema.parse(await response.json()),
-      };
-    }
-    const body: { error?: string } = await response.json().catch(() => ({}));
-    const text = body.error ? (REFUSAL_TEXT[body.error] ?? body.error) : "";
-    return { ok: false, error: text || "Could not hire." };
-  } catch {
-    return { ok: false, error: "Could not reach the office." };
-  }
+  return postOrder(
+    "/api/office/hire",
+    request,
+    orderResponseSchema,
+    REFUSAL_TEXT,
+    "Could not hire.",
+  );
 }

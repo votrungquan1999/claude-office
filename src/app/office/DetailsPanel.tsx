@@ -3,13 +3,14 @@ import { remoteControlUrl } from "@/office/remoteControl";
 import { ROOM_DISPLAY_NAMES, ROOM_OF_STATE } from "@/office/rooms";
 import type { FolderDto } from "@/shared/folders";
 import { type SessionDto, sessionKey } from "@/shared/session";
+import { DismissControl } from "./DismissControl";
 import { formatElapsed } from "./elapsed";
 import { StepsList } from "./StepsList";
 import { useNow } from "./useNow";
 import { WakeControl } from "./WakeControl";
 
-/** What the owner has done to wake the selected employee: the click in flight, the order to follow, or the server's refusal. */
-export interface WakeState {
+/** What the owner has done to order the selected employee (wake or dismiss): the click in flight, the order to follow, or the server's refusal. */
+export interface OrderClickState {
   /** Set from the click until the server answers, so a second click cannot send a second order. */
   sending?: true;
   orderId?: string;
@@ -33,9 +34,13 @@ interface DetailsPanelProps {
   /** Why the session's Mac cannot take orders; absent when it can. */
   macBlock?: MacBlock;
   /** The wake the owner gave this employee, kept by the page so reselecting shows it again. */
-  wake?: WakeState;
+  wake?: OrderClickState;
   /** Sends one wake order for the employee. */
   onWake?: () => void;
+  /** The dismiss the owner gave this employee, kept by the page so reselecting shows it again. */
+  dismiss?: OrderClickState;
+  /** Sends one dismiss order for the employee. */
+  onDismiss?: () => void;
 }
 
 function folderName(cwd: string): string {
@@ -205,6 +210,8 @@ function Card({
   macBlock,
   wake,
   onWake,
+  dismiss,
+  onDismiss,
 }: DetailsPanelProps & { session: SessionDto }) {
   // The browser's clock moved onto the server's, so a phone clock minutes off still shows right times.
   const nowMs = useNow() + serverOffsetMs;
@@ -332,6 +339,13 @@ function Card({
             )}
             wake={wake}
             onWake={onWake}
+          />
+        )}
+        {session.kept && (
+          <DismissControl
+            block={macBlock}
+            dismiss={dismiss}
+            onDismiss={onDismiss}
           />
         )}
         <StepsList key={sessionKey(session)} session={session} />

@@ -11,6 +11,7 @@ import {
 import type { FolderDocument } from "./folders";
 import { type KeptDesks, loadSession } from "./kept";
 import {
+  type DismissOrder,
   type HireOrder,
   KNOWN_ORDER_KINDS,
   type Order,
@@ -305,6 +306,18 @@ export function createCommandPoller(
     }
   };
 
+  /** Stops keeping a session at its desk; it never fails. */
+  const dismiss = async (
+    order: DismissOrder,
+  ): Promise<CommandFailReason | undefined> => {
+    const { sessionId } = order;
+    const launch = kept.remove(sessionId);
+    // After an agent restart there is no record, and start-up already swept the launch files.
+    if (launch) removeLaunchFiles(home, launch.launchId);
+    tracker.clearKept(sessionId);
+    return undefined;
+  };
+
   /** Runs a valid order of whatever kind. */
   const runOrder = (order: Order): Promise<CommandFailReason | undefined> => {
     switch (order.kind) {
@@ -312,6 +325,8 @@ export function createCommandPoller(
         return hire(order);
       case CommandKind.Wake:
         return wake(order);
+      case CommandKind.Dismiss:
+        return dismiss(order);
     }
   };
 

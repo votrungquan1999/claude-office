@@ -20,7 +20,7 @@
 - **Repo tags:** each employee shows the repos it worked in, and you can filter a company's office by tag.
 - **Details panel:** click an employee for a pixel card with its state and how long it has been there, project and tags, the running step, the latest steps and a Remote Control button.
 - **Phone layout:** pan and zoom the office, with a company drawer and bottom sheets.
-- **Hire an employee:** the Hire button in the company strip opens a Terminal window on an online Mac, in one of its known folders, running Claude Code with Remote Control on your first message; its desk appears in that folder's company. **Wake** in the details card of an employee that went home today, or whose window closed, reopens that conversation in a Terminal window with the same Remote Control link, unless it is open somewhere else. It cannot message or stop a running session. Sign-in is Google only, for one allowed account.
+- **Hire an employee:** the Hire button in the company strip opens a Terminal window on an online Mac, in one of its known folders, running Claude Code with Remote Control on your first message; its desk appears in that folder's company. **Wake** in the details card of an employee that went home today, or whose window closed, reopens that conversation in a Terminal window with the same Remote Control link, unless it is open somewhere else. **Dismiss** stops holding a hired or woken employee at its desk; it never closes the window or ends the conversation. It cannot message or stop a running session. Sign-in is Google only, for one allowed account.
 
 <p align="center">
   <img src="docs/images/office-desktop.png" alt="The office on a desktop, with the company strip above four rooms" width="800">

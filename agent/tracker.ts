@@ -414,6 +414,37 @@ export class SessionTracker {
   }
 
   /**
+   * Stops keeping a session at its desk: a desk with nothing running behind it goes home now, a running one when its process ends.
+   * @param sessionId - The kept session.
+   */
+  clearKept(sessionId: string): void {
+    const tracked = this.sessions.get(sessionId);
+    if (!tracked?.kept) return;
+    const wasWoken = tracked.kept === "woken";
+    tracked.kept = undefined;
+    const entry =
+      tracked.launchWait !== undefined ? this.entryOf(sessionId) : undefined;
+    if (
+      entry &&
+      isShownEntry(entry) &&
+      (!wasWoken || this.isRunning?.(entry) === true)
+    ) {
+      // The window started before the next registry pass saw it, so the desk is running and only loses its mark.
+      this.adoptEntry(tracked, entry);
+    } else if (tracked.launchWait !== undefined) {
+      // No process registered, so nothing runs behind the desk; clearing the wait is what lets a later wake pass `isLaunching`.
+      tracked.launchWait = undefined;
+      tracked.interactive = true;
+      tracked.endedAt = this.options.now();
+    } else if (tracked.endedAt !== undefined) {
+      // The went-home time is the dismiss, not when the window closed.
+      tracked.endedAt = this.options.now();
+      tracked.endedHookTs = undefined;
+    }
+    this.publish(sessionId, tracked);
+  }
+
+  /**
    * Corrects what hooks could not see: a session whose process is gone goes home, and a fresher registry status replaces a stale state.
    * @param entries - The registry as it is now.
    * @param isRunning - Whether a recorded process is still the one running.
@@ -709,12 +740,18 @@ export class SessionTracker {
     const starting = event.hook_event_name === "SessionStart";
     // A hidden run resuming a conversation must not bring its desk back or be counted as the employee.
     if (!tracked.interactive || tracked.endedAt !== undefined) {
-      const entry = findRegistryEntry(this.options.home, event.session_id);
+      const entry = this.entryOf(event.session_id);
       if (entry && !isShownEntry(entry)) return;
     }
-    if (tracked.endedHookTs !== undefined) {
-      // Only a newer SessionStart (resume) reopens; anything else is a straggler from before the end.
-      if (!starting || event.hookTs <= tracked.endedHookTs) return;
+    if (tracked.endedAt !== undefined) {
+      // Only a newer SessionStart (resume) reopens; anything else is a straggler from before the end. A dismiss leaves no end hook time, so any SessionStart reopens.
+      if (
+        !starting ||
+        (tracked.endedHookTs !== undefined &&
+          event.hookTs <= tracked.endedHookTs)
+      ) {
+        return;
+      }
       tracked.endedAt = undefined;
       tracked.endedHookTs = undefined;
       // A resume may run in a new process; the old pid is dead, so the new one is learned from the registry.

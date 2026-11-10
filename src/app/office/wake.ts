@@ -1,8 +1,9 @@
 import {
+  type OrderResponse,
+  orderResponseSchema,
   type WakeRequest,
-  type WakeResponse,
-  wakeResponseSchema,
 } from "@/shared/commands";
+import { type OrderResult, postOrder } from "./post-order";
 
 /** Server refusals that are not already plain sentences. */
 const REFUSAL_TEXT: Record<string, string> = {
@@ -15,9 +16,7 @@ const REFUSAL_TEXT: Record<string, string> = {
 };
 
 /** What the wake request came to: the order to follow, or why it was refused. */
-export type WakeResult =
-  | { ok: true; order: WakeResponse }
-  | { ok: false; error: string };
+export type WakeResult = OrderResult<OrderResponse>;
 
 /**
  * Sends one wake to the server.
@@ -25,22 +24,11 @@ export type WakeResult =
  * @returns The order, or the refusal's text.
  */
 export async function postWake(request: WakeRequest): Promise<WakeResult> {
-  try {
-    const response = await fetch("/api/office/wake", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(request),
-    });
-    if (response.ok) {
-      return {
-        ok: true,
-        order: wakeResponseSchema.parse(await response.json()),
-      };
-    }
-    const body: { error?: string } = await response.json().catch(() => ({}));
-    const text = body.error ? (REFUSAL_TEXT[body.error] ?? body.error) : "";
-    return { ok: false, error: text || "Could not wake." };
-  } catch {
-    return { ok: false, error: "Could not reach the office." };
-  }
+  return postOrder(
+    "/api/office/wake",
+    request,
+    orderResponseSchema,
+    REFUSAL_TEXT,
+    "Could not wake.",
+  );
 }

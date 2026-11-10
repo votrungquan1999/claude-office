@@ -4,6 +4,7 @@ import { z } from "zod";
 export enum CommandKind {
   Hire = "hire",
   Wake = "wake",
+  Dismiss = "dismiss",
 }
 
 /** Where an order is in its life. */
@@ -69,21 +70,21 @@ export const wakeRequestSchema = z.object({
 
 export type WakeRequest = z.infer<typeof wakeRequestSchema>;
 
-/** The hire route's answer: the order to follow and the session its desk will have. */
-export const hireResponseSchema = z.object({
+/** The owner's request to dismiss a hired or woken employee. */
+export const dismissRequestSchema = z.object({
+  machineId: z.string().min(1),
+  sessionId: z.string().min(1),
+});
+
+export type DismissRequest = z.infer<typeof dismissRequestSchema>;
+
+/** What the hire, wake and dismiss routes answer: the order to follow and the session it concerns. */
+export const orderResponseSchema = z.object({
   orderId: z.string(),
   sessionId: z.string(),
 });
 
-export type HireResponse = z.infer<typeof hireResponseSchema>;
-
-/** The wake route's answer: the order to follow and the session it wakes. */
-export const wakeResponseSchema = z.object({
-  orderId: z.string(),
-  sessionId: z.string(),
-});
-
-export type WakeResponse = z.infer<typeof wakeResponseSchema>;
+export type OrderResponse = z.infer<typeof orderResponseSchema>;
 
 /** What the owner may read of an order; never the message. */
 export const orderStatusSchema = z.object({

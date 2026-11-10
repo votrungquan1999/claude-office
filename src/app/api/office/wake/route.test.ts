@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { getDb } from "@/db/mongo";
-import { wakeResponseSchema } from "@/shared/commands";
+import { orderResponseSchema } from "@/shared/commands";
 import { sessionHeadersFor } from "@/test/owner-session";
 import { useTestAuth } from "@/test/use-test-auth";
 import { useTestMongo } from "@/test/use-test-mongo";
@@ -71,7 +71,7 @@ describe("waking an employee", () => {
     // Then each gets one pending wake order carrying the start folder and a ten-minute expiry
     expect(first.status).toBe(200);
     expect(second.status).toBe(200);
-    const answered = wakeResponseSchema.parse(await first.json());
+    const answered = orderResponseSchema.parse(await first.json());
     const stored = await orders();
     expect(stored).toHaveLength(2);
     expect(

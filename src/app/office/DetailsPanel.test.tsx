@@ -717,4 +717,147 @@ describe("the details panel", () => {
       );
     });
   });
+
+  it("offers Dismiss for a kept employee in any state, never for a plain one, and one click sends one dismiss", () => {
+    // Given the panel for each kind of kept employee and for plain ones
+    const kept = [
+      session({ state: "thinking", kept: "hired" }),
+      session({ state: "idle", kept: "woken", notRunning: true }),
+      session({ state: "needsPermission", kept: "hired", waitingAtMac: true }),
+      session({ state: "idle", kept: "woken", starting: true }),
+    ];
+    const plain = [
+      session({ state: "thinking" }),
+      session({ state: "wentHome", endedAt: new Date().toISOString() }),
+    ];
+
+    // Then only the kept ones show a Dismiss button
+    for (const s of plain) {
+      openWithWake(s, { onDismiss: vi.fn() });
+      expect(screen.queryByTestId("dismiss-button")).toBeNull();
+      cleanup();
+    }
+    const onDismiss = vi.fn();
+    for (const s of kept) {
+      openWithWake(s, { onDismiss });
+      expect(screen.getByTestId("dismiss-button").textContent).toBe("Dismiss");
+      cleanup();
+    }
+
+    // When the owner clicks Dismiss, and again while the page's dismiss is still in flight
+    const { rerender } = openWithWake(kept[0], { onDismiss });
+    fireEvent.click(screen.getByTestId("dismiss-button"));
+    rerender(
+      <DetailsPanel
+        session={kept[0]}
+        tagLabels={new Map()}
+        offlineMachineIds={new Set()}
+        sheet={false}
+        onClose={vi.fn()}
+        onDismiss={onDismiss}
+        dismiss={{ sending: true }}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("dismiss-button"));
+
+    // Then one dismiss went out and the button reads disabled while it is in flight
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+    expect(
+      (screen.getByTestId("dismiss-button") as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+
+  it("disables Dismiss for an offline Mac and for an out-of-date agent, saying to update it, and keeps it enabled for a Mac that can take orders", () => {
+    const hired = session({ state: "thinking", kept: "hired" });
+    const dismissButton = () =>
+      screen.getByTestId("dismiss-button") as HTMLButtonElement;
+
+    // When the Mac can take orders
+    openWithWake(hired, { onDismiss: vi.fn() });
+    // Then Dismiss works and nothing explains a block
+    expect(dismissButton().disabled).toBe(false);
+    expect(screen.queryByTestId("dismiss-note")).toBeNull();
+    cleanup();
+
+    // When the Mac is offline
+    openWithWake(hired, { onDismiss: vi.fn(), macBlock: MacBlock.Offline });
+    // Then Dismiss is disabled
+    expect(dismissButton().disabled).toBe(true);
+    cleanup();
+
+    // When the Mac's agent is out of date
+    openWithWake(hired, { onDismiss: vi.fn(), macBlock: MacBlock.Outdated });
+    // Then Dismiss is disabled and the card says to update the agent
+    expect(dismissButton().disabled).toBe(true);
+    expect(screen.getByTestId("dismiss-note").textContent).toMatch(
+      /update this Mac's agent/i,
+    );
+  });
+
+  describe("the outcome of a dismiss order", () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+    const hired = () => session({ state: "thinking", kept: "hired" });
+
+    it("says 'Dismissing…' while pending and disables Dismiss, then why it failed when the Mac could not do it", async () => {
+      // Given an order the Mac has not picked up, then one it failed
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ status: "pending", ageMs: 100 })),
+        )
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              status: "failed",
+              reason: "interrupted",
+              ageMs: 3000,
+            }),
+          ),
+        );
+      vi.stubGlobal("fetch", fetchMock);
+      vi.useFakeTimers();
+
+      // When the panel follows the order
+      openWithWake(hired(), { dismiss: { orderId: "o1" }, onDismiss: vi.fn() });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      // Then it says dismissing and the button is disabled
+      expect(screen.getByTestId("dismiss-outcome").textContent).toBe(
+        "Dismissing…",
+      );
+      expect(
+        (screen.getByTestId("dismiss-button") as HTMLButtonElement).disabled,
+      ).toBe(true);
+
+      // When the next answer says it failed
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
+
+      // Then the card says why, and Dismiss can be tried again
+      expect(screen.getByTestId("dismiss-outcome").textContent).toMatch(
+        /^Not dismissed: the Mac's agent restarted/,
+      );
+      expect(
+        (screen.getByTestId("dismiss-button") as HTMLButtonElement).disabled,
+      ).toBe(false);
+    });
+
+    it("shows the server's refusal as sent", () => {
+      // Given a refusal text from the server
+      openWithWake(hired(), {
+        dismiss: { error: "That Mac is offline." },
+        onDismiss: vi.fn(),
+      });
+
+      // Then it shows
+      expect(screen.getByTestId("dismiss-outcome").textContent).toBe(
+        "That Mac is offline.",
+      );
+    });
+  });
 });

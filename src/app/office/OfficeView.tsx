@@ -30,7 +30,8 @@ import { CompanyDrawer } from "./CompanyDrawer";
 import { CompactCompanyButton, CompanyStrip } from "./CompanyStrip";
 import { ConnectionStatus } from "./ConnectionStatus";
 import { postCompanyMode } from "./companyMode";
-import { DetailsPanel, type WakeState } from "./DetailsPanel";
+import { DetailsPanel, type OrderClickState } from "./DetailsPanel";
+import { postDismiss } from "./dismiss";
 import { HireDialog, type HireMac } from "./HireDialog";
 import {
   applyOverrides,
@@ -179,7 +180,11 @@ export function OfficeView() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [hireOpen, setHireOpen] = useState(false);
   // Wake orders by session, so selecting another employee and back shows the same pending order and outcome.
-  const [wakes, setWakes] = useState<Map<string, WakeState>>(new Map());
+  const [wakes, setWakes] = useState<Map<string, OrderClickState>>(new Map());
+  // Dismiss orders by session, kept apart from wakes for the same reason.
+  const [dismisses, setDismisses] = useState<Map<string, OrderClickState>>(
+    new Map(),
+  );
   const drawerButtonRef = useRef<HTMLButtonElement>(null);
   const [now, setNow] = useState(() => new Date());
   // How far the server's clock is ahead of this browser's, from the latest answer.
@@ -505,6 +510,21 @@ export function OfficeView() {
       ),
     );
   };
+  const dismissSelected = async () => {
+    if (!selectedSession) return;
+    const key = sessionKey(selectedSession);
+    setDismisses((current) => new Map(current).set(key, { sending: true }));
+    const result = await postDismiss({
+      machineId: selectedSession.machineId,
+      sessionId: selectedSession.sessionId,
+    });
+    setDismisses((current) =>
+      new Map(current).set(
+        key,
+        result.ok ? { orderId: result.order.orderId } : { error: result.error },
+      ),
+    );
+  };
   const departures = todaysDepartures([...sessions.values()], now).filter(
     (session) => overview.tree.companyOf(session)?.companyKey === companyKey,
   );
@@ -629,6 +649,8 @@ export function OfficeView() {
           }
           wake={selectedKey ? wakes.get(selectedKey) : undefined}
           onWake={() => void wakeSelected()}
+          dismiss={selectedKey ? dismisses.get(selectedKey) : undefined}
+          onDismiss={() => void dismissSelected()}
           sheet={isMobile}
           onClose={() => {
             setSelectedKey(null);

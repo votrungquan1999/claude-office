@@ -9,7 +9,7 @@ import {
   vi,
 } from "vitest";
 import { getDb } from "@/db/mongo";
-import { hireResponseSchema } from "@/shared/commands";
+import { orderResponseSchema } from "@/shared/commands";
 import { sessionHeadersFor } from "@/test/owner-session";
 import { useTestAuth } from "@/test/use-test-auth";
 import { useTestMongo } from "@/test/use-test-mongo";
@@ -99,7 +99,7 @@ describe("hiring an employee", () => {
 
     // Then one pending order holds the text verbatim, indentation included, and expires in about ten minutes
     expect(response.status).toBe(200);
-    const { orderId, sessionId } = hireResponseSchema.parse(
+    const { orderId, sessionId } = orderResponseSchema.parse(
       await response.json(),
     );
     const stored = await orders();

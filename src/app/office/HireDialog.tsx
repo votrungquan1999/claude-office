@@ -3,7 +3,8 @@ import { MacBlock } from "@/office/offline";
 import { CommandFailReason } from "@/shared/commands";
 import type { FolderDto } from "@/shared/folders";
 import { postHire } from "./hire";
-import { type OrderPhase, useOrderStatus } from "./useOrderStatus";
+import { type OrderOutcomeWords, orderOutcomeText } from "./order-outcome";
+import { useOrderStatus } from "./useOrderStatus";
 
 export interface HireMac {
   machineId: string;
@@ -40,21 +41,15 @@ const FAILURE_TEXT: Record<CommandFailReason, string> = {
   [CommandFailReason.InvalidOrder]: "The Mac refused the order as not valid.",
 };
 
-/** The line under the form for each phase of the order. */
-function outcomeText(phase: OrderPhase): string | null {
-  if (phase.phase === "pending") return "Sending to the Mac…";
-  if (phase.phase === "notSent") {
-    return "Not sent: the Mac did not pick it up in time. Nothing will run later.";
-  }
-  if (phase.phase === "lostContact") {
-    return "The office lost contact. The Mac may still run the hire; check the Mac before trying again.";
-  }
-  if (phase.phase === "checkMac") {
-    return "The Mac took the order but the window has not opened. Check the Mac.";
-  }
-  if (phase.phase === "failed") return FAILURE_TEXT[phase.reason];
-  return null;
-}
+/** The hire's own wording for each phase of the order. */
+const HIRE_WORDS: OrderOutcomeWords = {
+  pending: "Sending to the Mac…",
+  lostContact:
+    "The office lost contact. The Mac may still run the hire; check the Mac before trying again.",
+  checkMac:
+    "The Mac took the order but the window has not opened. Check the Mac.",
+  failed: (reason) => FAILURE_TEXT[reason],
+};
 
 /**
  * Asks the owner for a Mac, a known folder and a first message, then follows the order until it resolves.
@@ -117,7 +112,7 @@ export function HireDialog({
     else setRefusal(result.error);
   };
 
-  const outcome = refusal ?? outcomeText(phase);
+  const outcome = refusal ?? orderOutcomeText(phase, HIRE_WORDS);
   return (
     <div
       role="dialog"

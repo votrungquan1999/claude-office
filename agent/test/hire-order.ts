@@ -1,8 +1,9 @@
 import { NextRequest } from "next/server";
+import { POST as dismiss } from "@/app/api/office/dismiss/route";
 import { POST as hire } from "@/app/api/office/hire/route";
 import { POST as wake } from "@/app/api/office/wake/route";
 import { getDb } from "@/db/mongo";
-import { hireResponseSchema, wakeResponseSchema } from "@/shared/commands";
+import { orderResponseSchema } from "@/shared/commands";
 import { sessionHeadersFor } from "@/test/owner-session";
 import type { MacHarness } from "./mac-harness";
 
@@ -33,7 +34,7 @@ export async function postHire(
   return {
     response,
     body: response.ok
-      ? hireResponseSchema.parse(await response.json())
+      ? orderResponseSchema.parse(await response.json())
       : undefined,
   };
 }
@@ -79,7 +80,31 @@ export async function postWake(machineId: string, sessionId: string) {
   return {
     response,
     body: response.ok
-      ? wakeResponseSchema.parse(await response.json())
+      ? orderResponseSchema.parse(await response.json())
+      : undefined,
+  };
+}
+
+/**
+ * The owner's dismiss request, as the browser sends it.
+ * @param machineId - The Mac the session belongs to.
+ * @param sessionId - The kept session to dismiss.
+ * @returns The route's response and, when accepted, its parsed answer.
+ */
+export async function postDismiss(machineId: string, sessionId: string) {
+  const headers = new Headers((await sessionHeadersFor(OWNER)) ?? undefined);
+  headers.set("content-type", "application/json");
+  const response = await dismiss(
+    new NextRequest("http://localhost:4710/api/office/dismiss", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ machineId, sessionId }),
+    }),
+  );
+  return {
+    response,
+    body: response.ok
+      ? orderResponseSchema.parse(await response.json())
       : undefined,
   };
 }

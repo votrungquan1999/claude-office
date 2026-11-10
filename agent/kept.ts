@@ -38,6 +38,17 @@ export class KeptDesks {
     this.records.set(toId, { ...record, sessionId: toId });
   }
 
+  /**
+   * Forgets a launch.
+   * @param sessionId - The launch's session.
+   * @returns The launch, or undefined when none was recorded.
+   */
+  remove(sessionId: string): LaunchRecord | undefined {
+    const record = this.records.get(sessionId);
+    this.records.delete(sessionId);
+    return record;
+  }
+
   /** Launches whose files are still on disk. */
   withFiles(): LaunchRecord[] {
     return [...this.records.values()].filter((record) => record.filesPresent);

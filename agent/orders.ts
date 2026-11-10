@@ -25,16 +25,26 @@ export const wakeOrderSchema = z.object({
 
 export type WakeOrder = z.infer<typeof wakeOrderSchema>;
 
+/** What a dismiss order must hold. */
+export const dismissOrderSchema = z.object({
+  kind: z.literal(CommandKind.Dismiss),
+  sessionId: sessionIdSchema,
+});
+
+export type DismissOrder = z.infer<typeof dismissOrderSchema>;
+
 /** Order kinds this agent knows; the claim never takes any other. */
 export const KNOWN_ORDER_KINDS: CommandKind[] = [
   CommandKind.Hire,
   CommandKind.Wake,
+  CommandKind.Dismiss,
 ];
 
 /** Any order the agent can run. */
 export const orderSchema = z.discriminatedUnion("kind", [
   hireOrderSchema,
   wakeOrderSchema,
+  dismissOrderSchema,
 ]);
 
 export type Order = z.infer<typeof orderSchema>;

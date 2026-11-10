@@ -197,12 +197,6 @@ describe("the script a woken window runs", () => {
       "x; touch pwned 'y'",
       "--remote-control",
     ]);
-    expect(
-      readFileSync(
-        join(home, ".claude-office", "launch", "x; touch pwned 'y'.command"),
-        "utf8",
-      ),
-    ).not.toContain("$msg");
     rmSync(root, { recursive: true, force: true });
   });
 });

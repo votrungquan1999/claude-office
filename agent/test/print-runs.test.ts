@@ -4,6 +4,8 @@ import { useLiveProcesses } from "./live-process";
 import { useMacHarness } from "./mac-harness";
 import { runHook } from "./run-hook";
 
+const DAY_START = new Date(Date.now() - 3_600_000);
+
 describe("one-off and SDK-driven runs never show up as employees", () => {
   const { setUpMac, officeSessions } = useMacHarness();
   const processes = useLiveProcesses();
@@ -80,6 +82,54 @@ describe("one-off and SDK-driven runs never show up as employees", () => {
     const db = await getDb();
     expect(await db.collection("sessions").countDocuments()).toBe(1);
   });
+  it("keeps a went-home desk home when a claude -p run resumes its conversation", async () => {
+    // Given a terminal session that was prompted and then went home
+    const mac = await setUpMac("machine-air", "Quan's MacBook Air");
+    const folder = mac.fake.makeFolder("app");
+    const first = await processes.live();
+    mac.fake.addSession({
+      sessionId: "s1",
+      cwd: folder,
+      pid: first.pid,
+      procStart: first.procStart,
+      name: "Real name",
+    });
+    const send = (event: Record<string, unknown>) =>
+      runHook(mac.fake.home, { session_id: "s1", cwd: folder, ...event });
+    await send({ hook_event_name: "SessionStart", source: "startup" });
+    await send({ hook_event_name: "UserPromptSubmit", prompt: "Fix login" });
+    await mac.agent.reconcile();
+    await mac.agent.flush();
+    await first.kill();
+    mac.fake.removeSession("s1");
+    await mac.agent.reconcile();
+    await mac.agent.flush();
+    expect((await officeSessions(DAY_START))[0]).toMatchObject({
+      state: "wentHome",
+    });
+
+    // When a hidden claude -p run resumes the same conversation and its hooks fire
+    const printRun = await processes.live();
+    mac.fake.addSession({
+      sessionId: "s1",
+      cwd: "/elsewhere",
+      pid: printRun.pid,
+      procStart: printRun.procStart,
+      entrypoint: "sdk-cli",
+      name: "print name",
+    });
+    await send({ hook_event_name: "SessionStart", source: "resume" });
+    await send({ hook_event_name: "UserPromptSubmit", prompt: "summarise" });
+    await mac.agent.reconcile();
+    await mac.agent.flush();
+
+    // Then the desk is still at home
+    expect((await officeSessions(DAY_START))[0]).toMatchObject({
+      sessionId: "s1",
+      state: "wentHome",
+    });
+  });
+
   it("keeps a running desk's name, start folder and Remote Control link when a claude -p run resumes it", async () => {
     // Given a running terminal session with a name, a folder and a Remote Control link
     const mac = await setUpMac("machine-air", "Quan's MacBook Air");

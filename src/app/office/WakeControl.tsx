@@ -1,7 +1,8 @@
 import { MacBlock } from "@/office/offline";
 import { CommandFailReason } from "@/shared/commands";
-import type { WakeState } from "./DetailsPanel";
-import { type OrderPhase, useOrderStatus } from "./useOrderStatus";
+import type { OrderClickState } from "./DetailsPanel";
+import { type OrderOutcomeWords, orderOutcomeText } from "./order-outcome";
+import { useOrderStatus } from "./useOrderStatus";
 
 const FAILURE_TEXT: Record<CommandFailReason, string> = {
   [CommandFailReason.FolderMissing]:
@@ -21,28 +22,21 @@ const FAILURE_TEXT: Record<CommandFailReason, string> = {
     "Not woken: the Mac refused the order as not valid.",
 };
 
-/** The line under the button for each phase of the wake order. */
-function outcomeText(phase: OrderPhase): string | null {
-  if (phase.phase === "pending") return "Waking…";
-  if (phase.phase === "notSent") {
-    return "Not sent: the Mac did not pick it up in time. Nothing will run later.";
-  }
-  if (phase.phase === "lostContact") {
-    return "The office lost contact. The Mac may still open the window.";
-  }
-  if (phase.phase === "checkMac") {
-    return "The Mac took the order but the window has not opened. Check the Mac.";
-  }
-  if (phase.phase === "failed") return FAILURE_TEXT[phase.reason];
-  return null;
-}
+/** The wake's own wording for each phase of the order. */
+const WAKE_WORDS: OrderOutcomeWords = {
+  pending: "Waking…",
+  lostContact: "The office lost contact. The Mac may still open the window.",
+  checkMac:
+    "The Mac took the order but the window has not opened. Check the Mac.",
+  failed: (reason) => FAILURE_TEXT[reason],
+};
 
 interface WakeControlProps {
   /** Why the employee's Mac cannot take orders; absent when it can. */
   block?: MacBlock;
   /** Whether Claude Code has not trusted the start folder. */
   untrusted: boolean;
-  wake?: WakeState;
+  wake?: OrderClickState;
   onWake?: () => void;
 }
 
@@ -58,7 +52,7 @@ export function WakeControl({
   onWake,
 }: WakeControlProps) {
   const phase = useOrderStatus(wake?.orderId ?? null);
-  const outcome = wake?.error ?? outcomeText(phase);
+  const outcome = wake?.error ?? orderOutcomeText(phase, WAKE_WORDS);
   const sending = wake?.sending === true || phase.phase === "pending";
   return (
     <div className="flex shrink-0 flex-col gap-1">

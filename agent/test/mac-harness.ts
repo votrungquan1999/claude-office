@@ -73,8 +73,8 @@ export interface MacHarness {
       count: number,
     ) => FakeAnthropicReply | Promise<FakeAnthropicReply>,
   ): Promise<FakeAnthropic>;
-  /** What the owner's office API lists right now. */
-  officeSessions(): Promise<SessionDto[]>;
+  /** What the owner's office API lists right now; with `dayStart`, also the departures since then. */
+  officeSessions(dayStart?: Date): Promise<SessionDto[]>;
 }
 
 /**
@@ -170,11 +170,11 @@ export function useMacHarness(): MacHarness {
       const port = typeof address === "object" && address ? address.port : 0;
       return { baseUrl: `http://127.0.0.1:${port}`, requests };
     },
-    async officeSessions() {
+    async officeSessions(dayStart) {
+      const url = new URL("http://localhost:4710/api/office/changes");
+      if (dayStart) url.searchParams.set("dayStart", dayStart.toISOString());
       const response = await getChanges(
-        new NextRequest("http://localhost:4710/api/office/changes", {
-          headers: ownerHeaders,
-        }),
+        new NextRequest(url, { headers: ownerHeaders }),
       );
       return changesResponseSchema.parse(await response.json()).sessions;
     },
