@@ -313,7 +313,8 @@ function Card({
           <a
             data-testid="remote-control-link"
             href={remoteControl}
-            target="_blank"
+            // With no target iOS can hand the claude.ai/code link to the Claude app; a computer keeps a new tab.
+            target={sheet ? undefined : "_blank"}
             rel="noopener noreferrer"
             className={`shrink-0 border-2 border-bg-dark px-3 py-3 [@media(max-height:500px)]:py-1 text-center font-bold uppercase shadow-[3px_3px_0_var(--color-bg-dark)] ${
               approving

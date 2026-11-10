@@ -220,6 +220,27 @@ test.describe("the office on a phone", () => {
     await expectSheetFits(page);
   });
 
+  test("the Remote Control link on the phone has no target, so iOS can open the Claude app, and keeps the same address", async ({
+    page,
+  }) => {
+    // Given the office on a phone with a session that has Remote Control
+    await makeCardBusy(sessions);
+    await openOffice(page);
+
+    // When the owner opens the session's details sheet
+    await page.getByTestId("agent-card").filter({ hasText: "one:" }).tap();
+    const link = page
+      .getByTestId("details-panel")
+      .getByTestId("remote-control-link");
+
+    // Then the link goes to the session's claude.ai/code page and has no target
+    await expect(link).toHaveAttribute(
+      "href",
+      /^https:\/\/claude\.ai\/code\/\S+$/,
+    );
+    await expect(link).not.toHaveAttribute("target");
+  });
+
   test("fits the screen with long names, shows the whole office, and lists every session in the card bar", async ({
     page,
   }) => {

@@ -194,7 +194,7 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 
 ### Remote Control
 
-- The details card shows an "Open Remote Control" button linking to `https://claude.ai/code/<bridgeSessionId>` in a new tab (ids containing `/`, `?` or `#` give no link), or a muted "Remote Control off".
+- The details card shows an "Open Remote Control" button linking to `https://claude.ai/code/<bridgeSessionId>` in a new tab on a computer and with no target on a phone, so iOS can hand it to the Claude app (ids containing `/`, `?` or `#` give no link), or a muted "Remote Control off".
 - The session registry's `bridgeSessionId` is the source of truth: it is read at start and on every registry check; a hook event that carries the id may set it, but a hook event without it never clears it; the id is cleared only when the registry entry exists and has none.
 - Clicking never navigates by itself; the link lives only in the card.
 
@@ -218,6 +218,7 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 
 - The office fits the screen, can be panned and pinch-zoomed, shows a select-only strip of employee cards, and the went-home list is a sheet. The company strip, drawer and details sheet follow the rules above, including the sideways layout.
 - Tapping an employee or card opens the details card as a bottom sheet.
+- On the phone layout the Remote Control link has no `target`, so iOS opens the Claude app on the session when the app is installed; without the app the link navigates the office tab to claude.ai. Whether iOS hands it to the app is checked by one manual tap, not by a test.
 
 ### Connecting a Mac
 

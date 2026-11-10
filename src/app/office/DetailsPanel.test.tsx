@@ -31,6 +31,7 @@ function open(
   project?: string,
   serverOffsetMs?: number,
   tagLabels: ReadonlyMap<string, string> = new Map(),
+  sheet = false,
 ) {
   render(
     <DetailsPanel
@@ -39,7 +40,7 @@ function open(
       tagLabels={tagLabels}
       serverOffsetMs={serverOffsetMs}
       offlineMachineIds={new Set(offline)}
-      sheet={false}
+      sheet={sheet}
       onClose={vi.fn()}
     />,
   );
@@ -316,6 +317,24 @@ describe("the details panel", () => {
     cleanup();
     open(session({ cwd: "/srv/app" }));
     expect(screen.getByTestId("folder").textContent).toBe("/srv/app");
+  });
+
+  it("gives the Remote Control link no target on the phone sheet, so iOS can hand it to the Claude app, with the same address and rel", () => {
+    // Given a session with a Remote Control id on the phone layout
+    open(
+      session({ bridgeSessionId: "cse_abc" }),
+      [],
+      undefined,
+      undefined,
+      new Map(),
+      true,
+    );
+
+    // Then the link has the same address and no target
+    const link = screen.getByRole("link", { name: /Open Remote Control/ });
+    expect(link.getAttribute("href")).toBe("https://claude.ai/code/cse_abc");
+    expect(link.hasAttribute("target")).toBe(false);
+    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
   });
 
   it("offers 'Open Remote Control' as a new-tab link when there is one, 'Approve in Remote Control' when it needs permission, keeps it on a Mac-offline card, otherwise a muted 'Remote Control off', and neither for a session that went home", () => {
