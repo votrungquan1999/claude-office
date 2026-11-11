@@ -72,6 +72,8 @@ export interface TranscriptSeed {
   bridgeSessionId?: string;
   /** The newest turn ended by asking the owner something. */
   asked: boolean;
+  /** The newest ended turn's last answer, for the Haiku check; empty when the turn did not end on text. */
+  answer: string;
   /** Folders its tool calls and records worked in; kept only to find their repos. */
   stepDirs: string[];
 }
@@ -192,17 +194,17 @@ function runsTool(record: TranscriptRecord): boolean {
 }
 
 /**
- * Whether the newest ended turn asked the owner something, by the same rule and segments as the live Stop path.
+ * The newest turn's records split at each Stop-hook summary, or none when the turn did not end on text.
  * @param tail - The records of the transcript's last bytes.
- * @returns True when any segment of the turn, split at each Stop-hook summary, ends in a question.
+ * @returns One list of records per Stop-hook segment; empty when the turn is still running or has no text.
  */
-function turnAsked(tail: TranscriptRecord[]): boolean {
+function endedSegments(tail: TranscriptRecord[]): TranscriptRecord[][] {
   const records = tail.filter((record) => !record.isSidechain);
   // The turn starts at the last prompt, including a background-task notification
   const lastPrompt = records.findLastIndex(startsTurn);
   const turn = records.slice(lastPrompt + 1);
   const lastText = turn.findLastIndex((record) => assistantText(record) !== "");
-  if (lastText < 0) return false;
+  if (lastText < 0) return [];
   // A user record (tool result), a tool call or an API error after the last text means the turn did not end on it
   if (
     turn
@@ -214,7 +216,7 @@ function turnAsked(tail: TranscriptRecord[]): boolean {
           record.isApiErrorMessage,
       )
   ) {
-    return false;
+    return [];
   }
   // Each Stop hook that produced a follow-up leaves a summary; every segment's last answer counts
   const segments: TranscriptRecord[][] = [[]];
@@ -223,10 +225,31 @@ function turnAsked(tail: TranscriptRecord[]): boolean {
     if (record.type === "system" && record.subtype === "stop_hook_summary")
       segments.push([]);
   }
-  return segments.some((segment) => {
+  return segments;
+}
+
+/**
+ * Whether the newest ended turn asked the owner something, by the same rule and segments as the live Stop path.
+ * @param tail - The records of the transcript's last bytes.
+ * @returns True when any segment of the turn ends in a question.
+ */
+function turnAsked(tail: TranscriptRecord[]): boolean {
+  return endedSegments(tail).some((segment) => {
     const last = segment.findLast((record) => assistantText(record) !== "");
     return last ? asks(assistantText(last)) : false;
   });
+}
+
+/**
+ * The last answer of the newest ended turn.
+ * @param tail - The records of the transcript's last bytes.
+ * @returns The answer's text, or an empty string when the turn did not end on text.
+ */
+function turnAnswer(tail: TranscriptRecord[]): string {
+  const last = endedSegments(tail)
+    .flat()
+    .findLast((record) => assistantText(record) !== "");
+  return last ? assistantText(last) : "";
 }
 
 /**
@@ -260,7 +283,8 @@ export function readTranscriptSeed(
   sessionId: string,
 ): TranscriptSeed {
   const path = transcriptPath(home, sessionId);
-  if (!path) return { hadPrompt: false, asked: false, stepDirs: [] };
+  if (!path)
+    return { hadPrompt: false, asked: false, answer: "", stepDirs: [] };
   let head: TranscriptRecord[];
   let tail: TranscriptRecord[];
   try {
@@ -268,7 +292,7 @@ export function readTranscriptSeed(
     tail = readRecords(path, true);
   } catch {
     // Error boundary: an unreadable transcript only costs the desk name and folder hints, never the session.
-    return { hadPrompt: false, asked: false, stepDirs: [] };
+    return { hadPrompt: false, asked: false, answer: "", stepDirs: [] };
   }
   const prompts = head.flatMap(humanTexts);
   const firstPrompt = prompts.find(
@@ -276,6 +300,7 @@ export function readTranscriptSeed(
   );
   return {
     asked: turnAsked(tail),
+    answer: turnAnswer(tail),
     stepDirs: stepDirsOf([...head, ...tail]),
     firstMessage: prompts
       .map((text) => firstRealMessage(text))

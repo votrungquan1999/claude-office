@@ -19,6 +19,8 @@ const EVENTS = [
   "StopFailure",
   "Elicitation",
   "ElicitationResult",
+  "SubagentStart",
+  "SubagentStop",
 ];
 
 describe("the office hook entries", () => {
@@ -26,7 +28,7 @@ describe("the office hook entries", () => {
     // When the entries are built for a home folder
     const entries = buildOfficeHookEntries("/Users/q");
 
-    // Then each of the 13 events has one async command hook, with nothing else that could block or decide
+    // Then each of the 15 events has one async command hook, with nothing else that could block or decide
     expect(Object.keys(entries).sort()).toEqual([...EVENTS].sort());
     for (const event of EVENTS) {
       expect(entries[event]).toEqual({

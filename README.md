@@ -58,13 +58,13 @@ The first message of a hire passes through the database so the Mac can pick it u
 
 What is stored: the first message (cut to 60 characters) and the original request (up to 2,000 characters, gone when the session expires), Bash and Agent descriptions, search patterns, web queries and domains, file names, the session's name and folder paths, and the folder name of each repo a session worked in (shown as a tag), each with a short hashed key.
 
-One optional call leaves the Mac. The agent can ask Claude Haiku for a short task name of each session. It sends only the first part of the first message, once per session, straight to Anthropic, and only if you set your own Anthropic API key (`anthropicApiKey` in `~/.claude-office/config.json`, see [SETUP.md](SETUP.md#optional-name-every-desk-with-an-anthropic-key)). At most 1,000 characters are sent. Without a key nothing is sent and the desk is named from the first message.
+Two optional calls leave the Mac, both only if you set your own Anthropic API key (`anthropicApiKey` in `~/.claude-office/config.json`, see [SETUP.md](SETUP.md#optional-name-every-desk-with-an-anthropic-key)). The agent can ask Claude Haiku for a short task name of each session, sending only the first part of the first message, once per session. It can also ask Haiku, when a turn ends, whether the last answer asks you to reply, sending only the last part of that answer; without it a simple rule decides. At most 1,000 characters go out per call, straight to Anthropic. Without a key nothing is sent: the desk is named from the first message and the rule decides Waiting for you.
 
 ## FAQ
 
 - **Does it work on Linux or Windows?** The web app runs anywhere Node runs, and you can open it from any browser. The agent that watches sessions uses launchd, so it needs macOS.
 - **Can it control my sessions?** It can open a new one (hire) or reopen one that is not running (wake) but it cannot message or stop one that runs. The Remote Control button opens the session's own Remote Control page when Claude Code provides one.
-- **Does it cost tokens?** No. It reads hook events and transcripts on your Mac and uses no model. The only exception is the optional desk-name call above, which needs your own key.
+- **Does it cost tokens?** No. It reads hook events and transcripts on your Mac and uses no model. The only exceptions are the optional Haiku calls above, which need your own key.
 - **What leaves my Mac?** See [What never leaves the Mac](#what-never-leaves-the-mac).
 
 ## Requirements

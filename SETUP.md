@@ -39,12 +39,12 @@ After pulling a new version on a Mac, restart its agent so it runs the new code:
 `npm run setup` does this right after connecting; nothing more to run. It:
 
 - Links `~/.claude/claude-office` to this repo, so hooks keep working through that fixed path.
-- Adds one async command hook for each of the 13 events the office reads to `~/.claude/settings.json`, next to any hooks already there (for example claude-usage's). Other tools' hooks, `statusLine`, `env` and `mcpServers` are left exactly as they are; the command never prints `env` values.
+- Adds one async command hook for each of the 15 events the office reads to `~/.claude/settings.json`, next to any hooks already there (for example claude-usage's). Other tools' hooks, `statusLine`, `env` and `mcpServers` are left exactly as they are; the command never prints `env` values.
 - Saves a one-time backup of the original as `~/.claude/settings.json.backup-claude-office` the first time it changes the file. The first change may reformat the file to 2-space JSON; later runs change nothing.
 
 If settings.json is not valid JSON, or a hook list is not an array, setup stops with a message and changes nothing; tell the owner what it printed.
 
-Check it worked: `jq '.hooks | keys' ~/.claude/settings.json` should list `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied`, `Notification`, `Stop`, `StopFailure`, `Elicitation` and `ElicitationResult`. Running Claude sessions pick the change up by themselves; if one does not show up in the office, restart that session.
+Check it worked: `jq '.hooks | keys' ~/.claude/settings.json` should list `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied`, `Notification`, `Stop`, `StopFailure`, `Elicitation`, `ElicitationResult`, `SubagentStart` and `SubagentStop`. Running Claude sessions pick the change up by themselves; if one does not show up in the office, restart that session.
 
 The hooks never slow or block Claude: they are async, always exit 0 and print nothing, even when the agent is not running.
 
@@ -85,7 +85,7 @@ By default a desk shows the first message cut to 60 characters (or "Pasted text"
 { "mongodbUri": "...", "mongodbDb": "...", "anthropicApiKey": "sk-ant-..." }
 ```
 
-- **What is sent:** at most the first 1,000 characters of each session's first message (of the paste for a paste-only message) go to Anthropic (model `claude-haiku-5-5`), once per session (one retry if Anthropic is briefly unavailable). Nothing else leaves the Mac, and the key is never logged or stored in the database.
+- **What is sent:** at most the first 1,000 characters of each session's first message (of the paste for a paste-only message) go to Anthropic (model `claude-haiku-5-5`), once per session (one retry if Anthropic is briefly unavailable). The same key also lets the agent ask Haiku, each time a turn ends, whether the last answer asks you to answer, choose or approve something (so the desk shows Waiting for you): at most the last 1,000 characters of that answer are sent, with no retry; if the call fails the built-in rule decides. Nothing else leaves the Mac, and the key is never logged or stored in the database.
 - **When it is read:** the agent reads the file only when it starts, so restart it after adding the key: `launchctl kickstart -k gui/$(id -u)/dev.quanvo.claude-office.agent`. Sessions that are already running get their name right after the restart.
 - **A failed request:** a session whose request failed for good (for example a wrong key) keeps the first-message name and is not asked again, even after the key is fixed.
 - **Without a key** (or with a blank one) nothing is sent and the desk keeps the first-message name. Running `npm run setup -- --reconnect` keeps the key.

@@ -166,6 +166,7 @@ export async function seedRunningSessions(options: SeedOptions): Promise<void> {
         request: transcript.request,
         hadPrompt: transcript.hadPrompt,
         asked: transcript.asked,
+        answer: transcript.answer,
         stepDirs: transcript.stepDirs,
         tags: stored
           .find((doc) => doc.sessionId === entry.sessionId)

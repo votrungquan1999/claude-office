@@ -44,7 +44,7 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 ### Office and rooms
 
 - The layout has four named rooms joined by doorways, 72 seats in all: Working 24, Needs permission 12, Waiting for you 18, Idle 18. Working and Needs permission are on top, Waiting for you and Idle below.
-- Working: a tool is running, or the session is between steps (thinking); both live in the same room, so an employee does not walk between the two.
+- Working: a tool is running, or the session is between steps (thinking); both live in the same room, so an employee does not walk between the two. After the turn ended, a background sub-agent that is still running also keeps the desk here (see [Waiting for you or Idle](#waiting-for-you-or-idle)).
 - Needs permission: a dialog waits for the owner. Other waits for the owner (questions, MCP forms) also go here.
 - Waiting for you: the turn ended and the last answer asked the owner something.
 - Idle: the turn ended without asking. A session first seen after its turn ended with an unreadable transcript also shows Idle.
@@ -62,6 +62,9 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 ### Waiting for you or Idle
 
 - When a turn ends (the Stop hook), the agent decides whether the last answer asked the owner something: it reads the last three non-empty lines with fenced code removed, and the answer asks when a line ends in `?` (a closing quote, bracket, `*` or `_` may follow) or a sentence starts with "tell me", "let me know", "say the word", "want me to", "should I", "do you want", or "which one / option / approach / of / do you / would you / should we". A bare "which" does not count.
+- With an Anthropic key set, the agent also asks Haiku (`claude-haiku-5-5`, the same plain `fetch` client style as the task names) whether the last answer asks the owner to answer, choose, approve or provide something, with a one-word YES or NO reply, from at most the last 1,000 characters of the answer. The desk is published at once with the rule's result; when Haiku answers it is corrected to Waiting for you (YES) or Idle (NO). Haiku's answer wins over the rule when both answered.
+- The correction applies only while the session is still in that same ended turn: a newer prompt, Stop, restart of the session or registry status change discards a late answer.
+- With no key, or when the call fails, times out (10 s) or answers something else, the rule's result stands. A follow-up Stop that a Stop hook started keeps a question the earlier Stop asked, whatever Haiku says about the follow-up. Answers are cached in memory per session and message, so the same tail is never sent twice; the registry-idle and restart paths use the same check on the transcript's last answer.
 - The hook sends the agent the end of the answer (about the last 1000 characters, with a cut code fence dropped) and a `stop_hook_active` flag; the answer text is used for the decision and never stored.
 - A follow-up turn that a Stop hook started keeps a question the earlier Stop asked; a new prompt clears it.
 - The state lasts until the owner answers; nothing times it out.
@@ -69,6 +72,8 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 - The registry's `idle` status ends a working or thinking turn; if the Stop was missed, the transcript tail decides Waiting for you or Idle. A registry `idle` also clears a stale dialog.
 - Registry timestamps are compared with the last state-changing hook event only; a neutral event (an idle notification) does not advance that stamp.
 - A stored `waiting` state from before 0.2.0 reads as Idle.
+- Sub-agents: each sub-agent is tracked from its first event (or SubagentStart) until its SubagentStop. After the parent's turn ended, a running sub-agent moves the desk back to Working until the last one stops; the desk then returns to the state the turn end decided (Waiting for you or Idle). Only sub-agents a SubagentStart announced survive the turn end; ones seen only through tool events are dropped at Stop, so a missing SubagentStop hook cannot leave a desk working. A late event of a sub-agent that already stopped changes nothing, and a new prompt or a registry `idle` clears the running sub-agents. Sub-agent tools and dialogs after the turn ended change nothing else.
+- Setups made before the SubagentStart and SubagentStop hooks were added need `npm run setup` again to register them.
 
 ### Companies
 
@@ -241,7 +246,7 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 
 ### Hooks and agent install
 
-- Setup adds one async command hook for each of 13 events to `~/.claude/settings.json`, next to existing hooks, backs the original up once, and changes nothing on a second run. Hooks run the script through the link `~/.claude/claude-office` to the repo checkout, so updating the checkout updates the hook; running setup again re-points the link if the checkout moved. A hook older than 0.2.0 sends no answer text, so finished turns show as Idle.
+- Setup adds one async command hook for each of 15 events to `~/.claude/settings.json`, next to existing hooks, backs the original up once, and changes nothing on a second run. Hooks run the script through the link `~/.claude/claude-office` to the repo checkout, so updating the checkout updates the hook; running setup again re-points the link if the checkout moved. A hook older than 0.2.0 sends no answer text, so finished turns show as Idle.
 - The hook always exits 0, prints nothing, hands the event to the local agent and returns; it has a hard exit timer so a hung agent cannot slow Claude.
 - The agent starts at login as a launchd LaunchAgent and restarts if it stops; it also exits by itself after about 5 minutes without a successful database write so launchd starts a fresh one. A long gap between checks is read as a Mac sleep and gets a fresh limit.
 
@@ -257,7 +262,7 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 
 - The text of a shell command never leaves the Mac: the hook keeps only an allowlist of `tool_input` keys, and the agent's schema drops anything else again.
 - Tool output, error text and notification text are never stored.
-- The end of the assistant's last answer and the first part of a paste-only message reach only the local agent; they are never stored or published. The one exception is the optional Haiku call, which, only when the owner set a key, sends the first 1,000 characters of every session's first message (of the paste for a paste-only message) to Anthropic to write the task name.
+- The end of the assistant's last answer and the first part of a paste-only message reach only the local agent; they are never stored or published. The exceptions are the optional Haiku calls, which only happen when the owner set a key: the first 1,000 characters of every session's first message (of the paste for a paste-only message) go to Anthropic to write the task name, and the last 1,000 characters of each finished answer go to Anthropic to decide Waiting for you or Idle. Nothing from the answer is stored.
 - Free text that is stored: the first message (60 characters), the original request (up to 2,000 characters, kept on the session row and removed with it when the row expires), the Haiku task name, Bash and Agent descriptions, search patterns, web queries and domains, file names, the session's name and folder paths.
 - The folder of each step (`file_dir`) stays on the Mac; only each repo tag's name, key and parent folder name are stored and sent.
 - The agent's config, address and desk-name cache files are created readable only by the user.
@@ -280,14 +285,14 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 - Hire orders: the agent polls every 1 s and picks up an order created within the last 30 s; the Terminal opener gets 30 s before the order fails; the dialog polls every 2 s, reports lost contact after 35 s without an answer and "check the Mac" for an order still claimed 2 min after it was given; an unclaimed order expires after 10 min, a claimed one after 1 day; the folder-existence and trust refresh runs at start and every 60 s.
 - Connect code life 10 min; at most 5 open codes.
 - Steps API pages default to 50, at most 200.
-- Haiku: 10 s per request, one retry after 30 s, 500 cached answers.
+- Haiku: 10 s per request, one retry after 30 s, 500 cached answers; the turn-end check has 10 s per request, no retry and 500 cached verdicts.
 - Repo lookup: 3 s per git call, 4 at once, 2000 folders cached.
 
 ## Setting up a Mac
 
 - The owner clones the repo and tells Claude to follow `SETUP.md`.
 - It checks Node 24+, runs `npm install`, runs `npm run setup` (connect, hooks, LaunchAgent) and gives checks for each step.
-- Optional: an `anthropicApiKey` in `~/.claude-office/config.json` turns on Haiku task names for every session.
+- Optional: an `anthropicApiKey` in `~/.claude-office/config.json` turns on Haiku task names for every session and the Haiku check of whether a finished answer asks the owner something.
 - Removal is by hand and documented in `SETUP.md`; there is no uninstall command.
 - Macs only; Windows is out of scope.
 

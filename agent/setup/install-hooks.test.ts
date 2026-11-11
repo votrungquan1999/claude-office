@@ -84,7 +84,7 @@ describe("installing the office hooks", () => {
     // When setup installs the hooks
     const result = install();
 
-    // Then the other tools' entries are still first on their events, and the office is on all 13
+    // Then the other tools' entries are still first on their events, and the office is on all 15
     const settings = readSettings();
     expect(result.settings).toBe("updated");
     expect(settings.hooks.UserPromptSubmit[0]).toEqual(USAGE_PROMPT);
@@ -243,7 +243,7 @@ describe("installing the office hooks", () => {
 
     // Then a new file holds just the office hooks, private to the user
     expect(result.settings).toBe("created");
-    expect(Object.keys(readSettings().hooks)).toHaveLength(13);
+    expect(Object.keys(readSettings().hooks)).toHaveLength(15);
     expect(statSync(settingsFile).mode & 0o777).toBe(0o600);
     expect(existsSync(`${settingsFile}.backup-claude-office`)).toBe(false);
   });

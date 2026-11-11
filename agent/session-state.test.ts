@@ -53,7 +53,7 @@ describe("session state rules", () => {
     ).toEqual(["thinking", "working", "working", "working", "thinking"]);
   });
 
-  it("lets subagent tools keep the parent working but never wake it after the turn ended", () => {
+  it("lets subagent tools keep the parent working, and a sub-agent running after the turn ended wake it", () => {
     const sub = { agent_id: "sub1" };
     expect(
       states([
@@ -71,8 +71,8 @@ describe("session state rules", () => {
       "working",
       "working",
       "idle",
-      "idle",
-      "idle",
+      "working",
+      "working",
     ]);
   });
 

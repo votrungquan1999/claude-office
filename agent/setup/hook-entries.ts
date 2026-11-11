@@ -17,6 +17,8 @@ export const OFFICE_HOOK_EVENTS = [
   "StopFailure",
   "Elicitation",
   "ElicitationResult",
+  "SubagentStart",
+  "SubagentStop",
 ] as const;
 
 /**

@@ -16,6 +16,10 @@ export interface StateMemory {
   closed: string[];
   /** One entry per open dialog waiting for the owner; it names the tool when the event did. */
   dialogs: Array<{ toolName?: string }>;
+  /** Sub-agents that started and have not stopped; `announced` is true when a SubagentStart said so, false when only their tool events did. */
+  subagents: Array<{ id: string; announced: boolean }>;
+  /** Recently stopped sub-agent ids, so a late event of a finished sub-agent is ignored. */
+  stoppedAgents: string[];
 }
 
 /** Notification types that mean a dialog is waiting for the owner. */
@@ -30,7 +34,8 @@ function derive(memory: Omit<StateMemory, "state">): StateMemory {
   const state: SessionState =
     memory.dialogs.length > 0
       ? "needsPermission"
-      : memory.inFlight.length > 0
+      : memory.inFlight.length > 0 ||
+          (memory.base === "waiting" && memory.subagents.length > 0)
         ? "working"
         : memory.base === "waiting"
           ? memory.asked
@@ -52,7 +57,19 @@ export function initialStateMemory(asked = false): StateMemory {
     inFlight: [],
     closed: [],
     dialogs: [],
+    subagents: [],
+    stoppedAgents: [],
   });
+}
+
+/**
+ * Replaces whether the ended turn asked the owner something.
+ * @param memory - The memory of a session whose turn has ended.
+ * @param asked - The new answer.
+ * @returns The memory in Waiting for you or Idle; a session still in a turn is returned as it was.
+ */
+export function setAsked(memory: StateMemory, asked: boolean): StateMemory {
+  return memory.base === "waiting" ? derive({ ...memory, asked }) : memory;
 }
 
 /**
@@ -74,13 +91,13 @@ export function reduceState(
     case "Stop":
       // A follow-up Stop (a Stop hook ran another turn) keeps a question the earlier Stop asked.
       return derive({
-        ...initialStateMemory(),
+        ...endedTurn(memory),
         asked:
           asks(event.last_assistant_message) ||
           (event.stop_hook_active === true && memory.asked),
       });
     case "StopFailure":
-      return initialStateMemory();
+      return endedTurn(memory);
     case "UserPromptSubmit":
       return derive({
         base: "thinking",
@@ -88,12 +105,16 @@ export function reduceState(
         inFlight: [],
         closed: [],
         dialogs: [],
+        subagents: [],
+        stoppedAgents: memory.stoppedAgents,
       });
     case "PreToolUse":
       return derive({
         base: "thinking",
         asked: memory.asked,
         closed: memory.closed,
+        subagents: memory.subagents,
+        stoppedAgents: memory.stoppedAgents,
         inFlight: startTool(memory, id),
         // A tool starting does not answer a dialog that names another tool; AskUserQuestion is itself a dialog.
         dialogs:
@@ -120,6 +141,15 @@ export function reduceState(
     default:
       return memory;
   }
+}
+
+/** A memory in the ended-turn state that keeps the sub-agents a SubagentStart announced: they may run on in the background. */
+function endedTurn(memory: StateMemory): StateMemory {
+  return {
+    ...initialStateMemory(),
+    subagents: memory.subagents.filter(({ announced }) => announced),
+    stoppedAgents: memory.stoppedAgents,
+  };
 }
 
 /** Opens a dialog for an event that asks the owner something; other notifications change nothing. */
@@ -178,14 +208,67 @@ function reduceFinished(memory: StateMemory, event: HookEvent): StateMemory {
   return derive({
     base: "thinking",
     asked: memory.asked,
+    subagents: memory.subagents,
+    stoppedAgents: memory.stoppedAgents,
     ...finishTool(memory, event.tool_use_id),
     dialogs: closeDialog(memory.dialogs, event.tool_name, false),
   });
 }
 
-/** Subagent tools keep the parent working and a subagent's dialog blocks the parent; nothing else changes. */
+/** Records a sub-agent as running; a SubagentStart upgrades one only its tool events had shown. */
+function trackAgent(
+  memory: StateMemory,
+  agentId: string,
+  announced: boolean,
+): StateMemory {
+  const known = memory.subagents.find(({ id }) => id === agentId);
+  if (known && (known.announced || !announced)) return memory;
+  return {
+    ...memory,
+    subagents: [
+      ...memory.subagents.filter(({ id }) => id !== agentId),
+      { id: agentId, announced },
+    ],
+  };
+}
+
+/** Moves a sub-agent from running to stopped. */
+function stopAgent(memory: StateMemory, agentId: string): StateMemory {
+  return derive({
+    ...memory,
+    subagents: memory.subagents.filter(({ id }) => id !== agentId),
+    stoppedAgents: [
+      ...memory.stoppedAgents.filter((id) => id !== agentId),
+      agentId,
+    ].slice(-CLOSED_KEPT),
+  });
+}
+
+/**
+ * Subagent tools keep the parent working and a subagent's dialog blocks the parent; after the turn ended, a running
+ * sub-agent alone keeps the desk working, and its tools and dialogs change nothing.
+ */
 function reduceSubagent(memory: StateMemory, event: HookEvent): StateMemory {
-  if (memory.base === "waiting") return memory;
+  const agentId = event.agent_id;
+  if (!agentId) return memory;
+  if (event.hook_event_name === "SubagentStop") {
+    return stopAgent(memory, agentId);
+  }
+  if (memory.stoppedAgents.includes(agentId)) return memory;
+  const tracked = trackAgent(
+    memory,
+    agentId,
+    event.hook_event_name === "SubagentStart",
+  );
+  if (tracked.base === "waiting") return derive(tracked);
+  return reduceSubagentTool(tracked, event);
+}
+
+/** A sub-agent's tool and dialog events during a turn. */
+function reduceSubagentTool(
+  memory: StateMemory,
+  event: HookEvent,
+): StateMemory {
   const id = event.tool_use_id;
   switch (event.hook_event_name) {
     case "PermissionRequest":
@@ -222,6 +305,8 @@ function reduceSubagent(memory: StateMemory, event: HookEvent): StateMemory {
  */
 export function reduceLate(memory: StateMemory, event: HookEvent): StateMemory {
   switch (event.hook_event_name) {
+    case "SubagentStop":
+      return event.agent_id ? stopAgent(memory, event.agent_id) : memory;
     case "PostToolUse":
     case "PostToolUseFailure":
       return derive({
@@ -253,7 +338,7 @@ export function applyRegistryStatus(
     case "idle":
       // After a turn ended, idle closes any dialog but keeps the question the turn asked.
       return memory.base === "waiting"
-        ? derive({ ...memory, dialogs: [] })
+        ? derive({ ...memory, dialogs: [], subagents: [] })
         : initialStateMemory();
     case "waiting":
       return derive({

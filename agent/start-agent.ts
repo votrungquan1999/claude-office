@@ -37,6 +37,7 @@ import {
 } from "./terminal-launch";
 import { SessionTracker } from "./tracker";
 import { readTrustMap } from "./trust";
+import { TurnClassifier } from "./turn-classifier";
 import { createWriteWatchdog } from "./write-watchdog";
 import { SessionWriter } from "./writer";
 
@@ -74,6 +75,8 @@ export interface AgentOptions {
   anthropicBaseUrl?: string;
   /** How long to wait before the one retry of a failed name request. */
   anthropicRetryMs?: number;
+  /** Longest wait for one turn-end check; 10 s when absent. */
+  anthropicTimeoutMs?: number;
   /** Opens a script in a Terminal window; tests pass a recording fake. */
   terminalOpener?: TerminalOpener;
   /** How long the Terminal opener may take before the order fails; 30 s when absent. */
@@ -90,6 +93,8 @@ export interface AgentOptions {
 export interface RunningAgent {
   port: number;
   flush(): Promise<void>;
+  /** Applies buffered events and writes, without waiting for turn-end checks still with Anthropic. */
+  applyEvents(): Promise<void>;
   /** Checks every tracked session against the registry and the process table now. */
   reconcile(): Promise<void>;
   /** Stamps this Mac's last-seen time now. */
@@ -188,6 +193,14 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
           apiKey: options.anthropicApiKey,
           baseUrl: options.anthropicBaseUrl ?? "https://api.anthropic.com",
           retryMs: options.anthropicRetryMs,
+          log,
+        })
+      : undefined,
+    turnClassifier: options.anthropicApiKey
+      ? new TurnClassifier({
+          apiKey: options.anthropicApiKey,
+          baseUrl: options.anthropicBaseUrl ?? "https://api.anthropic.com",
+          timeoutMs: options.anthropicTimeoutMs,
           log,
         })
       : undefined,
@@ -321,6 +334,7 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
 
   return {
     port: listener.port,
+    applyEvents: () => tracker.flush(),
     async flush() {
       await tracker.flush();
       await tracker.settleNames();

@@ -46,7 +46,12 @@ export interface MacHarness {
       /** The Mac's clock; real time when absent. */
       now?: () => number;
       /** Points the agent at a fake Anthropic server with this key. */
-      anthropic?: { baseUrl: string; apiKey?: string; retryMs?: number };
+      anthropic?: {
+        baseUrl: string;
+        apiKey?: string;
+        retryMs?: number;
+        timeoutMs?: number;
+      };
       /** Restarts an agent on a home that already exists (the harness does not delete it twice). */
       fake?: FakeHome;
       /** Replaces the recording fake Terminal; the real one is never used in tests. */
@@ -129,6 +134,7 @@ export function useMacHarness(): MacHarness {
         anthropicApiKey: options?.anthropic?.apiKey,
         anthropicBaseUrl: options?.anthropic?.baseUrl,
         anthropicRetryMs: options?.anthropic?.retryMs,
+        anthropicTimeoutMs: options?.anthropic?.timeoutMs,
         log: options?.log,
       });
       cleanups.push(() => agent.stop());

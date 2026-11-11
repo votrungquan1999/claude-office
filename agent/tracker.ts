@@ -32,6 +32,7 @@ import {
   reduceLate,
   reduceState,
   type StateMemory,
+  setAsked,
 } from "./session-state";
 import {
   closeRunning,
@@ -42,6 +43,7 @@ import {
 } from "./steps";
 import type { TaskNamer } from "./task-namer";
 import { readTranscriptSeed } from "./transcript";
+import type { TurnClassifier } from "./turn-classifier";
 import type { SessionWriter, StepDoc } from "./writer";
 
 /** What the registry and the transcript know about a session that was running before the agent started. */
@@ -68,6 +70,8 @@ export interface SeedSession {
   bridgeSessionId?: string;
   /** The newest turn, already ended, asked the owner something. */
   asked?: boolean;
+  /** That turn's last answer, checked with Haiku when the owner set a key. */
+  answer?: string;
   process?: { pid?: number; procStart?: string };
   /** Repos the session worked in, as stored on a previous run (never shrinks). */
   tags?: TagDoc[];
@@ -98,6 +102,8 @@ export interface TrackerOptions {
   repos?: RepoResolver;
   /** Writes short task names; absent when the owner set no Anthropic key. */
   taskNamer?: TaskNamer;
+  /** Decides with Haiku whether a finished answer asks the owner to reply; absent when the owner set no Anthropic key. */
+  turnClassifier?: TurnClassifier;
   /** Told when a kept window's mark moves to another conversation. */
   onKeptMoved?: (fromId: string, toId: string) => void;
 }
@@ -131,6 +137,8 @@ interface Tracked {
   endedHookTs?: number;
   /** Wall-clock time of the newest event received, for evicting held sessions. */
   lastActivityAt: number;
+  /** Counts every change to the turn state, so a late Haiku verdict can tell its turn is still the current one. */
+  epoch: number;
   /** `hookTs` of the newest event applied, to tell stragglers. */
   lastHookTs: number;
   /** `hookTs` of the newest event that changed the state; a registry status only overrides hooks older than itself. */
@@ -218,6 +226,8 @@ export class SessionTracker {
   private readonly pending = new Set<Promise<void>>();
   /** Paste-name requests still running; only `settleNames` waits for them, so a slow Anthropic never delays the seed. */
   private readonly naming = new Set<Promise<void>>();
+  /** Turn-end checks still waiting for Haiku. */
+  private readonly checking = new Set<Promise<void>>();
   private stopped = false;
   /** The liveness check of the latest reconcile pass, so lookups outside it also prefer a live entry. */
   private isRunning?: IsRunning;
@@ -281,6 +291,9 @@ export class SessionTracker {
         seed.status ?? "idle",
       );
       tracked.tags = [...(seed.tags ?? [])];
+      if ((seed.status ?? "idle") === "idle") {
+        this.checkTurnEnd(seed.sessionId, tracked, seed.answer, false);
+      }
       // A restart keeps the registry's own time in the status, so long-running sessions do not read 0s.
       tracked.publishedRoom = roomOf(tracked.memory.state);
       const sameRoom =
@@ -548,11 +561,14 @@ export class SessionTracker {
         // Idle after a turn the hooks never saw end: the transcript tail says whether it ended on a question.
         const turnEnded =
           entry.status === "idle" && tracked.memory.base === "thinking";
-        tracked.memory = turnEnded
-          ? initialStateMemory(
-              readTranscriptSeed(this.options.home, sessionId).asked,
-            )
+        const ended = turnEnded
+          ? readTranscriptSeed(this.options.home, sessionId)
+          : undefined;
+        tracked.epoch += 1;
+        tracked.memory = ended
+          ? initialStateMemory(ended.asked)
           : applyRegistryStatus(tracked.memory, entry.status);
+        if (ended) this.checkTurnEnd(sessionId, tracked, ended.answer, false);
         // The registry knows when the status changed; publish() would stamp the room with now.
         const room = roomOf(tracked.memory.state);
         if (tracked.endedAt === undefined && tracked.publishedRoom !== room) {
@@ -701,15 +717,19 @@ export class SessionTracker {
 
   /** Waits for every paste-name request, then publishes and writes what they named. */
   async settleNames(): Promise<void> {
-    while (this.naming.size > 0) await Promise.all([...this.naming]);
+    while (this.naming.size > 0 || this.checking.size > 0) {
+      await Promise.all([...this.naming, ...this.checking]);
+    }
     await this.flush();
   }
 
   stop(): void {
     this.stopped = true;
     this.options.taskNamer?.stop();
+    this.options.turnClassifier?.stop();
     this.pending.clear();
     this.naming.clear();
+    this.checking.clear();
     for (const tracked of this.sessions.values()) clearTimeout(tracked.timer);
   }
 
@@ -719,6 +739,7 @@ export class SessionTracker {
       tracked = {
         buffer: [],
         lastActivityAt: this.options.now(),
+        epoch: 0,
         lastHookTs: -Infinity,
         stateHookTs: -Infinity,
         cwdHookTs: -Infinity,
@@ -812,19 +833,66 @@ export class SessionTracker {
         ? event.paste_head
         : undefined;
     }
+    const before = tracked.memory;
     const next = late
       ? reduceLate(tracked.memory, event)
       : reduceState(tracked.memory, event);
+    if (!late && !event.agent_id) tracked.epoch += 1;
     // An event that left the memory untouched (an idle prompt) must not outrank a newer registry status.
     if (next !== tracked.memory) {
       tracked.stateHookTs = Math.max(tracked.stateHookTs, event.hookTs);
     }
     tracked.memory = next;
+    if (!late && !event.agent_id && event.hook_event_name === "Stop") {
+      this.checkTurnEnd(
+        event.session_id,
+        tracked,
+        event.last_assistant_message,
+        event.stop_hook_active === true && before.asked,
+      );
+    }
     this.addSteps(tracked, event.session_id, reduceSteps(tracked.steps, event));
     if (event.hook_event_name === "SessionEnd") {
       tracked.endedAt = this.options.now();
       tracked.endedHookTs = event.hookTs;
     }
+  }
+
+  /**
+   * Asks Haiku whether the ended turn asked the owner something and corrects the desk when it answers.
+   * The desk is already published with the plain rule's result; no key, a failed call or a newer event leaves it as it is.
+   * @param sessionId - The session.
+   * @param tracked - Its state, whose turn has just ended.
+   * @param answer - The turn's last answer.
+   * @param carriedAsk - Whether an earlier Stop of the same turn asked; a follow-up Stop keeps that question.
+   */
+  private checkTurnEnd(
+    sessionId: string,
+    tracked: Tracked,
+    answer: string | undefined,
+    carriedAsk: boolean,
+  ): void {
+    const { turnClassifier } = this.options;
+    if (!turnClassifier || !answer?.trim()) return;
+    const epoch = tracked.epoch;
+    const check: Promise<void> = turnClassifier
+      .asksOwner(sessionId, answer)
+      .then((verdict) => {
+        if (
+          this.stopped ||
+          verdict === undefined ||
+          tracked.epoch !== epoch ||
+          tracked.endedAt !== undefined
+        ) {
+          return;
+        }
+        const asked = verdict || carriedAsk;
+        if (asked === tracked.memory.asked) return;
+        tracked.memory = setAsked(tracked.memory, asked);
+        this.publish(sessionId, tracked);
+      })
+      .finally(() => this.checking.delete(check));
+    this.checking.add(check);
   }
 
   /**
