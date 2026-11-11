@@ -18,7 +18,7 @@ Whoever holds the database login in a Mac's `~/.claude-office/config.json` count
 ## Consequences
 
 - Good: no new connection type; the poll fits the agent's existing timers and its write watchdog.
-- Good: the same collection serves wake, dismiss and stop orders later.
+- Good: the same collection serves wake and dismiss orders now and stop orders later.
 - Good: an offline Mac never runs a stale order, and the message does not stay in the database longer than about 10 minutes when no Mac picks it up.
 - Bad: an order takes up to about a second to reach the Mac, and an idle poll costs one query a second per Mac.
 - Bad: an agent older than the version that polls never claims orders, so the office must refuse orders for it (it reports its version with each heartbeat).

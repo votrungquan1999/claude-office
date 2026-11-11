@@ -73,7 +73,7 @@ Remove it by hand: run that `bootout`, delete `~/Library/LaunchAgents/dev.quanvo
 When the owner hires an employee from the office, the agent opens a Terminal window on this Mac. Two things to know:
 
 - **Click the window before typing.** The window may not be focused when it opens, so keystrokes can go to the app that was in front. Why: macOS lets a script open a window but does not always give it focus.
-- **The trust question defaults to "No, exit".** In a folder Claude Code has not trusted, the window stops at "Do you trust this folder?". Choosing the default ends Claude Code, so pick "Yes" to let the employee start. Why: the office shows that hire as "waiting at the Mac" until Claude Code registers, and it waits indefinitely if the window is closed instead.
+- **The trust question defaults to "No, exit".** In a folder Claude Code has not trusted, the window stops at "Do you trust this folder?". Choosing the default ends Claude Code, so pick "Yes" to let the employee start. Why: the office shows that hire as "waiting at the Mac" until Claude Code registers, and after 30 minutes without Claude Code registering it shows "Not running" instead, and can be woken.
 
 The agent only reads `~/.claude.json` to warn about untrusted folders; it never writes to it.
 
