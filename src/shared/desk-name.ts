@@ -97,17 +97,24 @@ export function firstRealMessage(prompt: string): string | undefined {
 
 /**
  * The original request a first message holds, for the details card.
- * @param prompt - The whole first message.
- * @returns The typed text with its line breaks and no paste blocks, cut to 2,000 characters; undefined when it is a command, a paste with no typed words, or nothing is left.
+ * @param prompt - The whole first message, with its paste blocks.
+ * @returns The message as sent, typed words and pasted text in order without the paste tags, line breaks kept, cut to 2,000 characters; undefined when it is a command, shell input or nothing is left.
  */
 export function requestOf(prompt: string): string | undefined {
-  const text = isPasteOnly(prompt) ? undefined : typedText(prompt);
+  // A paste-only message is judged by its pasted text, so pasted "/word" or "!x" is not mistaken for a command.
+  let text = isPasteOnly(prompt) ? prompt : typedText(prompt) && prompt.trim();
   if (!text) return undefined;
+  // Injected blocks lead the message, ahead of any paste.
+  while (!isPasteOnly(text) && LEADING_BLOCK.test(text)) {
+    text = text.replace(LEADING_BLOCK, "");
+  }
   const tidy = text
+    .replace(PASTE_BLOCK, (_block, _attributes, body) => body ?? "")
+    .trim()
     .replace(/[^\S\n]+/g, " ")
     .replace(/ ?\n ?/g, "\n")
     .replace(/\n{3,}/g, "\n\n");
-  return Array.from(tidy).slice(0, REQUEST_MAX).join("");
+  return Array.from(tidy).slice(0, REQUEST_MAX).join("") || undefined;
 }
 
 /**

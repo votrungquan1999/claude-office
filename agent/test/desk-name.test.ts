@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { getDb } from "@/db/mongo";
 import { useLiveProcesses } from "./live-process";
 import { useMacHarness } from "./mac-harness";
 import { pause, runHook } from "./run-hook";
@@ -181,7 +180,7 @@ describe("a desk is named after the session", () => {
     });
   });
 
-  it("shows 'Pasted text' for a paste-only message live and from a transcript, lets /rename beat it, and never stores the pasted text", async () => {
+  it("shows 'Pasted text' for a paste-only message live and from a transcript, lets /rename beat it, and stores the pasted text as the original request", async () => {
     // Given live paste-only sessions (one renamed) and running sessions found from transcripts
     const live = await processes.live();
     const live2 = await processes.live();
@@ -247,12 +246,15 @@ describe("a desk is named after the session", () => {
       "seed-typed": "fix the login redirect",
     });
 
-    // And no pasted text is anywhere in the database
-    const db = await getDb();
-    const dump: string[] = [];
-    for (const { name } of await db.listCollections().toArray()) {
-      dump.push(JSON.stringify(await db.collection(name).find({}).toArray()));
-    }
-    expect(dump.join("\n")).not.toMatch(/LIVESECRETBODY|SEEDSECRETBODY/);
+    // And the request holds the pasted text, in order, without the paste tag
+    const requests = Object.fromEntries(
+      (await officeSessions()).map((r) => [r.sessionId, r.request]),
+    );
+    expect(requests).toEqual({
+      only: "LIVESECRETBODY",
+      renamed: "LIVESECRETBODY",
+      "seed-only": "SEEDSECRETBODY",
+      "seed-typed": "SEEDSECRETBODY fix the login redirect",
+    });
   }, 60_000);
 });

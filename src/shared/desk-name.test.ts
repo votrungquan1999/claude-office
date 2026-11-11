@@ -156,11 +156,22 @@ describe("desk name", () => {
     );
   });
 
-  it("takes the request from typed words only, keeping line breaks, and gives none for a paste-only message, a command or shell input", () => {
+  it("takes the request from the whole message with pasted text in order, keeping line breaks, and gives none for a command, shell input or an empty paste", () => {
     expect(requestOf("Fix  the cart\n\n\n\nthen deploy")).toBe(
       "Fix the cart\n\nthen deploy",
     );
     expect(requestOf("<pasted_content/> fix the cart")).toBe("fix the cart");
+    expect(
+      requestOf(
+        '<pasted_content id="d1">/clear\nsecond</pasted_content id="d1">',
+      ),
+    ).toBe("/clear\nsecond");
+    expect(
+      requestOf(
+        'Fix:\n<pasted_content id="d1">a\nb</pasted_content id="d1"> now',
+      ),
+    ).toBe("Fix:\na\nb now");
+    expect(requestOf('<pasted_content id="d1">cut off')).toBe("cut off");
     expect(requestOf("<pasted_content/>")).toBeUndefined();
     expect(requestOf("/clear")).toBeUndefined();
     expect(requestOf("!ls")).toBeUndefined();

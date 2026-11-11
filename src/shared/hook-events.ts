@@ -33,7 +33,9 @@ export const hookEventSchema = z.object({
   agent_id: z.string().optional(),
   agent_type: z.string().optional(),
   prompt: z.string().max(2000).optional(),
-  /** Start of a pasted block, used only to name a paste-only session; never stored. */
+  /** The first part of the message with its paste blocks kept; the source of the session's original request. */
+  full_prompt: z.string().max(4000).optional(),
+  /** Start of a pasted block, used to name a paste-only session until Haiku has answered. */
   paste_head: z.string().max(1000).optional(),
   stop_hook_active: z.boolean().optional(),
   last_assistant_message: z.string().max(1000).optional(),

@@ -139,7 +139,7 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 
 ### The original request
 
-- The first real user message (the one the desk name uses; commands, `!` input and interrupt notices excluded) is stored on the session row as `request`, up to 2,000 characters with its line breaks, and sent to the browser. A message that is only a paste has no request, and paste blocks are never part of it.
+- The first real user message (the one the desk name uses; commands, `!` input and interrupt notices excluded) is stored on the session row as `request`, up to 2,000 characters with its line breaks, and sent to the browser. The original request is the whole message as sent, pasted parts included in order (without the paste tag), so a paste-only employee shows what it was asked; the hook forwards the first 4,000 characters of the message so typed words after a long paste still count toward the 2,000.
 - The details card shows an info button (label "Show the original request") next to the name; it opens a popup with the full request, scrollable, closed by Escape, the × button or a click outside. A session without a request has no button. The desk itself gains no text or button.
 - The hover tooltip of an employee shows the full short name wrapped between words (up to three lines) instead of cut at one line.
 
@@ -262,7 +262,7 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 
 - The text of a shell command never leaves the Mac: the hook keeps only an allowlist of `tool_input` keys, and the agent's schema drops anything else again.
 - Tool output, error text and notification text are never stored.
-- The end of the assistant's last answer and the first part of a paste-only message reach only the local agent; they are never stored or published. The exceptions are the optional Haiku calls, which only happen when the owner set a key: the first 1,000 characters of every session's first message (of the paste for a paste-only message) go to Anthropic to write the task name, and the last 1,000 characters of each finished answer go to Anthropic to decide Waiting for you or Idle. Nothing from the answer is stored.
+- The end of the assistant's last answer reaches only the local agent and is never stored or published. The original request (pasted parts included, up to 2,000 characters) is stored on the session row. The only other things that leave the Mac are the optional Haiku calls, which only happen when the owner set a key: the first 1,000 characters of every session's first message go to Anthropic to write the task name, and the last 1,000 characters of each finished answer go to Anthropic to decide Waiting for you or Idle. Nothing from the answer is stored.
 - Free text that is stored: the first message (60 characters), the original request (up to 2,000 characters, kept on the session row and removed with it when the row expires), the Haiku task name, Bash and Agent descriptions, search patterns, web queries and domains, file names, the session's name and folder paths.
 - The folder of each step (`file_dir`) stays on the Mac; only each repo tag's name, key and parent folder name are stored and sent.
 - The agent's config, address and desk-name cache files are created readable only by the user.

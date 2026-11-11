@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 const REQUEST_TIMEOUT_MS = 1000;
 const PROMPT_MAX = 2000;
 const PASTE_HEAD_MAX = 1000;
+const FULL_PROMPT_MAX = 4000;
 const ANSWER_TAIL_MAX = 1000;
 const HARD_EXIT_MS = 1500;
 
@@ -135,6 +136,8 @@ export function reduceEvent(data, hookTs, env) {
   if (typeof data.prompt === "string") {
     const { prompt, pasteHead } = stripPastes(data.prompt);
     event.prompt = prompt.slice(0, PROMPT_MAX);
+    // The request keeps pasted text; 4,000 leaves room for paste tags ahead of the 2,000-character cut.
+    event.full_prompt = data.prompt.slice(0, FULL_PROMPT_MAX);
     if (pasteHead) event.paste_head = pasteHead;
   }
   // Stop only: the end of the turn's last answer says whether it asked the owner something.

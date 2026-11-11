@@ -827,7 +827,7 @@ export class SessionTracker {
     if (event.hook_event_name === "UserPromptSubmit") tracked.hadPrompt = true;
     if (event.hook_event_name === "UserPromptSubmit" && !tracked.firstMessage) {
       tracked.firstMessage = firstRealMessage(event.prompt ?? "");
-      tracked.request = requestOf(event.prompt ?? "");
+      tracked.request = requestOf(event.full_prompt ?? event.prompt ?? "");
       // The hook forwards the head of any paste; only a paste-only message is named from it.
       tracked.pasteHead = isPasteOnly(event.prompt ?? "")
         ? event.paste_head
@@ -981,7 +981,6 @@ export class SessionTracker {
   ): string | undefined {
     const { taskNamer } = this.options;
     if (tracked.taskName) return tracked.taskName;
-    // A paste-only message has no request; its paste head names the desk instead.
     const input = tracked.request ?? tracked.pasteHead;
     if (!taskNamer || !input) return undefined;
     if (card?.summary?.trim() || card?.title?.trim()) return undefined;

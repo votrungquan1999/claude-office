@@ -152,17 +152,27 @@ describe("a session is named by Haiku", () => {
     expect((await officeSessions())[0]?.deskName).toBe("Cart total crash");
   });
 
-  it("stores the typed first message as the request with its line breaks, up to 2,000 characters, and none for a paste-only message or a command", async () => {
+  it("stores the typed first message as the request with its line breaks, up to 2,000 characters, pasted text included in order, and none for a command", async () => {
     // Given a keyless agent with four sessions
     const { fake, agent } = await setUpMac("machine-air", "Mac");
-    for (const id of ["typed", "long", "paste", "slash"]) {
+    for (const id of ["typed", "long", "paste", "mixed", "bigpaste", "slash"]) {
       fake.addSession({ sessionId: id, cwd: `/work/${id}`, name: "" });
     }
 
-    // When each sends a first prompt (the hook has already stripped the paste body)
+    // When each sends a first prompt
     await prompt(fake.home, "typed", "Fix the cart\n\n\n\nthen   deploy it");
     await prompt(fake.home, "long", `${"w".repeat(1999)}AB`);
     await prompt(fake.home, "paste", PASTE);
+    await prompt(
+      fake.home,
+      "mixed",
+      'Fix this:\n<pasted_content id="d2">line one\nline two</pasted_content id="d2">\nthen deploy',
+    );
+    await prompt(
+      fake.home,
+      "bigpaste",
+      `<pasted_content id="d3">${"p".repeat(2500)}</pasted_content id="d3"> and more`,
+    );
     await prompt(fake.home, "slash", "/clear");
     await agent.flush();
 
@@ -172,7 +182,11 @@ describe("a session is named by Haiku", () => {
     );
     expect(requests.typed).toBe("Fix the cart\n\nthen deploy it");
     expect(requests.long).toBe(`${"w".repeat(1999)}A`);
-    expect(requests.paste).toBeUndefined();
+    expect(requests.paste).toBe(
+      `Stack trace: TypeError in checkout cart total ${"x".repeat(900)}`,
+    );
+    expect(requests.mixed).toBe("Fix this:\nline one\nline two\nthen deploy");
+    expect(requests.bigpaste).toBe("p".repeat(2000));
     expect(requests.slash).toBeUndefined();
   });
 
@@ -461,7 +475,7 @@ describe("a session is named by Haiku", () => {
     ]);
   });
 
-  it("makes no request for a desk that went home, and a keyed run stores and logs no pasted text", async () => {
+  it("makes no request for a desk that went home, and a keyed run stores the paste as the request and logs none of it", async () => {
     // Given a keyed agent, and a paste holding a sentinel
     const anthropic = await startFakeAnthropic(() => answer("Cart bug name"));
     const logs: string[] = [];
@@ -484,14 +498,14 @@ describe("a session is named by Haiku", () => {
     await prompt(fake.home, "named", sentinel);
     await agent.flush();
 
-    // Then only the staying session was asked, and the paste is in no stored document or log line
+    // Then only the staying session was asked, and the paste is the stored request and in no log line
     expect(anthropic.requests).toHaveLength(1);
     const db = await getDb();
     const dump: string[] = [];
     for (const { name } of await db.listCollections().toArray()) {
       dump.push(JSON.stringify(await db.collection(name).find({}).toArray()));
     }
-    expect(dump.join("\n")).not.toContain("KEYEDSECRETBODY");
+    expect(dump.join("\n")).toContain("KEYEDSECRETBODY");
     expect(logs.join("\n")).not.toContain("KEYEDSECRETBODY");
   }, 30_000);
 
