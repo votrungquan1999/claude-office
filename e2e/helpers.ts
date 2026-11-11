@@ -1,5 +1,11 @@
 import { readFileSync } from "node:fs";
-import { type BrowserContext, expect, type Page, test } from "@playwright/test";
+import {
+  type BrowserContext,
+  expect,
+  type Locator,
+  type Page,
+  test,
+} from "@playwright/test";
 import { type Collection, type Db, type Document, MongoClient } from "mongodb";
 import {
   E2E_BASE_URL,
@@ -287,4 +293,21 @@ export function seedOnlineMachine(
       { upsert: true },
     );
   });
+}
+
+/**
+ * Whether two on-screen elements share any pixels.
+ * @param a - The first element.
+ * @param b - The second element.
+ * @returns True when their bounding boxes intersect; false when either is not rendered.
+ */
+export async function overlaps(a: Locator, b: Locator): Promise<boolean> {
+  const [boxA, boxB] = await Promise.all([a.boundingBox(), b.boundingBox()]);
+  if (!boxA || !boxB) return false;
+  return (
+    boxA.x < boxB.x + boxB.width &&
+    boxB.x < boxA.x + boxA.width &&
+    boxA.y < boxB.y + boxB.height &&
+    boxB.y < boxA.y + boxA.height
+  );
 }

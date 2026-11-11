@@ -165,7 +165,7 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 
 ### Hiring
 
-- The Hire button sits in the company strip. Its dialog opens on the viewed company's Mac and folder and asks for a Mac, one of that Mac's known folders and a first message. The message is sent verbatim, leading spaces and indentation included; a blank one is refused, and one over 100,000 characters is refused with a 400 ("message too long") that the dialog turns into a plain sentence.
+- The Hire button ("+ Hire") floats over the office canvas's bottom-right corner on every layout: desktop, phone upright and phone sideways. It is hidden while the company drawer is open and, on a phone, while a details sheet is open, since both cover that corner; on desktop the details panel sits top-left, so the button stays. Its dialog opens on the viewed company's Mac and folder and asks for a Mac, one of that Mac's known folders and a first message. The message is sent verbatim, leading spaces and indentation included; a blank one is refused, and one over 100,000 characters is refused with a 400 ("message too long") that the dialog turns into a plain sentence.
 - Only folders the Mac has already shown the office, and that still exist there, are listed; the agent checks existence at start and every heartbeat.
 - A Mac that is offline or has no record counts as offline; one whose agent is older than 0.3.0 or reports no version is greyed with "update this Mac's agent". Neither can be picked, and the server refuses them with a 409.
 - Submitting writes one order to the `commands` collection. The agent polls every second, claims its own Mac's fresh orders by the database clock, erases the message from the order, and opens a Terminal window running `claude --remote-control --session-id <id>` in the folder with the message as its first prompt.
@@ -183,7 +183,7 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 - An order the agent claimed but never finished when it restarts is marked failed `interrupted`; nothing opens late.
 - When a hired employee's Terminal window closes (its process ends, or its end hook fires) the desk stays: idle, marked not running since the closing time, with no running steps, no Remote Control link and no went-home time; it counts as Idle and never enters Went home. The agent restores such desks, with their names, when it restarts; a restart that cannot read the registry leaves a desk as running until the registry can be read, and a live registry entry of another process (the conversation resumed elsewhere) brings a Not running desk back to running, with no old Remote Control link. The details card says "Not running" and shows no Remote Control line or terminal box; the desk itself gains no text.
 - The details card of a waiting or starting hire says "Waiting at the Mac" (with what to do there: trust the folder, then click the window before typing) or "Starting" (with "Starting on the Mac."), shows no Remote Control line, link or terminal box, and outranks "Mac offline"; "Went home" and "Not running" outrank it. The desk itself gains no text.
-- There is no Hire button on a sideways phone, where the strip folds into one button.
+- On a sideways phone, where the strip folds into one button, the Hire button still floats at the bottom-right; the went-home list is capped so it never reaches the button on a narrow screen.
 
 ### Dismissing
 

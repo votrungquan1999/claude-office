@@ -3,6 +3,7 @@ import {
   clearCommands,
   clickEmployee,
   employeeLabelled,
+  overlaps,
   readCommands,
   seedFolders,
   seedSessions,
@@ -78,7 +79,7 @@ test("the dialog lists only Macs that can take orders and folders that still exi
   await page.goto("/");
   await waitForEmployees(page, 1);
 
-  // When the owner opens the hire dialog from the company strip
+  // When the owner opens the hire dialog from the floating Hire button
   await page.getByTestId("hire-button").click();
   const dialog = page.getByTestId("hire-dialog");
 
@@ -292,4 +293,37 @@ test("on a short screen the dialog scrolls, so the Hire button can still be reac
   await expect(submit).toBeInViewport();
   await submit.click();
   await expect.poll(async () => (await readCommands()).length).toBe(1);
+});
+
+test("on desktop the Hire button floats over the office, outside the strip and clear of the status, went-home list and details panel", async ({
+  context,
+  page,
+}) => {
+  // Given the owner is on the office
+  await signInAsOwner(context);
+  await page.goto("/");
+  await waitForEmployees(page, 1);
+
+  // Then the Hire button is a labelled, large-enough button that is not in the company strip
+  const hire = page.getByTestId("hire-button");
+  await expect(hire).toBeVisible();
+  await expect(hire).toHaveText(/Hire/);
+  await expect(
+    page.getByTestId("company-strip").getByTestId("hire-button"),
+  ).toHaveCount(0);
+  const box = await hire.boundingBox();
+  expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+  expect(box?.width ?? 0).toBeGreaterThanOrEqual(44);
+
+  // And it covers neither the connection status nor the went-home list
+  expect(await overlaps(hire, page.getByTestId("last-updated"))).toBe(false);
+  expect(await overlaps(hire, page.getByTestId("went-home-list"))).toBe(false);
+
+  // When an employee's details panel is open, the button is still visible and clear of it
+  await clickEmployee(page, await employeeLabelled(page, "Existing desk"));
+  await expect(page.getByTestId("details-panel")).toBeVisible();
+  await expect(hire).toBeVisible();
+  expect(await overlaps(hire, page.getByTestId("details-panel"))).toBe(false);
+  await hire.click();
+  await expect(page.getByTestId("hire-dialog")).toBeVisible();
 });

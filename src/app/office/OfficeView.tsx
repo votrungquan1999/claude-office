@@ -487,8 +487,9 @@ export function OfficeView() {
       type="button"
       data-testid="hire-button"
       onClick={() => setHireOpen(true)}
-      className="h-40 shrink-0 border-2 border-border bg-btn-bg px-10 text-sm hover:bg-btn-hover"
+      className="absolute right-2 bottom-2 z-30 flex min-h-[44px] min-w-[44px] items-center gap-6 border-2 border-border bg-btn-bg px-12 text-sm font-bold hover:bg-btn-hover"
     >
+      <span aria-hidden="true">+</span>
       Hire
     </button>
   );
@@ -538,12 +539,7 @@ export function OfficeView() {
           onSelect={selectCompany}
           onOpenDrawer={openDrawer}
           drawerButtonRef={drawerButtonRef}
-          trailing={
-            <>
-              {tagFilter}
-              {hireButton}
-            </>
-          }
+          trailing={tagFilter}
         />
       )}
       <div
@@ -616,6 +612,8 @@ export function OfficeView() {
             extra={sideways ? tagFilter : undefined}
           />
         )}
+        {/* Hidden under the phone's bottom sheet and the drawer, which cover its corner. */}
+        {!drawerOpen && !(isMobile && selectedSession) && hireButton}
         {hireOpen && (
           <HireDialog
             macs={hireMacs}

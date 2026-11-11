@@ -5,6 +5,7 @@ import { E2E_DB, E2E_MONGO_URI_FILE } from "./constants";
 import {
   employeeLabelled,
   keepOneCompany,
+  overlaps,
   seedOnlineMachine,
   signInAsOwner,
   waitForEmployees,
@@ -218,6 +219,55 @@ test.describe("the office on a phone", () => {
 
     // Then its sheet fits the screen and shows the button
     await expectSheetFits(page);
+  });
+
+  test("the Hire button floats over the canvas upright, outside the strip and clear of the status and went-home list, and opens the dialog", async ({
+    page,
+  }) => {
+    // When the owner opens the office upright
+    await openOffice(page);
+
+    // Then the Hire button is visible, at least 44px tall, and not in the strip
+    const hire = page.getByTestId("hire-button");
+    await expect(hire).toBeVisible();
+    expect((await hire.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+    await expect(
+      page.getByTestId("company-strip").getByTestId("hire-button"),
+    ).toHaveCount(0);
+
+    // And it overlaps neither the connection status nor the went-home list
+    expect(await overlaps(hire, page.getByTestId("last-updated"))).toBe(false);
+    expect(await overlaps(hire, page.getByTestId("went-home-list"))).toBe(
+      false,
+    );
+
+    // When the owner taps it
+    await hire.tap();
+
+    // Then the hire dialog opens
+    await expect(page.getByTestId("hire-dialog")).toBeVisible();
+  });
+
+  test("the Hire button steps aside while the details sheet or the company drawer is open", async ({
+    page,
+  }) => {
+    // Given the office upright with the Hire button showing
+    await openOffice(page);
+    const hire = page.getByTestId("hire-button");
+    await expect(hire).toBeVisible();
+
+    // When the company drawer opens, the button is hidden so it does not cover the sheet
+    await page.getByTestId("open-drawer").tap();
+    const drawer = page.getByRole("dialog", { name: "All companies" });
+    await expect(drawer).toBeVisible();
+    await expect(hire).toBeHidden();
+
+    // When it closes and a details sheet opens, the button stays hidden
+    await drawer.getByRole("button", { name: /close/i }).tap();
+    await expect(hire).toBeVisible();
+    await page.getByTestId("agent-card").filter({ hasText: "one:" }).tap();
+    await expect(page.getByTestId("details-panel")).toBeVisible();
+    await expect(hire).toBeHidden();
   });
 
   test("the Remote Control link on the phone has no target, so iOS can open the Claude app, and keeps the same address", async ({
@@ -533,8 +583,15 @@ test.describe("the office on a sideways phone", () => {
       Math.abs(heights.canvas - (heights.screen - heights.bar)),
     ).toBeLessThanOrEqual(2);
     expect(await zoomOf(page)).toBeGreaterThanOrEqual(2);
-    // And the folded strip has no Hire button
-    await expect(page.getByTestId("hire-button")).toHaveCount(0);
+    // And the Hire button floats over the canvas, clear of the compact button, status and went-home list
+    const hire = page.getByTestId("hire-button");
+    await expect(hire).toBeVisible();
+    expect((await hire.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+    expect(await overlaps(hire, compact)).toBe(false);
+    expect(await overlaps(hire, page.getByTestId("last-updated"))).toBe(false);
+    expect(await overlaps(hire, page.getByTestId("went-home-list"))).toBe(
+      false,
+    );
 
     // When the owner taps the button
     await compact.tap();

@@ -51,7 +51,7 @@ export function WentHomeList({
   return (
     <section
       data-testid="went-home-list"
-      className="absolute bottom-2 left-2 z-10 max-h-48 max-w-xs overflow-y-auto border-2 border-border bg-bg p-2 text-sm"
+      className="absolute bottom-2 left-2 z-10 max-h-48 max-w-[min(20rem,calc(100%-6.5rem))] overflow-y-auto border-2 border-border bg-bg p-2 text-sm"
     >
       {folded ? (
         <details>
