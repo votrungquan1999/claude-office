@@ -5,6 +5,7 @@ import type { FolderDto } from "@/shared/folders";
 import { type SessionDto, sessionKey } from "@/shared/session";
 import { DismissControl } from "./DismissControl";
 import { formatElapsed } from "./elapsed";
+import { RequestPopup } from "./RequestPopup";
 import { StepsList } from "./StepsList";
 import { useNow } from "./useNow";
 import { WakeControl } from "./WakeControl";
@@ -293,9 +294,14 @@ function Card({
         </button>
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-2 p-3 [@media(max-height:500px)]:flex-none [@media(max-height:500px)]:gap-1 [@media(max-height:500px)]:p-2">
-        <h2 className="line-clamp-2 shrink-0 text-lg leading-[1.15] font-bold break-words [@media(max-height:500px)]:line-clamp-1">
-          {session.deskName ?? folderName(session.cwd)}
-        </h2>
+        <div className="flex shrink-0 items-start gap-8">
+          <h2 className="line-clamp-2 min-w-0 flex-1 text-lg leading-[1.15] font-bold break-words [@media(max-height:500px)]:line-clamp-1">
+            {session.deskName ?? folderName(session.cwd)}
+          </h2>
+          {session.request && (
+            <RequestPopup key={sessionKey(session)} request={session.request} />
+          )}
+        </div>
         {box}
         {session.currentTodo && (
           <p data-testid="current-todo" className="shrink-0 text-xs">

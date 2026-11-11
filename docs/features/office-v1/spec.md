@@ -1,8 +1,8 @@
-# Claude Office (version 0.3.0)
+# Claude Office (version 0.3.1)
 
 A pixel-art office web app that shows every interactive Claude Code session on every set-up Mac of the owner, viewable from a Mac browser or a phone, and lets the owner hire a new employee on an online Mac. Public repo `votrungquan1999/claude-office`, branch `main`, MIT licence.
 
-This file is the living spec for the whole app (version 0.3.0); its folder is named `office-v1`.
+This file is the living spec for the whole app (version 0.3.1); its folder is named `office-v1`.
 
 Design background lives in `docs/brainstorm/`. Where it disagrees with this file, this file wins.
 
@@ -119,18 +119,24 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 
 ### Desk name
 
-- The desk shows, in order: the AI-Kanban card summary, the card title, a Haiku name for a paste-only first message, the first real user message cut to 60 characters, the session's own name. When the first message is only a paste, the "Pasted text" placeholder goes after the session's own name, so the owner's `/rename` beats it.
+- The desk shows, in order: the AI-Kanban card summary, the card title, a short task name written by Haiku from the first message (only when the owner set an Anthropic key), the first real user message cut to 60 characters, the session's own name. When the first message is only a paste, the "Pasted text" placeholder goes after the session's own name, so the owner's `/rename` beats it.
 - Slash commands, `!` bash-mode input and interrupt notices are not used as the first message.
 - A message that starts with a `<tag …>…</tag>` block (any tag name) has that block removed, repeatedly, and the rest is used; if nothing is left the message is skipped and the next one is tried.
 - A card created, renamed or removed later updates the desk; a name given with `/rename` later is picked up.
 
-### The paste tag and Haiku desk names
+### The paste tag and Haiku task names
 
-- The paste tag (`<pasted_content …>`) is never shown on a desk, wherever it sits in the message. Typed words around a paste name the desk. A message that is only a paste shows "Pasted text". The hook strips paste blocks before it cuts the prompt to 500 characters, so typed words after a long paste are kept.
-- When the first message is only a paste and the owner set an Anthropic key in the agent's config, the agent asks Haiku (`claude-haiku-5-5`, plain `fetch`, no SDK) for a short name (at most 6 words) from the first 500 characters of the paste.
-- One call per session: the answer or a final failure is cached in `~/.claude-office/pasted-names.json` (mode 0600, newest 500 kept), so a restart does not ask again. No call when there is no key, when typed words or a card name already cover the desk, when the first message is held, or when the session already went home.
+- The paste tag (`<pasted_content …>`) is never shown on a desk, wherever it sits in the message. Typed words around a paste name the desk. A message that is only a paste shows "Pasted text". The hook strips paste blocks before it cuts the prompt to 2,000 characters, so typed words after a long paste are kept.
+- When the owner set an Anthropic key in the agent's config, every session is named: the agent asks Haiku (`claude-haiku-5-5`, plain `fetch`, no SDK) for a short task title (at most 6 words, a title and not a sentence, in the language of the message, no closing punctuation) from the first 1,000 characters of the first real user message, or of the first paste when the message is only a paste. A hired employee is named from its hire message the same way, and sessions already running when the agent starts are named too.
+- One call per session: the answer or a final failure is cached in `~/.claude-office/task-names.json` (mode 0600, newest 500 kept), so a restart does not ask again; the old `pasted-names.json` is still read so earlier paste names survive. No call when there is no key, when a card name already covers the desk, when the first message is held, or when the session already went home. Without a key a desk is named as before.
 - A network error, 5xx or 429 is retried once after 30 s; other 4xx, a refusal and an empty answer are final and cached as "Pasted text". A 401 or 403 (bad key) is not cached, so a corrected key and an agent restart name the session.
-- The call never delays the agent: the hook listener opens before any pending call finishes. The key, headers and pasted text are never logged.
+- The call never delays the agent: the hook listener opens before any pending call finishes. The key, headers and message text are never logged.
+
+### The original request
+
+- The first real user message (the one the desk name uses; commands, `!` input and interrupt notices excluded) is stored on the session row as `request`, up to 2,000 characters with its line breaks, and sent to the browser. A message that is only a paste has no request, and paste blocks are never part of it.
+- The details card shows an info button (label "Show the original request") next to the name; it opens a popup with the full request, scrollable, closed by Escape, the × button or a click outside. A session without a request has no button. The desk itself gains no text or button.
+- The hover tooltip of an employee shows the full short name wrapped between words (up to three lines) instead of cut at one line.
 
 ### Steps
 
@@ -242,7 +248,7 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 ### Repo front page
 
 - A visitor to the GitHub repo sees a centred title and description, badges (checks, licence, Node 24+, macOS agent), a walking-office GIF, desktop, phone and details-card screenshots, a features list, a quick start, how it works, what never leaves the Mac, an FAQ, requirements, deploy and Mac setup steps, and a link to CONTRIBUTING.
-- The public version is 0.3.0 in `package.json` and in all public text; there is no release.
+- The public version is 0.3.1 in `package.json` and in all public text; there is no release.
 - A GitHub Actions workflow runs lint, type-check and the unit tests on pushes to `main` and on pull requests (not for Markdown-only changes); it does not run the end-to-end tests. Bug reports use an issue form.
 - `npm run capture` rebuilds the README images (including a 1280x640 social preview) from a local Playwright run of a seeded office.
 - A unit test checks the image sizes, README links and anchors, the workflow and issue-form YAML, and the version.
@@ -251,8 +257,8 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 
 - The text of a shell command never leaves the Mac: the hook keeps only an allowlist of `tool_input` keys, and the agent's schema drops anything else again.
 - Tool output, error text and notification text are never stored.
-- The end of the assistant's last answer and the first part of a paste-only message reach only the local agent; they are never stored or published. The one exception is the optional Haiku call, which sends up to 500 characters of a paste-only first message to Anthropic and only when the owner set a key.
-- Free text that is stored: the first message (60 characters), the Haiku desk name, Bash and Agent descriptions, search patterns, web queries and domains, file names, the session's name and folder paths.
+- The end of the assistant's last answer and the first part of a paste-only message reach only the local agent; they are never stored or published. The one exception is the optional Haiku call, which, only when the owner set a key, sends the first 1,000 characters of every session's first message (of the paste for a paste-only message) to Anthropic to write the task name.
+- Free text that is stored: the first message (60 characters), the original request (up to 2,000 characters, kept on the session row and removed with it when the row expires), the Haiku task name, Bash and Agent descriptions, search patterns, web queries and domains, file names, the session's name and folder paths.
 - The folder of each step (`file_dir`) stays on the Mac; only each repo tag's name, key and parent folder name are stored and sent.
 - The agent's config, address and desk-name cache files are created readable only by the user.
 - The first message of a hire passes through the database: the agent erases it from the order when it claims the order, and an order no Mac claims is deleted with its message after about 10 minutes. On the Mac it lives in a file readable only by the user, which the window's script deletes as soon as it has read it (and which is deleted too if the window could not open, on dismiss, or at the next agent start).
@@ -281,7 +287,7 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 
 - The owner clones the repo and tells Claude to follow `SETUP.md`.
 - It checks Node 24+, runs `npm install`, runs `npm run setup` (connect, hooks, LaunchAgent) and gives checks for each step.
-- Optional: an `anthropicApiKey` in `~/.claude-office/config.json` turns on Haiku desk names for paste-only sessions.
+- Optional: an `anthropicApiKey` in `~/.claude-office/config.json` turns on Haiku task names for every session.
 - Removal is by hand and documented in `SETUP.md`; there is no uninstall command.
 - Macs only; Windows is out of scope.
 
@@ -313,7 +319,7 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 - **Same-named repo tags show `parent/name`:** chosen over a cryptic key prefix; the parent folder's name reveals nothing new.
 - **A bad Haiku key is not cached:** fixing a mistyped key and restarting names sessions that failed before.
 - **Sideways phone sheet scrolls as a whole:** the steps would otherwise shrink to nothing behind "More steps".
-- **Version 0.3.0, no release:** a larger version number would overstate how finished the app is.
+- **Version 0.3.1, no release:** a larger version number would overstate how finished the app is.
 - **Mutation survivors:** survivors get tests unless they change no visible behavior.
 - **Hook install stays in this repo;** moving it to AI-rules is later work.
 
@@ -327,7 +333,7 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 - Phones narrower than about 544 CSS px at 2x (360 px at 3x) see the office at zoom 1.
 - Folder records ride on every changes answer, so many throwaway folders make the answer grow.
 - The tag key is a hash of a guessable path; it hides nothing the start folders do not already show.
-- A desk-name request that failed for good (not a bad key) keeps "Pasted text" and is not asked again.
+- A task-name request that failed for good (not a bad key) keeps the first-message name ("Pasted text" for a paste-only one) and is not asked again.
 - The art's original source is not stated by the Pixel Agents repo it was copied from.
 - The first GitHub Actions run, and with it the checks badge, is unproven until the next push.
 - Wake is offered on a dismissed hire that never started; it fails "conversation not found".
@@ -360,7 +366,7 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 - `src/app/api/office/changes`, `src/app/api/office/steps`, `src/app/api/office/folders/company-mode`, `src/app/api/office/hire`, `src/app/api/office/wake`, `src/app/api/office/dismiss`, `src/app/api/office/commands/[id]`, `src/app/api/connect/`: office and connect APIs.
 - `src/shared/`: commands, session, session-state, hook-event, step-text, desk-name, asks, folders, companies, overview, tag-labels, tag-filter and connect schemas and rules.
 - `hooks/claude-office-hook.mjs`: the hook.
-- `agent/`: `session-state.ts`, `tracker.ts`, `steps.ts`, `writer.ts`, `reconcile.ts`, `transcript.ts`, `folders.ts`, `trust.ts`, `repo-resolver.ts`, `paste-namer.ts`, `commands.ts`, `terminal-launch.ts`, `kept.ts`, `config.ts`, `heartbeat.ts`, `write-watchdog.ts`, `kanban-watch.ts`, `start-agent.ts`, `main.ts`.
+- `agent/`: `session-state.ts`, `tracker.ts`, `steps.ts`, `writer.ts`, `reconcile.ts`, `transcript.ts`, `folders.ts`, `trust.ts`, `repo-resolver.ts`, `task-namer.ts`, `commands.ts`, `terminal-launch.ts`, `kept.ts`, `config.ts`, `heartbeat.ts`, `write-watchdog.ts`, `kanban-watch.ts`, `start-agent.ts`, `main.ts`.
 - `agent/orders.ts` (per-kind order schemas), `agent/registry.ts` (print-run and `sdk-` hiding rule).
 - `src/lib/insert-order.ts`, `src/app/office/hire.ts`, `wake.ts`, `dismiss.ts`, `post-order.ts`, `order-outcome.ts`: order creation and outcome on the web side; `src/db/indexes.ts`: the orders TTL index.
 - `agent/setup/`: connect, hook install, launchd install.

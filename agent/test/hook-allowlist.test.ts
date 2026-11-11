@@ -24,7 +24,7 @@ describe("the hook's field allowlist", () => {
     const submit = {
       hook_event_name: "UserPromptSubmit",
       session_id: "s1",
-      prompt: "p".repeat(600),
+      prompt: "p".repeat(2500),
     };
     const fetchPage = {
       hook_event_name: "PreToolUse",
@@ -59,7 +59,7 @@ describe("the hook's field allowlist", () => {
       { file_name: "notes.md", file_dir: "/Users/q/secret-dir" },
       undefined,
     ]);
-    expect(reduced[3].prompt).toHaveLength(500);
+    expect(reduced[3].prompt).toHaveLength(2000);
     expect(reduced[0]).toMatchObject({
       hookTs: 1000,
       bridgeSessionId: "session_x",
@@ -134,7 +134,7 @@ describe("the hook's field allowlist", () => {
     });
   });
 
-  it("cuts a pasted block out of the prompt before the 500-character cut, so typed words survive, and forwards the paste's head separately", () => {
+  it("cuts a pasted block out of the prompt before the 2,000-character cut, so typed words survive, and forwards the paste's head separately", () => {
     // Given a 2000-character paste in the real tag shape, then typed words
     const paste = `\n\n<pasted_content id="d296">${"P".repeat(2000)}</pasted_content id="d296">`;
     const payload = {
@@ -147,11 +147,11 @@ describe("the hook's field allowlist", () => {
     const reduced = reduceEvent(payload, 1000, {});
     const parsed = hookEventSchema.parse(reduced);
 
-    // Then the prompt keeps the typed words and none of the paste, and the head is the first 500 paste characters
+    // Then the prompt keeps the typed words and none of the paste, and the head is the first 1,000 paste characters
     expect(parsed.prompt).toContain("fix the login redirect");
     expect(parsed.prompt).not.toContain("PPPP");
     expect(parsed.prompt).toContain("<pasted_content/>");
-    expect(parsed.paste_head).toBe("P".repeat(500));
+    expect(parsed.paste_head).toBe("P".repeat(1000));
   });
 
   it("keeps a paste with an inner paste tag of another id as one paste and takes the head from the first non-blank one", () => {

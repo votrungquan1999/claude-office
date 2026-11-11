@@ -17,14 +17,17 @@ const SYSTEM_TAG =
   /^<(command-[\w-]+|local-command-[\w-]+|system-reminder|ide[_-][\w-]+|bash-(input|stdout|stderr)|task-notification)[\s>]/;
 const INTERRUPT = /^\[Request interrupted by user/;
 
-/** How much of a paste is kept to name a paste-only desk. */
-export const PASTE_HEAD_MAX = 500;
+/** How much of the first message is kept as the session's original request. */
+export const REQUEST_MAX = 2000;
+
+/** How much of the first message is sent to name the desk, and how much of a paste is kept for it. */
+export const NAME_INPUT_MAX = 1000;
 
 export interface DeskNameInputs {
   cardSummary?: string;
   cardTitle?: string;
-  /** A name written from a paste-only first message; beats the placeholder and /rename, never a card. */
-  pasteName?: string;
+  /** A short task name written from the first message; beats the first message, the placeholder and /rename, never a card. */
+  taskName?: string;
   firstMessage?: string;
   registryName?: string;
 }
@@ -32,7 +35,7 @@ export interface DeskNameInputs {
 /**
  * The name shown on a desk.
  * @param inputs - Every source the name can come from; blank ones count as absent.
- * @returns The first available of card summary, card title, paste name, first message, registry name; the registry name goes before the "Pasted text" placeholder.
+ * @returns The first available of card summary, card title, task name, first message, registry name; the registry name goes before the "Pasted text" placeholder.
  */
 export function resolveDeskName(inputs: DeskNameInputs): string | undefined {
   // The owner's /rename is a better name than the paste placeholder.
@@ -40,7 +43,7 @@ export function resolveDeskName(inputs: DeskNameInputs): string | undefined {
   const candidates = [
     inputs.cardSummary,
     inputs.cardTitle,
-    inputs.pasteName,
+    inputs.taskName,
     ...(placeholder
       ? [inputs.registryName, inputs.firstMessage]
       : [inputs.firstMessage, inputs.registryName]),
@@ -61,13 +64,12 @@ export function isPasteOnly(prompt: string): boolean {
 }
 
 /**
- * A prompt turned into a desk name.
+ * The typed text of a prompt, minus paste blocks and leading injected blocks.
  * @param prompt - What the owner typed.
- * @returns The prompt, minus paste blocks and leading injected blocks, cut short on one line; "Pasted text" when it was only a paste; undefined when it is a command or nothing is left.
+ * @returns The text with its line breaks; undefined when it is a command, shell input, an injected block, an interrupt notice or empty.
  */
-export function firstRealMessage(prompt: string): string | undefined {
-  if (isPasteOnly(prompt)) return PASTED_TEXT_NAME;
-  let text = prompt.replace(PASTE_BLOCK, " ").replace(/\s+/g, " ").trim();
+function typedText(prompt: string): string | undefined {
+  let text = prompt.replace(PASTE_BLOCK, " ").trim();
   while (LEADING_BLOCK.test(text)) text = text.replace(LEADING_BLOCK, "");
   // Commands, bash-mode shell input ("!"), injected blocks and interrupt notices are not a description of the task.
   if (
@@ -79,7 +81,33 @@ export function firstRealMessage(prompt: string): string | undefined {
   ) {
     return undefined;
   }
-  return cutName(text);
+  return text;
+}
+
+/**
+ * A prompt turned into a desk name.
+ * @param prompt - What the owner typed.
+ * @returns The prompt, minus paste blocks and leading injected blocks, cut short on one line; "Pasted text" when it was only a paste; undefined when it is a command or nothing is left.
+ */
+export function firstRealMessage(prompt: string): string | undefined {
+  if (isPasteOnly(prompt)) return PASTED_TEXT_NAME;
+  const text = typedText(prompt);
+  return text === undefined ? undefined : cutName(text.replace(/\s+/g, " "));
+}
+
+/**
+ * The original request a first message holds, for the details card.
+ * @param prompt - The whole first message.
+ * @returns The typed text with its line breaks and no paste blocks, cut to 2,000 characters; undefined when it is a command, a paste with no typed words, or nothing is left.
+ */
+export function requestOf(prompt: string): string | undefined {
+  const text = isPasteOnly(prompt) ? undefined : typedText(prompt);
+  if (!text) return undefined;
+  const tidy = text
+    .replace(/[^\S\n]+/g, " ")
+    .replace(/ ?\n ?/g, "\n")
+    .replace(/\n{3,}/g, "\n\n");
+  return Array.from(tidy).slice(0, REQUEST_MAX).join("");
 }
 
 /**
@@ -96,13 +124,13 @@ export function cutName(text: string): string {
 /**
  * The start of the first paste block's body, which names a paste-only desk.
  * @param prompt - The whole first message.
- * @returns The first 500 characters of the first non-blank paste, or undefined when the message is not paste-only or every paste is blank.
+ * @returns The first 1,000 characters of the first non-blank paste, or undefined when the message is not paste-only or every paste is blank.
  */
 export function pasteHeadOf(prompt: string): string | undefined {
   if (!isPasteOnly(prompt)) return undefined;
   for (const match of prompt.matchAll(PASTE_BLOCK)) {
     const body = match[2]?.trim();
-    if (body) return body.slice(0, PASTE_HEAD_MAX);
+    if (body) return body.slice(0, NAME_INPUT_MAX);
   }
   return undefined;
 }

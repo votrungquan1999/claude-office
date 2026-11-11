@@ -880,3 +880,51 @@ describe("the details panel", () => {
     });
   });
 });
+
+describe("the original request", () => {
+  afterEach(cleanup);
+
+  it("has no info button when the session has no request", () => {
+    open(session({ deskName: "Fix cart" }));
+    expect(
+      screen.queryByRole("button", { name: "Show the original request" }),
+    ).toBeNull();
+  });
+
+  it("opens the full request in a popup from the info button and closes it with Escape, the close button or a click outside", () => {
+    // Given a session with a multi-line request
+    const request = "Check the latest message\n\non the real conversation";
+    open(session({ deskName: "Check latest message", request }));
+    const icon = screen.getByRole("button", {
+      name: "Show the original request",
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    // When the icon is clicked
+    fireEvent.click(icon);
+
+    // Then the popup shows the whole request
+    const dialog = screen.getByRole("dialog", { name: "Original request" });
+    expect(dialog.textContent).toContain(request);
+    expect(icon.getAttribute("aria-expanded")).toBe("true");
+
+    // And Escape, the close button and the backdrop each close it
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(icon);
+    fireEvent.click(screen.getByRole("button", { name: "Close request" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(icon);
+    fireEvent.click(screen.getByTestId("request-backdrop"));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("keeps the popup open when the text inside it is clicked", () => {
+    open(session({ request: "Do the thing" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show the original request" }),
+    );
+    fireEvent.click(screen.getByText("Do the thing"));
+    expect(screen.getByRole("dialog")).toBeTruthy();
+  });
+});

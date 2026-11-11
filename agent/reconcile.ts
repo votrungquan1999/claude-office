@@ -163,6 +163,7 @@ export async function seedRunningSessions(options: SeedOptions): Promise<void> {
           ?.state,
         firstMessage: transcript.firstMessage,
         pasteHead: transcript.pasteHead,
+        request: transcript.request,
         hadPrompt: transcript.hadPrompt,
         asked: transcript.asked,
         stepDirs: transcript.stepDirs,

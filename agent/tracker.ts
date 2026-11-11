@@ -5,6 +5,8 @@ import { ObjectId } from "mongodb";
 import {
   firstRealMessage,
   isPasteOnly,
+  pasteHeadOf,
+  requestOf,
   resolveDeskName,
 } from "../src/shared/desk-name";
 import { type HookEvent, hookEventSchema } from "../src/shared/hook-events";
@@ -12,7 +14,6 @@ import type { SessionState } from "../src/shared/session-state";
 import type { FolderRecorder } from "./folders";
 import type { KanbanCard } from "./kanban-watch";
 import type { StoredKept, StoredSession } from "./kept";
-import type { PasteNamer } from "./paste-namer";
 import {
   findRegistryEntry,
   isRegistryReadable,
@@ -39,6 +40,7 @@ import {
   reduceSteps,
   type StepMemory,
 } from "./steps";
+import type { TaskNamer } from "./task-namer";
 import { readTranscriptSeed } from "./transcript";
 import type { SessionWriter, StepDoc } from "./writer";
 
@@ -60,6 +62,8 @@ export interface SeedSession {
   firstMessage?: string;
   /** The start of the paste when the first message was only a paste. */
   pasteHead?: string;
+  /** The original request: the typed first message, up to 2,000 characters. */
+  request?: string;
   hadPrompt: boolean;
   bridgeSessionId?: string;
   /** The newest turn, already ended, asked the owner something. */
@@ -92,8 +96,8 @@ export interface TrackerOptions {
   folders?: FolderRecorder;
   /** Finds the repo of a step folder; absent in tests that do not need tags. */
   repos?: RepoResolver;
-  /** Names paste-only desks; absent when the owner set no Anthropic key. */
-  pasteNamer?: PasteNamer;
+  /** Writes short task names; absent when the owner set no Anthropic key. */
+  taskNamer?: TaskNamer;
   /** Told when a kept window's mark moves to another conversation. */
   onKeptMoved?: (fromId: string, toId: string) => void;
 }
@@ -112,8 +116,10 @@ interface Tracked {
   firstMessage?: string;
   /** The start of the paste when the first message was only a paste; held in memory only, until Haiku has answered. */
   pasteHead?: string;
-  /** The name Haiku (or the Mac's cache) gave a paste-only session. */
-  pasteName?: string;
+  /** The original request: the typed first message, up to 2,000 characters. */
+  request?: string;
+  /** The short task name Haiku (or the Mac's cache) gave the session. */
+  taskName?: string;
   /** Undefined while unknown: a conversation resumed from an earlier agent run keeps the stored value. */
   hadPrompt?: boolean;
   registryName?: string;
@@ -265,6 +271,7 @@ export class SessionTracker {
       tracked.registryName = seed.registryName;
       tracked.firstMessage = seed.firstMessage;
       tracked.pasteHead = seed.pasteHead;
+      tracked.request = seed.request;
       tracked.hadPrompt = seed.hadPrompt;
       tracked.bridgeSessionId = seed.bridgeSessionId;
       tracked.kept = seed.kept;
@@ -366,6 +373,8 @@ export class SessionTracker {
     // An unknown trust is shown as waiting: a window stopped at the question is the one thing the owner must act on.
     tracked.launchWait = hire.trusted === true ? "starting" : "waiting";
     tracked.firstMessage = firstRealMessage(hire.message);
+    tracked.request = requestOf(hire.message);
+    tracked.pasteHead = pasteHeadOf(hire.message);
     this.publish(hire.sessionId, tracked);
   }
 
@@ -564,6 +573,7 @@ export class SessionTracker {
     const transcript = readTranscriptSeed(this.options.home, sessionId);
     tracked.firstMessage = transcript.firstMessage;
     tracked.pasteHead = transcript.pasteHead;
+    tracked.request = transcript.request;
   }
 
   /**
@@ -697,7 +707,7 @@ export class SessionTracker {
 
   stop(): void {
     this.stopped = true;
-    this.options.pasteNamer?.stop();
+    this.options.taskNamer?.stop();
     this.pending.clear();
     this.naming.clear();
     for (const tracked of this.sessions.values()) clearTimeout(tracked.timer);
@@ -796,6 +806,7 @@ export class SessionTracker {
     if (event.hook_event_name === "UserPromptSubmit") tracked.hadPrompt = true;
     if (event.hook_event_name === "UserPromptSubmit" && !tracked.firstMessage) {
       tracked.firstMessage = firstRealMessage(event.prompt ?? "");
+      tracked.request = requestOf(event.prompt ?? "");
       // The hook forwards the head of any paste; only a paste-only message is named from it.
       tracked.pasteHead = isPasteOnly(event.prompt ?? "")
         ? event.paste_head
@@ -889,38 +900,40 @@ export class SessionTracker {
   }
 
   /**
-   * The Haiku name for a paste-only session shown on the office, asking for it once when it is not known yet.
+   * The Haiku task name for a session shown on the office, asking for it once when it is not known yet.
    * @param sessionId - The session.
-   * @param tracked - Its state; only an interactive session with a paste head is asked about.
+   * @param tracked - Its state; only a session with a request is asked about.
    * @param card - Its AI-Kanban card; a card name covers the desk, so no call is made.
    * @returns The known name, if any.
    */
-  private pasteNameFor(
+  private taskNameFor(
     sessionId: string,
     tracked: Tracked,
     card: KanbanCard | undefined,
   ): string | undefined {
-    const { pasteNamer } = this.options;
-    if (tracked.pasteName) return tracked.pasteName;
-    if (!pasteNamer || !tracked.pasteHead) return undefined;
+    const { taskNamer } = this.options;
+    if (tracked.taskName) return tracked.taskName;
+    // A paste-only message has no request; its paste head names the desk instead.
+    const input = tracked.request ?? tracked.pasteHead;
+    if (!taskNamer || !input) return undefined;
     if (card?.summary?.trim() || card?.title?.trim()) return undefined;
-    const known = pasteNamer.nameOf(sessionId);
+    const known = taskNamer.nameOf(sessionId);
     // An answer, even a cached final failure, means the paste text is never needed again.
-    if (pasteNamer.hasAnswer(sessionId)) tracked.pasteHead = undefined;
+    if (taskNamer.hasAnswer(sessionId)) tracked.pasteHead = undefined;
     if (known) {
-      tracked.pasteName = known;
+      tracked.taskName = known;
       return known;
     }
     // A desk that went home is not worth a call.
-    if (tracked.endedAt !== undefined || !tracked.pasteHead) return undefined;
-    const task = pasteNamer.ask(sessionId, tracked.pasteHead);
+    if (tracked.endedAt !== undefined) return undefined;
+    const task = taskNamer.ask(sessionId, input);
     if (!task) return undefined;
     const tracking: Promise<void> = task
       .then(() => {
         if (this.stopped) return;
         // The paste text is no longer needed once the call returned.
-        tracked.pasteName = pasteNamer.nameOf(sessionId);
         tracked.pasteHead = undefined;
+        tracked.taskName = taskNamer.nameOf(sessionId);
         this.publish(sessionId, tracked);
       })
       .finally(() => this.naming.delete(tracking));
@@ -962,11 +975,11 @@ export class SessionTracker {
     if (!tracked.cwd || tracked.startedAt === undefined) return;
     const { machineId, machineName, writer } = this.options;
     const card = this.cards.get(sessionId);
-    const pasteName = this.pasteNameFor(sessionId, tracked, card);
+    const taskName = this.taskNameFor(sessionId, tracked, card);
     const deskName = resolveDeskName({
       cardSummary: card?.summary,
       cardTitle: card?.title,
-      pasteName,
+      taskName,
       firstMessage: tracked.firstMessage,
       registryName: tracked.registryName ?? tracked.storedDeskName,
     });
@@ -996,6 +1009,7 @@ export class SessionTracker {
         stateSince: new Date(tracked.stateSince ?? this.options.now()),
         startedAt: new Date(tracked.startedAt),
         ...(deskName ? { deskName } : {}),
+        ...(tracked.request ? { request: tracked.request } : {}),
         ...(tracked.bridgeSessionId && !notRunning
           ? { bridgeSessionId: tracked.bridgeSessionId }
           : {}),

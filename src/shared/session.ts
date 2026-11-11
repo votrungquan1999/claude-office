@@ -47,6 +47,8 @@ export const sessionDtoSchema = z.object({
   endedAt: z.string().optional(),
   /** Name on the desk; absent only when nothing is known yet. */
   deskName: z.string().optional(),
+  /** The original request: the typed first message, up to 2,000 characters; absent when the session has none. */
+  request: z.string().optional(),
   /** Remote Control id; present only while Remote Control was connected. */
   bridgeSessionId: z.string().optional(),
   /** The 5 latest-started finished steps, oldest first; omitted for ended sessions. */

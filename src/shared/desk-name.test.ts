@@ -3,6 +3,7 @@ import {
   firstRealMessage,
   isPasteOnly,
   pasteHeadOf,
+  requestOf,
   resolveDeskName,
 } from "./desk-name";
 
@@ -138,5 +139,31 @@ describe("desk name", () => {
       'start <pasted_content id="inner">x</pasted_content id="inner"> end',
     );
     expect(pasteHeadOf(nested)).toContain("end");
+  });
+
+  it("ranks the task name below a card and above the first message, the registry name and the paste placeholder", () => {
+    const base = {
+      taskName: "Task name",
+      firstMessage: "First message",
+      registryName: "Registry name",
+    };
+    expect(resolveDeskName({ ...base, cardTitle: "Card title" })).toBe(
+      "Card title",
+    );
+    expect(resolveDeskName(base)).toBe("Task name");
+    expect(resolveDeskName({ ...base, firstMessage: "Pasted text" })).toBe(
+      "Task name",
+    );
+  });
+
+  it("takes the request from typed words only, keeping line breaks, and gives none for a paste-only message, a command or shell input", () => {
+    expect(requestOf("Fix  the cart\n\n\n\nthen deploy")).toBe(
+      "Fix the cart\n\nthen deploy",
+    );
+    expect(requestOf("<pasted_content/> fix the cart")).toBe("fix the cart");
+    expect(requestOf("<pasted_content/>")).toBeUndefined();
+    expect(requestOf("/clear")).toBeUndefined();
+    expect(requestOf("!ls")).toBeUndefined();
+    expect(Array.from(requestOf("😀".repeat(2100)) ?? "")).toHaveLength(2000);
   });
 });

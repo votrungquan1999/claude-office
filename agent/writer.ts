@@ -30,6 +30,8 @@ export interface SessionDoc {
   endedAt?: Date;
   bridgeSessionId?: string;
   deskName?: string;
+  /** The first real message, up to 2,000 characters. */
+  request?: string;
   runningSteps?: Array<{ text: string; startedAt: Date }>;
   currentTodo?: string | null;
   /** Repos the session worked in; never shrinks. */
@@ -373,6 +375,7 @@ function toUpdate(doc: SessionDoc, steps: StepDoc[]): AnyBulkWriteOperation {
     ...(doc.bridgeSessionId ? [] : ["bridgeSessionId"]),
     // A removed card with no fallback name must not leave its old title on the desk.
     ...(doc.deskName ? [] : ["deskName"]),
+    ...(doc.request ? [] : ["request"]),
     ...(doc.kept ? [] : ["kept"]),
     ...(doc.notRunning ? [] : ["notRunning"]),
     ...(doc.waitingAtMac ? [] : ["waitingAtMac"]),

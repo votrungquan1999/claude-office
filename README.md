@@ -56,9 +56,9 @@ Claude Code hooks -> local agent (on each Mac) -> MongoDB <- web app <- your bro
 
 The first message of a hire passes through the database so the Mac can pick it up. The Mac erases it from the order when it picks the order up, or the database deletes the order with the message after about 10 minutes if no Mac does. The Mac keeps it in a file only you can read, which the window's script deletes as soon as it has read it.
 
-What is stored: the first message (cut to 60 characters), Bash and Agent descriptions, search patterns, web queries and domains, file names, the session's name and folder paths, and the folder name of each repo a session worked in (shown as a tag), each with a short hashed key.
+What is stored: the first message (cut to 60 characters) and the original request (up to 2,000 characters, gone when the session expires), Bash and Agent descriptions, search patterns, web queries and domains, file names, the session's name and folder paths, and the folder name of each repo a session worked in (shown as a tag), each with a short hashed key.
 
-One optional call leaves the Mac. When a session's first message is only a paste, the agent can ask Claude Haiku for a short desk name. It sends only the first part of that pasted message, once per session, straight to Anthropic, and only if you set your own Anthropic API key (`anthropicApiKey` in `~/.claude-office/config.json`, see [SETUP.md](SETUP.md#optional-name-paste-only-desks-with-an-anthropic-key)). At most 500 characters of the paste are sent. Without a key nothing is sent and the desk is named from the paste.
+One optional call leaves the Mac. The agent can ask Claude Haiku for a short task name of each session. It sends only the first part of the first message, once per session, straight to Anthropic, and only if you set your own Anthropic API key (`anthropicApiKey` in `~/.claude-office/config.json`, see [SETUP.md](SETUP.md#optional-name-every-desk-with-an-anthropic-key)). At most 1,000 characters are sent. Without a key nothing is sent and the desk is named from the first message.
 
 ## FAQ
 

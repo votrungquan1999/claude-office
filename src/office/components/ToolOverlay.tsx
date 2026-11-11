@@ -210,7 +210,10 @@ export function ToolOverlay({
                     {activityText}
                   </span>
                   {ch.directoryName && (
-                    <span className="text-2xs leading-none overflow-hidden text-ellipsis block">
+                    <span
+                      data-testid="agent-place"
+                      className="text-2xs leading-tight overflow-hidden block whitespace-normal break-words line-clamp-3"
+                    >
                       {ch.directoryName}
                     </span>
                   )}

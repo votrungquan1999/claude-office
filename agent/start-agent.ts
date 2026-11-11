@@ -19,7 +19,6 @@ import { type FolderDocument, FolderRecorder, refreshFolders } from "./folders";
 import { startHeartbeat } from "./heartbeat";
 import { startKanbanWatch } from "./kanban-watch";
 import { cleanLaunchFiles, KeptDesks } from "./kept";
-import { PasteNamer } from "./paste-namer";
 import { readProcessStart } from "./process-start";
 import {
   isRunning,
@@ -30,6 +29,7 @@ import {
 import { listRegistry } from "./registry";
 import { createRepoResolver } from "./repo-resolver";
 import { startListener } from "./server";
+import { TaskNamer } from "./task-namer";
 import {
   openInTerminal,
   sweepLaunchFiles,
@@ -182,8 +182,8 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
     now,
     writer,
     repos: createRepoResolver(),
-    pasteNamer: options.anthropicApiKey
-      ? new PasteNamer({
+    taskNamer: options.anthropicApiKey
+      ? new TaskNamer({
           home,
           apiKey: options.anthropicApiKey,
           baseUrl: options.anthropicBaseUrl ?? "https://api.anthropic.com",

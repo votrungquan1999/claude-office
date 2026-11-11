@@ -77,19 +77,19 @@ When the owner hires an employee from the office, the agent opens a Terminal win
 
 The agent only reads `~/.claude.json` to warn about untrusted folders; it never writes to it.
 
-## Optional: name paste-only desks with an Anthropic key
+## Optional: name every desk with an Anthropic key
 
-A session whose first message is only pasted text shows "Pasted text" on its desk. To have a short name written from the paste instead, add an Anthropic API key to `~/.claude-office/config.json`, next to the two database fields:
+By default a desk shows the first message cut to 60 characters (or "Pasted text" for a pasted-only message). To have a short task name of at most 6 words written from the first message instead, add an Anthropic API key to `~/.claude-office/config.json`, next to the two database fields:
 
 ```json
 { "mongodbUri": "...", "mongodbDb": "...", "anthropicApiKey": "sk-ant-..." }
 ```
 
-- **What is sent:** at most the first 500 characters of the paste go to Anthropic (model `claude-haiku-5-5`), once per session (one retry if Anthropic is briefly unavailable). Nothing else leaves the Mac, and the key is never logged or stored in the database.
-- **When it is read:** the agent reads the file only when it starts, so restart it after adding the key: `launchctl kickstart -k gui/$(id -u)/dev.quanvo.claude-office.agent`. Paste-only sessions that are already running get their name right after the restart.
-- **A failed request:** a session whose request failed for good (for example a wrong key) keeps "Pasted text" and is not asked again, even after the key is fixed.
-- **Without a key** (or with a blank one) nothing is sent and the desk keeps "Pasted text". Running `npm run setup -- --reconnect` keeps the key.
-- Answers are cached in `~/.claude-office/pasted-names.json`, so a restart does not ask again.
+- **What is sent:** at most the first 1,000 characters of each session's first message (of the paste for a paste-only message) go to Anthropic (model `claude-haiku-5-5`), once per session (one retry if Anthropic is briefly unavailable). Nothing else leaves the Mac, and the key is never logged or stored in the database.
+- **When it is read:** the agent reads the file only when it starts, so restart it after adding the key: `launchctl kickstart -k gui/$(id -u)/dev.quanvo.claude-office.agent`. Sessions that are already running get their name right after the restart.
+- **A failed request:** a session whose request failed for good (for example a wrong key) keeps the first-message name and is not asked again, even after the key is fixed.
+- **Without a key** (or with a blank one) nothing is sent and the desk keeps the first-message name. Running `npm run setup -- --reconnect` keeps the key.
+- Answers are cached in `~/.claude-office/task-names.json`, so a restart does not ask again.
 
 ## Running the web app locally (optional)
 

@@ -10,11 +10,11 @@ import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanName, PasteNamer } from "./paste-namer";
+import { cleanName, TaskNamer } from "./task-namer";
 
 const KEY = "sk-test-never-logged";
 
-describe("the paste namer", () => {
+describe("the task namer", () => {
   let home = "";
   let server: Server | undefined;
   afterEach(() => {
@@ -35,7 +35,7 @@ describe("the paste namer", () => {
     );
     const address = server.address();
     const port = typeof address === "object" && address ? address.port : 0;
-    return new PasteNamer({
+    return new TaskNamer({
       home,
       apiKey: KEY,
       baseUrl: `http://127.0.0.1:${port}`,
@@ -48,6 +48,13 @@ describe("the paste namer", () => {
     expect(cleanName('"Fix the\n  login" bug')).toBe("Fix the login bug");
     expect(Array.from(cleanName("😀".repeat(80)))).toHaveLength(60);
     expect(cleanName(" “” ")).toBe("");
+  });
+
+  it("drops punctuation at the end of a title but keeps it inside", () => {
+    expect(cleanName("Fix the login bug.")).toBe("Fix the login bug");
+    expect(cleanName("Fix (login)")).toBe("Fix (login)");
+    expect(cleanName("Sửa lỗi đăng nhập!?…")).toBe("Sửa lỗi đăng nhập");
+    expect(cleanName("Fix v2.0 login: part 1")).toBe("Fix v2.0 login: part 1");
   });
 
   it("keeps apostrophes inside a name and strips only the quotes around it", () => {
@@ -81,7 +88,7 @@ describe("the paste namer", () => {
     );
     const address = server.address();
     const port = typeof address === "object" && address ? address.port : 0;
-    const namerUnderTest = new PasteNamer({
+    const namerUnderTest = new TaskNamer({
       home,
       apiKey: KEY,
       baseUrl: `http://127.0.0.1:${port}`,
@@ -108,10 +115,10 @@ describe("the paste namer", () => {
     const good = await namer(200, "A name", logs);
     mkdirSync(join(home, ".claude-office"), { recursive: true });
     writeFileSync(
-      join(home, ".claude-office", "pasted-names.json"),
+      join(home, ".claude-office", "task-names.json"),
       "{ not json",
     );
-    const unreachable = new PasteNamer({
+    const unreachable = new TaskNamer({
       home,
       apiKey: KEY,
       baseUrl: "http://127.0.0.1:1",
@@ -126,7 +133,7 @@ describe("the paste namer", () => {
 
     // Then the oldest two were dropped from the saved file, and no log line holds the key
     const saved = JSON.parse(
-      readFileSync(join(home, ".claude-office", "pasted-names.json"), "utf8"),
+      readFileSync(join(home, ".claude-office", "task-names.json"), "utf8"),
     );
     expect(Object.keys(saved)).toHaveLength(500);
     expect(saved).not.toHaveProperty("s0");
@@ -146,7 +153,7 @@ describe("the paste namer", () => {
     await good.ask("ok", "SENTINEL-PASTE-HEAD");
 
     // Then the file is 0600, the failure is remembered, and no log line holds the paste
-    const file = join(home, ".claude-office", "pasted-names.json");
+    const file = join(home, ".claude-office", "task-names.json");
     expect(statSync(file).mode & 0o777).toBe(0o600);
     expect(logs.length).toBeGreaterThan(0);
     expect(logs.join("\n")).not.toContain("SENTINEL-PASTE-HEAD");
@@ -172,7 +179,7 @@ describe("the paste namer", () => {
     const address = server.address();
     const baseUrl = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}`;
     const make = (retryMs: number) =>
-      new PasteNamer({
+      new TaskNamer({
         home,
         apiKey: KEY,
         baseUrl,
@@ -198,7 +205,7 @@ describe("the paste namer", () => {
 
     // Then nothing more was requested, and the only log line is the HTTP 500 before the pause
     expect(hits).toBe(2);
-    expect(logs).toEqual(["paste namer: HTTP 500"]);
+    expect(logs).toEqual(["task namer: HTTP 500"]);
     expect(running.hasAnswer("a")).toBe(false);
     expect(pausing.hasAnswer("b")).toBe(false);
   });

@@ -9,7 +9,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const REQUEST_TIMEOUT_MS = 1000;
-const PROMPT_MAX = 500;
+const PROMPT_MAX = 2000;
+const PASTE_HEAD_MAX = 1000;
 const ANSWER_TAIL_MAX = 1000;
 const HARD_EXIT_MS = 1500;
 
@@ -41,7 +42,9 @@ function stripPastes(prompt) {
   let pasteHead;
   const stripped = prompt.replace(PASTE_BLOCK, (_block, _attributes, body) => {
     // Same unit as the agent schema's max length (UTF-16), so the event is never rejected.
-    pasteHead ??= body.trim() ? body.trim().slice(0, PROMPT_MAX) : undefined;
+    pasteHead ??= body.trim()
+      ? body.trim().slice(0, PASTE_HEAD_MAX)
+      : undefined;
     return "<pasted_content/>";
   });
   return { prompt: stripped, pasteHead };

@@ -10,12 +10,14 @@ import { useMacHarness } from "./mac-harness";
 const MESSAGE = "Fix the login bug\nand $HOME -- stay calm";
 
 describe("hiring an employee from the office", () => {
-  const { setUpMac, officeSessions } = useMacHarness();
+  const { setUpMac, officeSessions, startFakeAnthropic } = useMacHarness();
   const processes = useLiveProcesses();
 
   /** A Mac that can take orders, with an existing folder it has already shown the office. */
-  async function onlineMac() {
-    const mac = await setUpMac("machine-air", "Quan's MacBook Air");
+  async function onlineMac(anthropic?: { baseUrl: string; apiKey: string }) {
+    const mac = await setUpMac("machine-air", "Quan's MacBook Air", {
+      anthropic,
+    });
     const folder = mac.fake.makeFolder("app with 'quote");
     const db = await getDb();
     await db.collection("folders").insertOne({
@@ -26,6 +28,36 @@ describe("hiring an employee from the office", () => {
     });
     return { ...mac, folder };
   }
+
+  it("names a hired employee from its first message and keeps that message as its request", async () => {
+    // Given an online keyed Mac and a fake Anthropic
+    const anthropic = await startFakeAnthropic(() => ({
+      status: 200,
+      body: {
+        stop_reason: "end_turn",
+        content: [{ type: "text", text: "Fix login bug" }],
+      },
+    }));
+    const mac = await onlineMac({
+      baseUrl: anthropic.baseUrl,
+      apiKey: "sk-test-fake-key",
+    });
+
+    // When the owner hires and the agent picks the order up
+    const { response } = await postHire("machine-air", mac.folder, MESSAGE);
+    expect(response.status).toBe(200);
+    await mac.agent.pollCommands();
+    await mac.agent.flush();
+
+    // Then Haiku was asked once with the message and the desk shows its name and the request
+    expect(anthropic.requests).toHaveLength(1);
+    expect(JSON.stringify(anthropic.requests[0].body.messages)).toContain(
+      "Fix the login bug",
+    );
+    const [desk] = await officeSessions();
+    expect(desk.deskName).toBe("Fix login bug");
+    expect(desk.request).toBe(MESSAGE);
+  });
 
   it("opens a Terminal window on the Mac with the message kept out of the script, and the desk appears in that folder once Claude Code starts", async () => {
     // Given an online Mac whose folder exists and which knows the owner's folder

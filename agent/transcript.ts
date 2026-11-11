@@ -9,7 +9,11 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import { asks } from "../src/shared/asks";
-import { firstRealMessage, pasteHeadOf } from "../src/shared/desk-name";
+import {
+  firstRealMessage,
+  pasteHeadOf,
+  requestOf,
+} from "../src/shared/desk-name";
 
 /** Transcripts reach hundreds of MB, so only their two ends are ever read. */
 const HEAD_BYTES = 256 * 1024;
@@ -59,6 +63,8 @@ export interface TranscriptSeed {
   firstMessage?: string;
   /** The start of the paste when the first message was only a paste. */
   pasteHead?: string;
+  /** The original request: the typed first message, up to 2,000 characters. */
+  request?: string;
   /** Whether the owner ever typed something into the session. */
   hadPrompt: boolean;
   /** The folder of the newest record. */
@@ -275,6 +281,7 @@ export function readTranscriptSeed(
       .map((text) => firstRealMessage(text))
       .find((text) => text !== undefined),
     pasteHead: firstPrompt === undefined ? undefined : pasteHeadOf(firstPrompt),
+    request: firstPrompt === undefined ? undefined : requestOf(firstPrompt),
     hadPrompt: tail.flatMap(humanTexts).length + prompts.length > 0,
     cwd: [...head, ...tail].findLast((record) => record.cwd)?.cwd,
     bridgeSessionId: [...head, ...tail].findLast(

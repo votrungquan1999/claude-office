@@ -19,7 +19,7 @@ body:
     attributes:
       label: Claude Office app version
       description: The `version` in package.json of your clone.
-      placeholder: 0.3.0
+      placeholder: 0.3.1
     validations:
       required: true
   - type: input

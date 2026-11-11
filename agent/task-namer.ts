@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { cutName } from "../src/shared/desk-name";
+import { cutName, NAME_INPUT_MAX } from "../src/shared/desk-name";
 import { officeDir, writeFileAtomic } from "./config";
 
 const MODEL = "claude-haiku-5-5";
@@ -9,7 +9,7 @@ const REQUEST_TIMEOUT_MS = 10_000;
 const DEFAULT_RETRY_MS = 30_000;
 const MAX_CACHED = 500;
 const SYSTEM_PROMPT =
-  "Write a short desk name for a coding session from the pasted text the user opened it with: at most 6 words, plain text, no quotes, no trailing punctuation. Reply with the name only.";
+  "Write a short task title for a coding session from the first message the user opened it with: at most 6 words, a title and not a sentence, in the language of the message, plain text, no quotes, no punctuation at the end. Reply with the title only.";
 
 /** Answers and final failures (null) kept per session id, oldest first. */
 const cacheSchema = z.record(z.string(), z.string().nullable());
@@ -20,7 +20,7 @@ const messageSchema = z.object({
   content: z.array(z.object({ type: z.string(), text: z.string().optional() })),
 });
 
-export interface PasteNamerOptions {
+export interface TaskNamerOptions {
   home: string;
   apiKey: string;
   /** The API's address without a trailing slash. */
@@ -38,10 +38,12 @@ type Outcome =
   | { kind: "retry" };
 
 /**
- * Asks Haiku for a short desk name of a paste-only session, once per session, and remembers the answer on this Mac.
+ * Asks Haiku for a short task name of a session from its first message, once per session, and remembers the answer on this Mac.
  */
-export class PasteNamer {
+export class TaskNamer {
   private readonly cacheFile: string;
+  /** The file paste-only names were kept in before every session was named; read, never written. */
+  private readonly legacyCacheFile: string;
   private readonly cache = new Map<string, string | null>();
   private readonly inFlight = new Set<string>();
   /** Sessions whose key was refused this run; never stored, so a corrected key asks again after a restart. */
@@ -49,8 +51,9 @@ export class PasteNamer {
   private readonly abort = new AbortController();
   private readonly retryMs: number;
 
-  constructor(private readonly options: PasteNamerOptions) {
-    this.cacheFile = join(officeDir(options.home), "pasted-names.json");
+  constructor(private readonly options: TaskNamerOptions) {
+    this.cacheFile = join(officeDir(options.home), "task-names.json");
+    this.legacyCacheFile = join(officeDir(options.home), "pasted-names.json");
     this.retryMs = options.retryMs ?? DEFAULT_RETRY_MS;
     this.loadCache();
   }
@@ -76,16 +79,16 @@ export class PasteNamer {
   /**
    * Starts the one request for a session unless it was answered, failed for good, or is already running.
    * @param sessionId - The session.
-   * @param pasteHead - The start of its paste; dropped once the call returns.
+   * @param requestHead - The first message; only its first 1,000 characters are sent.
    * @returns The running request, or undefined when nothing was started.
    */
-  ask(sessionId: string, pasteHead: string): Promise<void> | undefined {
+  ask(sessionId: string, requestHead: string): Promise<void> | undefined {
     if (this.hasAnswer(sessionId) || this.inFlight.has(sessionId)) {
       return undefined;
     }
     this.inFlight.add(sessionId);
-    return this.run(sessionId, pasteHead)
-      .catch(() => this.options.log("paste namer: could not save the name"))
+    return this.run(sessionId, requestHead)
+      .catch(() => this.options.log("task namer: could not save the name"))
       .finally(() => this.inFlight.delete(sessionId));
   }
 
@@ -95,9 +98,9 @@ export class PasteNamer {
   }
 
   /** Runs the request, with one retry after a pause when the failure is transient. */
-  private async run(sessionId: string, pasteHead: string): Promise<void> {
+  private async run(sessionId: string, requestHead: string): Promise<void> {
     if (this.abort.signal.aborted) return;
-    let outcome = await this.request(pasteHead);
+    let outcome = await this.request(requestHead);
     if (outcome.kind === "retry") {
       await new Promise<void>((resolve) => {
         const { signal } = this.abort;
@@ -113,7 +116,7 @@ export class PasteNamer {
         signal.addEventListener("abort", onAbort, { once: true });
       });
       if (this.abort.signal.aborted) return;
-      outcome = await this.request(pasteHead);
+      outcome = await this.request(requestHead);
     }
     if (this.abort.signal.aborted) return;
     if (outcome.kind === "refused") {
@@ -123,8 +126,8 @@ export class PasteNamer {
     this.remember(sessionId, outcome.kind === "name" ? outcome.name : null);
   }
 
-  /** One call to the Messages API; never logs the key, the headers or the pasted text. */
-  private async request(pasteHead: string): Promise<Outcome> {
+  /** One call to the Messages API; never logs the key, the headers or the request text. */
+  private async request(requestHead: string): Promise<Outcome> {
     if (this.abort.signal.aborted) return { kind: "final" };
     let response: Response;
     try {
@@ -142,7 +145,14 @@ export class PasteNamer {
           // Haiku 5.5 thinks by default, and thinking would eat the small token budget.
           thinking: { type: "disabled" },
           output_config: { effort: "low" },
-          messages: [{ role: "user", content: pasteHead }],
+          messages: [
+            {
+              role: "user",
+              content: Array.from(requestHead)
+                .slice(0, NAME_INPUT_MAX)
+                .join(""),
+            },
+          ],
         }),
         signal: AbortSignal.any([
           AbortSignal.timeout(REQUEST_TIMEOUT_MS),
@@ -151,11 +161,11 @@ export class PasteNamer {
       });
     } catch {
       if (this.abort.signal.aborted) return { kind: "final" };
-      this.options.log("paste namer: request failed (network)");
+      this.options.log("task namer: request failed (network)");
       return { kind: "retry" };
     }
     if (!response.ok) {
-      this.options.log(`paste namer: HTTP ${response.status}`);
+      this.options.log(`task namer: HTTP ${response.status}`);
       // A bad key says nothing about the paste, so it is not a final failure.
       if (response.status === 401 || response.status === 403) {
         return { kind: "refused" };
@@ -194,17 +204,19 @@ export class PasteNamer {
     );
   }
 
-  /** Reads the cache file; a missing or corrupt one counts as empty. */
+  /** Reads the old cache file, then the current one; a missing or corrupt file counts as empty. */
   private loadCache(): void {
-    try {
-      const parsed = cacheSchema.parse(
-        JSON.parse(readFileSync(this.cacheFile, "utf8")),
-      );
-      for (const [sessionId, name] of Object.entries(parsed)) {
-        this.cache.set(sessionId, name);
+    for (const file of [this.legacyCacheFile, this.cacheFile]) {
+      try {
+        const parsed = cacheSchema.parse(
+          JSON.parse(readFileSync(file, "utf8")),
+        );
+        for (const [sessionId, name] of Object.entries(parsed)) {
+          this.cache.set(sessionId, name);
+        }
+      } catch {
+        // Error boundary: a bad cache only costs a repeat call.
       }
-    } catch {
-      // Error boundary: a bad cache only costs a repeat call.
     }
   }
 }
@@ -220,6 +232,9 @@ export function cleanName(text: string): string {
     .replace(/\s+/g, " ")
     .trim()
     // A single quote only wraps a name at its ends; inside it is an apostrophe.
-    .replace(/^['‘’\s]+|['‘’\s]+$/g, "");
+    .replace(/^['‘’\s]+|['‘’\s]+$/g, "")
+    // A title has no sentence punctuation at its end.
+    .replace(/[.,;:!?…。！？\s]+$/u, "");
+
   return oneLine ? cutName(oneLine) : "";
 }

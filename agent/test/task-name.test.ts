@@ -1,3 +1,5 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { getDb } from "@/db/mongo";
 import { useLiveProcesses } from "./live-process";
@@ -18,7 +20,7 @@ function answer(text: string) {
   };
 }
 
-describe("a paste-only session is named by Haiku", () => {
+describe("a session is named by Haiku", () => {
   const { setUpMac, officeSessions, startFakeAnthropic } = useMacHarness();
   const processes = useLiveProcesses();
 
@@ -74,7 +76,151 @@ describe("a paste-only session is named by Haiku", () => {
     );
   });
 
-  it("makes no call without a key, with typed words, for a held session, or while a card names the desk", async () => {
+  it("names a typed session from the first 1,000 characters of its first message, once, and keeps the 60-character first message when there is no key", async () => {
+    // Given a keyed agent, a keyless one, and a first message longer than 1,000 characters
+    const anthropic = await startFakeAnthropic(() =>
+      answer("Check VN30 conversation"),
+    );
+    const message = `check the latest messesage on the real vn30 conversatino ${"y".repeat(1200)}`;
+    const keyed = await setUpMac("machine-a", "Mac A", {
+      anthropic: { baseUrl: anthropic.baseUrl, apiKey: KEY },
+    });
+    keyed.fake.addSession({ sessionId: "k1", cwd: "/work/k1", name: "" });
+    const keyless = await setUpMac("machine-b", "Mac B", {
+      anthropic: { baseUrl: anthropic.baseUrl },
+    });
+    keyless.fake.addSession({ sessionId: "n1", cwd: "/work/n1", name: "" });
+
+    // When each Mac's session gets the message, and the keyed one a second prompt
+    await prompt(keyed.fake.home, "k1", message);
+    await prompt(keyless.fake.home, "n1", message);
+    await keyed.agent.flush();
+    await keyless.agent.flush();
+    await prompt(keyed.fake.home, "k1", "and something else");
+    await keyed.agent.flush();
+
+    // Then one request carried the head of the message, and only the keyed desk got Haiku's name
+    expect(anthropic.requests).toHaveLength(1);
+    const sent = JSON.stringify(anthropic.requests[0].body.messages);
+    expect(sent).toContain("check the latest messesage");
+    expect(sent).not.toContain("y".repeat(1000));
+    const names = Object.fromEntries(
+      (await officeSessions()).map((s) => [s.sessionId, s.deskName]),
+    );
+    expect(names.k1).toBe("Check VN30 conversation");
+    expect(names.n1).toBe(
+      "check the latest messesage on the real vn30 conversatino yy…",
+    );
+  });
+
+  it("keeps the name an earlier version cached for a session without asking again", async () => {
+    // Given a cache file from the paste-only namer and a keyed agent
+    const anthropic = await startFakeAnthropic(() => answer("Never used"));
+    const live = await processes.live();
+    const { fake, agent } = await setUpMac("machine-air", "Mac", {
+      anthropic: { baseUrl: anthropic.baseUrl, apiKey: KEY },
+      beforeStart(home) {
+        mkdirSync(join(home.home, ".claude-office"), { recursive: true });
+        writeFileSync(
+          join(home.home, ".claude-office", "pasted-names.json"),
+          JSON.stringify({ old: "Cart total crash" }),
+        );
+        home.addSession({
+          sessionId: "old",
+          cwd: "/work/old",
+          name: "",
+          pid: live.pid,
+          procStart: live.procStart,
+        });
+        home.addTranscript("old", [
+          {
+            type: "user",
+            cwd: "/work/old",
+            isSidechain: false,
+            message: { role: "user", content: PASTE },
+          },
+        ]);
+      },
+    });
+
+    // When the agent has started and the session sends another prompt
+    await prompt(fake.home, "old", "more");
+    await agent.flush();
+
+    // Then the old name shows and Anthropic was never asked
+    expect(anthropic.requests).toHaveLength(0);
+    expect((await officeSessions())[0]?.deskName).toBe("Cart total crash");
+  });
+
+  it("stores the typed first message as the request with its line breaks, up to 2,000 characters, and none for a paste-only message or a command", async () => {
+    // Given a keyless agent with four sessions
+    const { fake, agent } = await setUpMac("machine-air", "Mac");
+    for (const id of ["typed", "long", "paste", "slash"]) {
+      fake.addSession({ sessionId: id, cwd: `/work/${id}`, name: "" });
+    }
+
+    // When each sends a first prompt (the hook has already stripped the paste body)
+    await prompt(fake.home, "typed", "Fix the cart\n\n\n\nthen   deploy it");
+    await prompt(fake.home, "long", `${"w".repeat(1999)}AB`);
+    await prompt(fake.home, "paste", PASTE);
+    await prompt(fake.home, "slash", "/clear");
+    await agent.flush();
+
+    // Then the typed ones keep their request, and the others have none
+    const requests = Object.fromEntries(
+      (await officeSessions()).map((s) => [s.sessionId, s.request]),
+    );
+    expect(requests.typed).toBe("Fix the cart\n\nthen deploy it");
+    expect(requests.long).toBe(`${"w".repeat(1999)}A`);
+    expect(requests.paste).toBeUndefined();
+    expect(requests.slash).toBeUndefined();
+  });
+
+  it("names a typed session that was already running when the agent started, once, and keeps its request", async () => {
+    // Given a running session whose transcript holds a typed first message
+    const live = await processes.live();
+    const anthropic = await startFakeAnthropic(() => answer("Cart total fix"));
+    const options = {
+      anthropic: { baseUrl: anthropic.baseUrl, apiKey: KEY },
+    };
+    const first = await setUpMac("machine-air", "Mac", {
+      ...options,
+      beforeStart(home) {
+        home.addSession({
+          sessionId: "run",
+          cwd: "/work/run",
+          name: "",
+          pid: live.pid,
+          procStart: live.procStart,
+        });
+        home.addTranscript("run", [
+          {
+            type: "user",
+            cwd: "/work/run",
+            isSidechain: false,
+            message: { role: "user", content: "fix the cart total" },
+          },
+        ]);
+      },
+    });
+    await first.agent.flush();
+
+    // When the agent restarts
+    await first.agent.stop();
+    const second = await setUpMac("machine-air", "Mac", {
+      ...options,
+      fake: first.fake,
+    });
+    await second.agent.flush();
+
+    // Then one call named it and the restart reused the cache
+    expect(anthropic.requests).toHaveLength(1);
+    const [row] = await officeSessions();
+    expect(row.deskName).toBe("Cart total fix");
+    expect(row.request).toBe("fix the cart total");
+  });
+
+  it("makes no call without a key, for a held session, or while a card names the desk", async () => {
     // Given a fake server, one agent with no key, and one with a key
     const anthropic = await startFakeAnthropic(() => answer("Never used"));
     const keyless = await setUpMac("machine-a", "Mac A", {
@@ -94,11 +240,9 @@ describe("a paste-only session is named by Haiku", () => {
       anthropic: { baseUrl: anthropic.baseUrl, apiKey: KEY },
     });
     const { fake, agent } = keyed;
-    fake.addSession({ sessionId: "typed", cwd: "/work/typed", name: "" });
     fake.addSession({ sessionId: "carded", cwd: "/work/carded", name: "" });
 
-    // When typed words come with a paste, a session with no registry entry pastes, and a card names a paste-only desk
-    await prompt(fake.home, "typed", `${PASTE} fix the cart`);
+    // When a session with no registry entry sends a prompt, and a card names a desk
     await prompt(fake.home, "held", PASTE);
     fake.writeKanban("carded", { cardId: "c1", summary: "Card name" });
     await runHook(fake.home, {
@@ -130,7 +274,7 @@ describe("a paste-only session is named by Haiku", () => {
         .filter((s) => s.machineId === "machine-b")
         .map((s) => [s.sessionId, s.deskName]),
     );
-    expect(names).toEqual({ typed: "fix the cart", carded: "Card name" });
+    expect(names).toEqual({ carded: "Card name" });
   });
 
   it("retries once after the pause on a server error, then falls back to Pasted text", async () => {
@@ -409,7 +553,7 @@ describe("a paste-only session is named by Haiku", () => {
       );
       expect(names).toEqual({
         pasted: "Checkout total crash",
-        other: "fix the cart",
+        other: "Checkout total crash",
       });
     } finally {
       release();
