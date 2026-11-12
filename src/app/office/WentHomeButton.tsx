@@ -10,12 +10,14 @@ export interface WentHomeButtonProps {
   onClick: () => void;
   /** Gets focus back when the drawer closes. */
   buttonRef?: Ref<HTMLButtonElement>;
+  /** Sits in a bar's flow instead of floating at the office's bottom-left corner. */
+  inFlow?: boolean;
 }
 
 /**
  * The button that opens today's went-home list, with its count.
  * @param props - The label, the count and whether the list is open.
- * @returns A button floating at the office's bottom-left corner.
+ * @returns A button, floating at the office's bottom-left corner unless it sits in flow.
  */
 export function WentHomeButton({
   label,
@@ -23,6 +25,7 @@ export function WentHomeButton({
   open,
   onClick,
   buttonRef,
+  inFlow = false,
 }: WentHomeButtonProps) {
   return (
     <button
@@ -33,7 +36,7 @@ export function WentHomeButton({
       aria-expanded={open}
       onClick={onClick}
       // Above the details card (z-60), which is tall at the left, so it stays reachable.
-      className={`absolute bottom-2 left-2 z-[65] flex min-h-[44px] items-center gap-8 border-2 px-12 text-sm ${open ? "border-accent-bright bg-active-bg" : "border-border bg-btn-bg hover:bg-btn-hover"}`}
+      className={`${inFlow ? "" : "absolute bottom-2 left-2 z-[65]"} flex min-h-[44px] items-center gap-8 border-2 px-12 text-sm ${open ? "border-accent-bright bg-active-bg" : "border-border bg-btn-bg hover:bg-btn-hover"}`}
     >
       {label}
       <span className="bg-border px-6 text-xs">{count}</span>

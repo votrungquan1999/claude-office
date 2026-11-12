@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import { type Collection, MongoClient } from "mongodb";
 import { E2E_DB, E2E_MONGO_URI_FILE } from "./constants";
 import {
+  bottomOf,
   keepOneCompany,
   overlaps,
   seedOnlineMachine,
@@ -274,8 +275,164 @@ test.describe("the stacked rooms on a phone", () => {
     await expect(idle).toContainText("Nobody here right now");
   });
 
+  test("a bottom bar stays at the screen's bottom below the rooms with Went home N and + Hire, each at least 44 px and clear of the status and each other, and + Hire opens the hire dialog", async ({
+    page,
+  }) => {
+    // Given enough employees that the rooms scroll
+    await seed(
+      sessions,
+      [1, 2, 3, 4, 5, 6, 7, 8].map((n): [string, string, string] => [
+        `k${n}`,
+        "working",
+        `Task ${n}`,
+      ]),
+    );
+    await page.goto("/");
+    const bar = page.getByTestId("phone-bottom-bar");
+    const hire = bar.getByRole("button", { name: "+ Hire" });
+    const wentHome = bar.getByRole("button", { name: "Went home 0" });
+    await expect(hire).toBeVisible();
+    const viewportHeight = page.viewportSize()?.height ?? 0;
+
+    // Then the bar ends at the bottom of the screen, and both buttons are tall enough to tap
+    expect(await bottomOf(bar)).toBeCloseTo(viewportHeight, 0);
+    for (const button of [hire, wentHome]) {
+      expect((await button.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+      expect((await button.boundingBox())?.width).toBeGreaterThanOrEqual(44);
+    }
+
+    // And the buttons overlap neither each other, nor the status, nor sit in the company strip
+    expect(await overlaps(hire, wentHome)).toBe(false);
+    expect(await overlaps(hire, page.getByTestId("last-updated"))).toBe(false);
+    expect(await overlaps(wentHome, page.getByTestId("last-updated"))).toBe(
+      false,
+    );
+    await expect(
+      page.getByTestId("company-strip").getByTestId("hire-button"),
+    ).toHaveCount(0);
+
+    // When the owner scrolls the rooms to the end
+    const rooms = page.getByTestId("stacked-rooms");
+    await rooms.evaluate((el) => el.scrollTo(0, el.scrollHeight));
+
+    // Then the bar has not moved and the last room ends above it
+    const barBox = await bar.boundingBox();
+    expect(await bottomOf(bar)).toBeCloseTo(viewportHeight, 0);
+    expect(
+      await bottomOf(page.getByRole("region", { name: "Idle" })),
+    ).toBeLessThanOrEqual(barBox?.y ?? 0);
+
+    // When the owner taps + Hire
+    await hire.tap();
+
+    // Then the hire dialog opens
+    await expect(page.getByTestId("hire-dialog")).toBeVisible();
+  });
+
+  test("the bottom bar steps aside under the details, companies and went-home sheets and is back when each closes, and Went home N opens today's list headed by the company name and newest first, whose row opens details over the list", async ({
+    page,
+  }) => {
+    // Given a working employee and one who went home a moment ago
+    await seed(sessions, [["k1", "working", "Build invoice export"]]);
+    await sessions.insertOne({
+      machineId: "m1",
+      machineName: "Air",
+      sessionId: "gone",
+      deskName: "Closed task",
+      cwd: "/Users/q/projects/closed",
+      state: "wentHome",
+      hadPrompt: true,
+      startedAt: new Date(Date.now() - 60_000),
+      endedAt: new Date(),
+      changedAt: new Date(),
+    });
+    await page.goto("/");
+    const bar = page.getByTestId("phone-bottom-bar");
+    const wentHome = bar.getByRole("button", { name: "Went home 1" });
+    await expect(wentHome).toBeVisible();
+
+    // When a details sheet opens, the bar steps aside, and it is back after Close
+    await page.getByRole("button", { name: /^Build invoice export,/ }).tap();
+    await expect(page.getByTestId("details-panel")).toBeVisible();
+    await expect(bar).toBeHidden();
+    await page
+      .getByTestId("details-panel")
+      .getByRole("button", { name: "Close" })
+      .tap();
+    await expect(bar).toBeVisible();
+
+    // When the companies sheet opens, the bar steps aside, and it is back after Close
+    await page.getByTestId("open-drawer").tap();
+    const drawer = page.getByRole("dialog", { name: "All companies" });
+    await expect(drawer).toBeVisible();
+    await expect(bar).toBeHidden();
+    await drawer.getByRole("button", { name: /close/i }).tap();
+    await expect(bar).toBeVisible();
+
+    // When the owner taps Went home 1
+    await wentHome.tap();
+
+    // Then the list opens headed by the company name and newest first, with no employee count, and the bar steps aside
+    const sheet = page.getByRole("dialog", { name: "Went home today" });
+    await expect(sheet).toBeVisible();
+    await expect(sheet).toContainText("q · newest first");
+    await expect(sheet).not.toContainText("employee");
+    await expect(bar).toBeHidden();
+
+    // When the owner taps the row, its details open over the list
+    await sheet.getByRole("button", { name: /Closed task/ }).tap();
+    const details = page.getByTestId("details-panel");
+    await expect(details).toContainText("Closed task");
+    await expect(sheet).toBeVisible();
+
+    // When the details close, the list is still there
+    await details.getByRole("button", { name: "Close" }).tap();
+    await expect(details).toHaveCount(0);
+    await expect(sheet).toBeVisible();
+
+    // When the list closes, the bar is back with Went home focused
+    await sheet.getByRole("button", { name: "Close", exact: true }).tap();
+    await expect(bar).toBeVisible();
+    await expect(wentHome).toBeFocused();
+  });
+
   test.describe("sideways", () => {
     test.use({ viewport: { width: 852, height: 393 } });
+
+    test("the bottom bar and the company strip leave the rooms room to scroll, and the bar's buttons stay tappable", async ({
+      page,
+    }) => {
+      // Given enough employees that the rooms scroll
+      await seed(
+        sessions,
+        [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(
+          (n): [string, string, string] => [`k${n}`, "working", `Task ${n}`],
+        ),
+      );
+
+      // When the owner opens the office on a phone held sideways
+      await page.goto("/");
+      const bar = page.getByTestId("phone-bottom-bar");
+      await expect(bar).toBeVisible();
+
+      // Then both bar buttons are at least 44 px tall and the bar ends at the screen's bottom
+      for (const name of ["+ Hire", "Went home 0"]) {
+        const box = await bar.getByRole("button", { name }).boundingBox();
+        expect(box?.height).toBeGreaterThanOrEqual(44);
+      }
+      const barBox = await bar.boundingBox();
+      expect(await bottomOf(bar)).toBeCloseTo(393, 0);
+
+      // And scrolled to the end, the last room ends above the bar, and the rooms start below the company strip
+      const rooms = page.getByTestId("stacked-rooms");
+      await rooms.evaluate((el) => el.scrollTo(0, el.scrollHeight));
+      expect(
+        await bottomOf(page.getByRole("region", { name: "Idle" })),
+      ).toBeLessThanOrEqual(barBox?.y ?? 0);
+      expect((await rooms.boundingBox())?.y ?? 0).toBeGreaterThanOrEqual(
+        await bottomOf(page.getByTestId("company-strip")),
+      );
+    });
 
     test("a room row holds more than three tiles", async ({ page }) => {
       // Given six working employees

@@ -29,7 +29,7 @@ export interface WentHomeDrawerProps {
 }
 
 /**
- * Today's departures of the viewed company: a right drawer beside the office, or a sheet on small screens.
+ * Today's departures of the viewed company: a right drawer beside the office, or a sheet on small screens that skips the head count.
  * @param props - The company, its rows and the handlers.
  * @returns The went-home dialog.
  */
@@ -67,7 +67,9 @@ export function WentHomeDrawer({
         <div className="flex min-w-0 flex-col gap-2">
           <h2 className="text-lg font-bold">Went home today</h2>
           <span className="truncate text-xs text-text-muted">
-            {`${companyName} · ${rows.length} ${rows.length === 1 ? "employee" : "employees"} · newest first`}
+            {sheet
+              ? `${companyName} · newest first`
+              : `${companyName} · ${rows.length} ${rows.length === 1 ? "employee" : "employees"} · newest first`}
           </span>
         </div>
         <button
@@ -112,6 +114,14 @@ export function WentHomeDrawer({
               <span className="shrink-0 pt-2 text-xs text-text-muted">
                 {row.time}
               </span>
+              {sheet && (
+                <span
+                  aria-hidden="true"
+                  className="shrink-0 pt-2 text-text-muted"
+                >
+                  ›
+                </span>
+              )}
             </button>
           </li>
         ))}

@@ -323,6 +323,17 @@ export async function overlaps(a: Locator, b: Locator): Promise<boolean> {
 }
 
 /**
+ * Where an element's bottom edge is on screen.
+ * @param locator - The element, which must be rendered.
+ * @returns Its bounding box's y plus height, in CSS pixels.
+ */
+export async function bottomOf(locator: Locator): Promise<number> {
+  const box = await locator.boundingBox();
+  if (!box) throw new Error("bottomOf: the element is not rendered");
+  return box.y + box.height;
+}
+
+/**
  * Opens the went-home drawer when it is closed, and returns its list.
  * @param page - The office page.
  * @returns The list of today's departures.

@@ -54,6 +54,7 @@ import {
   settleNames,
   settleOverrides,
 } from "./officeStore";
+import { PhoneBottomBar } from "./PhoneBottomBar";
 import { RoomSigns } from "./RoomSigns";
 import { TagFilter } from "./TagFilter";
 import { useOfficeChanges } from "./useOfficeChanges";
@@ -214,6 +215,15 @@ export function OfficeView() {
   const wentHomeOpen = rightPanel === "wentHome";
   const [hireOpen, setHireOpen] = useState(false);
   const wentHomeButtonRef = useRef<HTMLButtonElement>(null);
+  // The phone's bar is unmounted while a sheet is open, so focus waits for it to come back.
+  const focusWentHomeOnMount = useRef(false);
+  const phoneWentHomeRef = (button: HTMLButtonElement | null) => {
+    wentHomeButtonRef.current = button;
+    if (button && focusWentHomeOnMount.current) {
+      focusWentHomeOnMount.current = false;
+      button.focus();
+    }
+  };
   // Wake orders by session, so selecting another employee and back shows the same pending order and outcome.
   const [wakes, setWakes] = useState<Map<string, OrderClickState>>(new Map());
   // Dismiss orders by session, kept apart from wakes for the same reason.
@@ -689,7 +699,8 @@ export function OfficeView() {
   const closeWentHome = () => {
     setCardOverWentHome(false);
     setRightPanel(null);
-    wentHomeButtonRef.current?.focus();
+    if (isPhone) focusWentHomeOnMount.current = true;
+    else wentHomeButtonRef.current?.focus();
   };
 
   return (
@@ -789,7 +800,7 @@ export function OfficeView() {
             />
           )}
           {/* Steps aside for the details sheet, which spans the bottom of the office. */}
-          {!(isMobile && selectedSession) && (
+          {!isPhone && !(isMobile && selectedSession) && (
             <WentHomeButton
               label="Went home today"
               count={departures.length}
@@ -828,8 +839,9 @@ export function OfficeView() {
               onClose={closeDrawer}
             />
           )}
-          {/* Hidden while a right panel or the phone's details sheet is open, so it never sits over or beside them. */}
-          {!drawerOpen &&
+          {/* Not on a phone (the bottom bar has its own Hire); hidden while a right panel or a details sheet is open, so it never sits over or beside them. */}
+          {!isPhone &&
+            !drawerOpen &&
             !wentHomeOpen &&
             !(isMobile && selectedSession) &&
             hireButton}
@@ -896,6 +908,14 @@ export function OfficeView() {
           />
         )}
       </div>
+      {isPhone && !drawerOpen && !wentHomeOpen && !selectedSession && (
+        <PhoneBottomBar
+          wentHomeCount={departures.length}
+          onWentHome={openWentHome}
+          wentHomeRef={phoneWentHomeRef}
+          onHire={() => setHireOpen(true)}
+        />
+      )}
       {isMobile && !isPhone && (
         <MobileAgentBar
           cards={cards}

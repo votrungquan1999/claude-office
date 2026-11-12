@@ -5,7 +5,6 @@ import { E2E_DB, E2E_MONGO_URI_FILE } from "./constants";
 import {
   employeeLabelled,
   keepOneCompany,
-  overlaps,
   seedOnlineMachine,
   signInAsOwner,
   waitForEmployees,
@@ -222,34 +221,7 @@ test.describe("the office on a phone", () => {
     await expectSheetFits(page);
   });
 
-  test("the Hire button floats over the canvas upright, outside the strip and clear of the status and went-home list, and opens the dialog", async ({
-    page,
-  }) => {
-    // When the owner opens the office upright
-    await openOffice(page);
-
-    // Then the Hire button is visible, at least 44px tall, and not in the strip
-    const hire = page.getByTestId("hire-button");
-    await expect(hire).toBeVisible();
-    expect((await hire.boundingBox())?.height).toBeGreaterThanOrEqual(44);
-    await expect(
-      page.getByTestId("company-strip").getByTestId("hire-button"),
-    ).toHaveCount(0);
-
-    // And it overlaps neither the connection status nor the went-home button
-    expect(await overlaps(hire, page.getByTestId("last-updated"))).toBe(false);
-    expect(await overlaps(hire, page.getByTestId("went-home-button"))).toBe(
-      false,
-    );
-
-    // When the owner taps it
-    await hire.tap();
-
-    // Then the hire dialog opens
-    await expect(page.getByTestId("hire-dialog")).toBeVisible();
-  });
-
-  test("the Hire button steps aside while the details sheet or the company drawer is open", async ({
+  test("the Hire button in the bottom bar steps aside while the details sheet or the company drawer is open", async ({
     page,
   }) => {
     // Given the office upright with the Hire button showing
@@ -365,7 +337,7 @@ test.describe("the office on a phone", () => {
 
     // Then only the button shows, with the count
     const button = page.getByTestId("went-home-button");
-    await expect(button).toHaveText(/^Went home today\s*1$/);
+    await expect(button).toHaveText(/^Went home\s*1$/);
     await expect(entry).toBeHidden();
 
     // When the owner taps the button
