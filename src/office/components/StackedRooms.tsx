@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import type { SessionState } from "@/shared/session-state";
 import {
   ROOM_COLORS,
@@ -96,6 +97,15 @@ export function StackedRooms({
   selectedKey,
   onSelect,
 }: StackedRoomsProps) {
+  const tileRefs = useRef(new Map<string, HTMLButtonElement>());
+  const lastSelected = useRef<string | null>(null);
+  // The details sheet closing clears the selection; focus goes back to the tile that opened it.
+  useEffect(() => {
+    if (selectedKey === null && lastSelected.current !== null) {
+      tileRefs.current.get(lastSelected.current)?.focus();
+    }
+    lastSelected.current = selectedKey;
+  }, [selectedKey]);
   return (
     <div
       data-testid="stacked-rooms"
@@ -124,11 +134,15 @@ export function StackedRooms({
                 {inRoom.map((tile) => (
                   <button
                     key={tile.key}
+                    ref={(el) => {
+                      if (el) tileRefs.current.set(tile.key, el);
+                      else tileRefs.current.delete(tile.key);
+                    }}
                     type="button"
                     aria-label={`${tile.task}, ${name}`}
-                    aria-pressed={tile.key === selectedKey}
+                    aria-current={tile.key === selectedKey ? "true" : undefined}
                     onClick={() => onSelect(tile.key)}
-                    className="flex min-h-[44px] min-w-0 flex-col items-center gap-3 border-0 bg-transparent p-0 text-inherit"
+                    className="flex min-h-[44px] min-w-0 flex-col items-center gap-3 border-0 bg-transparent p-0 text-inherit aria-[current=true]:outline-2 aria-[current=true]:outline-offset-2 aria-[current=true]:outline-white"
                     style={{ opacity: tile.offline ? 0.5 : 1 }}
                   >
                     <span className="flex h-16 items-end">

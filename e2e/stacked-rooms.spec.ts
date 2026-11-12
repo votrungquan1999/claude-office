@@ -185,6 +185,58 @@ test.describe("the stacked rooms on a phone", () => {
     await expect(tile).toHaveCSS("opacity", "0.5");
   });
 
+  test("tapping an employee's tile highlights it and opens its details sheet, tapping another moves both, and Close closes the sheet", async ({
+    page,
+  }) => {
+    // Given one working employee and one waiting for the owner, whose room sits above the sheet
+    await seed(sessions, [
+      ["k1", "working", "Build invoice export"],
+      ["k2", "waitingForYou", "Sketch the settings page"],
+    ]);
+    await page.goto("/");
+    const first = page.getByRole("button", { name: /^Build invoice export,/ });
+    const second = page.getByRole("button", {
+      name: /^Sketch the settings page,/,
+    });
+    const panel = page.getByTestId("details-panel");
+
+    // Then every tile is a tap target of at least 44 px and none is highlighted
+    for (const tile of [first, second]) {
+      expect((await tile.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+      await expect(tile).toHaveCSS("outline-style", "none");
+    }
+
+    // When the owner taps the first tile
+    await first.tap();
+
+    // Then its sheet opens with its folder, and only that tile is highlighted
+    await expect(panel).toContainText("Build invoice export");
+    await expect(panel).toContainText("k1");
+    await expect(first).not.toHaveCSS("outline-style", "none");
+    await expect(second).toHaveCSS("outline-style", "none");
+
+    // When the owner taps the second tile
+    await second.tap();
+
+    // Then the sheet and the highlight move to it, and the page does not scroll sideways
+    await expect(panel).toContainText("Sketch the settings page");
+    await expect(first).toHaveCSS("outline-style", "none");
+    await expect(second).not.toHaveCSS("outline-style", "none");
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth,
+      ),
+    ).toBeLessThanOrEqual(0);
+
+    // When the owner closes the sheet
+    await panel.getByRole("button", { name: "Close" }).tap();
+
+    // Then the sheet is gone, no tile is highlighted, and focus is back on the tile that was open
+    await expect(panel).toHaveCount(0);
+    await expect(second).toHaveCSS("outline-style", "none");
+    await expect(second).toBeFocused();
+  });
+
   test.describe("sideways", () => {
     test.use({ viewport: { width: 852, height: 393 } });
 
