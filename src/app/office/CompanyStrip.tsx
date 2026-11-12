@@ -11,6 +11,10 @@ export interface CompanyStripProps {
   onOpenDrawer: () => void;
   /** The drawer's trigger, so focus can return to it. */
   drawerButtonRef?: Ref<HTMLButtonElement>;
+  /** Macs whose group is folded to one label. */
+  collapsedMacs: ReadonlySet<string>;
+  /** Asks to fold or open a Mac's group. */
+  onToggleMac: (machineId: string) => void;
 }
 
 interface CountSpec {
@@ -74,6 +78,8 @@ export function CompanyStrip({
   onSelect,
   onOpenDrawer,
   drawerButtonRef,
+  collapsedMacs,
+  onToggleMac,
 }: CompanyStripProps) {
   return (
     <nav
@@ -91,6 +97,9 @@ export function CompanyStrip({
             (entry) => entry.active || entry.company.key === selectedKey,
           );
           if (tabs.length === 0) return [];
+          const folded = collapsedMacs.has(mac.machineId);
+          const shown = folded ? [] : tabs;
+          const hidden = tabs.length - shown.length;
           return (
             <div
               key={mac.machineId}
@@ -99,10 +108,21 @@ export function CompanyStrip({
               className="flex shrink-0 items-center gap-8"
               style={{ opacity: mac.online ? 1 : 0.5 }}
             >
-              <span className="text-xs text-text-muted">
+              <button
+                type="button"
+                data-testid={`mac-toggle-${mac.machineId}`}
+                aria-expanded={!folded}
+                onClick={() => onToggleMac(mac.machineId)}
+                className="flex h-40 items-center gap-6 px-8 text-xs text-text-muted"
+              >
+                <span aria-hidden="true" className="text-[9px]">
+                  {folded ? "▶" : "▼"}
+                </span>
                 {mac.online ? mac.machineName : `${mac.machineName} · offline`}
-              </span>
-              {tabs.map(({ company, counts, needsYou }) => (
+                {hidden > 0 &&
+                  ` · ${hidden} ${hidden === 1 ? "company" : "companies"}`}
+              </button>
+              {shown.map(({ company, counts, needsYou }) => (
                 <button
                   key={company.key}
                   type="button"

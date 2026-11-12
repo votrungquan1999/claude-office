@@ -177,6 +177,9 @@ export function OfficeView() {
     companyKey: null,
     selection: SHOW_ALL,
   });
+  const [collapsedMacs, setCollapsedMacs] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [hireOpen, setHireOpen] = useState(false);
   // Wake orders by session, so selecting another employee and back shows the same pending order and outcome.
@@ -366,6 +369,14 @@ export function OfficeView() {
     drawerButtonRef.current?.focus();
   };
 
+  /** Folds a Mac's group in the company bar, or opens it again. */
+  const toggleMac = (machineId: string) =>
+    setCollapsedMacs((current) => {
+      const next = new Set(current);
+      if (!next.delete(machineId)) next.add(machineId);
+      return next;
+    });
+
   /** Narrows the office to a tag at once. */
   const selectTag = (selection: TagFilterSelection) => {
     const pick = { companyKey: companyRef.current, selection };
@@ -538,6 +549,8 @@ export function OfficeView() {
           onSelect={selectCompany}
           onOpenDrawer={openDrawer}
           drawerButtonRef={drawerButtonRef}
+          collapsedMacs={collapsedMacs}
+          onToggleMac={toggleMac}
         />
       )}
       <div

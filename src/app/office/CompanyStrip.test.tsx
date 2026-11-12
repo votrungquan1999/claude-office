@@ -71,6 +71,8 @@ describe("the company strip", () => {
         selectedKey={null}
         onSelect={() => {}}
         onOpenDrawer={() => {}}
+        collapsedMacs={new Set()}
+        onToggleMac={() => {}}
       />,
     );
 
@@ -125,6 +127,8 @@ describe("the company strip", () => {
         selectedKey={null}
         onSelect={() => {}}
         onOpenDrawer={() => {}}
+        collapsedMacs={new Set()}
+        onToggleMac={() => {}}
       />,
     );
 
@@ -146,9 +150,116 @@ describe("the company strip", () => {
         selectedKey={null}
         onSelect={() => {}}
         onOpenDrawer={() => {}}
+        collapsedMacs={new Set()}
+        onToggleMac={() => {}}
       />,
     );
     expect(screen.getByTestId("open-drawer")).toBeTruthy();
+  });
+
+  it("folds a Mac's group to one 'Air · 2 companies' label when its toggle is pressed, and opens it again", () => {
+    // Given two Macs, the viewed company on the second, nothing folded
+    const macs: MacOverview[] = [
+      {
+        machineId: "m1",
+        machineName: "Air",
+        online: true,
+        switchedOff: [],
+        companies: [company("a", [1, 0, 0, 0]), company("b", [0, 0, 0, 1])],
+      },
+      {
+        machineId: "m2",
+        machineName: "Mini",
+        online: true,
+        switchedOff: [],
+        companies: [company("lab", [1, 0, 0, 0], { machineId: "m2" })],
+      },
+    ];
+    const toggles: string[] = [];
+    const strip = (collapsed: string[]) => (
+      <CompanyStrip
+        macs={macs}
+        selectedKey={macs[1].companies[0].company.key}
+        onSelect={() => {}}
+        onOpenDrawer={() => {}}
+        collapsedMacs={new Set(collapsed)}
+        onToggleMac={(id) => toggles.push(id)}
+      />
+    );
+    const { rerender } = render(strip([]));
+
+    // Then every tab shows and the Air toggle is open
+    const toggle = screen.getByTestId("mac-toggle-m1");
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getAllByTestId("company-tab")).toHaveLength(3);
+
+    // When the owner presses the Air toggle
+    fireEvent.click(toggle);
+
+    // Then the strip asks to fold Air
+    expect(toggles).toEqual(["m1"]);
+
+    // When Air is folded
+    rerender(strip(["m1"]));
+
+    // Then its two tabs are gone, the label counts them, and the other Mac is untouched
+    expect(screen.getByTestId("mac-toggle-m1").textContent).toContain(
+      "Air · 2 companies",
+    );
+    expect(
+      screen.getByTestId("mac-toggle-m1").getAttribute("aria-expanded"),
+    ).toBe("false");
+    expect(
+      screen
+        .getAllByTestId("company-tab")
+        .map((tab) => tab.getAttribute("data-company-name")),
+    ).toEqual(["lab"]);
+
+    // When the owner presses the label again
+    fireEvent.click(screen.getByTestId("mac-toggle-m1"));
+
+    // Then the strip asks to open Air
+    expect(toggles).toEqual(["m1", "m1"]);
+  });
+
+  it("reads '· 1 company' on a folded Mac that hides exactly one company", () => {
+    // Given a folded Mac with a single company, the viewed one on another Mac
+    const macs: MacOverview[] = [
+      {
+        machineId: "m1",
+        machineName: "Air",
+        online: true,
+        switchedOff: [],
+        companies: [company("a", [1, 0, 0, 0])],
+      },
+      {
+        machineId: "m2",
+        machineName: "Mini",
+        online: true,
+        switchedOff: [],
+        companies: [company("lab", [1, 0, 0, 0], { machineId: "m2" })],
+      },
+    ];
+
+    // When the strip renders with Air folded
+    render(
+      <CompanyStrip
+        macs={macs}
+        selectedKey={macs[1].companies[0].company.key}
+        onSelect={() => {}}
+        onOpenDrawer={() => {}}
+        collapsedMacs={new Set(["m1"])}
+        onToggleMac={() => {}}
+      />,
+    );
+
+    // Then the label is singular
+    expect(screen.getByTestId("mac-toggle-m1").textContent).toContain(
+      "Air · 1 company",
+    );
+    expect(screen.getByTestId("mac-toggle-m1").textContent).not.toContain(
+      "companies",
+    );
   });
 
   it("includes the viewed company's tab even when nothing is live in it, and renders an empty strip without a crash", () => {
@@ -171,6 +282,8 @@ describe("the company strip", () => {
         selectedKey={quiet.company.key}
         onSelect={() => {}}
         onOpenDrawer={() => {}}
+        collapsedMacs={new Set()}
+        onToggleMac={() => {}}
       />,
     );
 
@@ -184,6 +297,8 @@ describe("the company strip", () => {
         selectedKey={null}
         onSelect={() => {}}
         onOpenDrawer={() => {}}
+        collapsedMacs={new Set()}
+        onToggleMac={() => {}}
       />,
     );
     expect(screen.queryAllByTestId("company-tab")).toHaveLength(0);
@@ -222,6 +337,8 @@ describe("the company strip", () => {
         selectedKey={null}
         onSelect={() => {}}
         onOpenDrawer={() => {}}
+        collapsedMacs={new Set()}
+        onToggleMac={() => {}}
       />,
     );
 

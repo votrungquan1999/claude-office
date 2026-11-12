@@ -416,3 +416,74 @@ test.describe("many companies", () => {
     }
   });
 });
+
+test.describe("folding a Mac", () => {
+  test.use({ viewport: { width: 1280, height: 800 }, hasTouch: false });
+
+  test("pressing a Mac's name folds its tabs into one label and pressing it again opens them, without changing the viewed company", async ({
+    context,
+    page,
+  }) => {
+    // Given two Macs, Air with two companies (the first is viewed) and Mini with one
+    const client = new MongoClient(
+      readFileSync(E2E_MONGO_URI_FILE, "utf8").trim(),
+    );
+    await client.connect();
+    const db = client.db(E2E_DB);
+    await seedFolders(db.collection("folders"), [
+      { machineId: "air", path: "/Users/q/alpha" },
+      { machineId: "air", path: "/Users/q/bravo" },
+      { machineId: "mini", path: "/Users/q/lab" },
+    ]);
+    await seedOnlineMachine("air", "Air");
+    await seedOnlineMachine("mini", "Mini");
+    const sessions = db.collection("sessions");
+    await seedSessions(
+      sessions,
+      [
+        ["air", "Air", "alpha"],
+        ["air", "Air", "bravo"],
+        ["mini", "Mini", "lab"],
+      ].map(([machineId, machineName, name]) => ({
+        machineId,
+        machineName,
+        sessionId: name,
+        cwd: `/Users/q/${name}`,
+        startCwd: `/Users/q/${name}`,
+      })),
+    );
+    await signInAsOwner(context);
+
+    try {
+      await page.goto("/");
+      const tabs = page.getByTestId("company-tab");
+      await expect(tabs).toHaveCount(3);
+      const toggle = page.getByTestId("mac-toggle-mini");
+      await expect(toggle).toHaveAttribute("aria-expanded", "true");
+
+      // When the owner folds Mini
+      await toggle.click();
+
+      // Then Mini's tab is gone, its label counts it, and the viewed company is the same
+      await expect(tabs).toHaveCount(2);
+      await expect(toggle).toHaveAttribute("aria-expanded", "false");
+      await expect(toggle).toContainText("Mini · 1 company");
+      await expect(page.locator('[data-company-name="alpha"]')).toHaveAttribute(
+        "aria-current",
+        "page",
+      );
+
+      // When the owner opens it again
+      await toggle.click();
+
+      // Then the tab is back
+      await expect(tabs).toHaveCount(3);
+      await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    } finally {
+      await seedFolders(db.collection("folders"), []);
+      await db.collection("machines").deleteMany({});
+      await sessions.deleteMany({});
+      await client.close();
+    }
+  });
+});
