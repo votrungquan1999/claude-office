@@ -106,6 +106,51 @@ describe("the company strip", () => {
     expect(screen.getByTestId("mac-group-m1").style.opacity).toBe("1");
   });
 
+  it("keeps the All companies button outside the scrolling tabs, and shows it with no companies at all", () => {
+    // Given a Mac with two companies
+    const macs: MacOverview[] = [
+      {
+        machineId: "m1",
+        machineName: "Air",
+        online: true,
+        switchedOff: [],
+        companies: [company("a", [1, 0, 0, 0]), company("b", [0, 0, 0, 1])],
+      },
+    ];
+
+    // When the strip renders
+    const { rerender } = render(
+      <CompanyStrip
+        macs={macs}
+        selectedKey={null}
+        onSelect={() => {}}
+        onOpenDrawer={() => {}}
+      />,
+    );
+
+    // Then the tabs are in their own scroller and the button is not
+    const scroller = screen.getByTestId("company-tabs");
+    expect(within(scroller).getAllByTestId("company-tab")).toHaveLength(2);
+    expect(within(scroller).queryByTestId("open-drawer")).toBeNull();
+    expect(screen.getByTestId("company-strip").contains(scroller)).toBe(true);
+    expect(
+      screen
+        .getByTestId("company-strip")
+        .contains(screen.getByTestId("open-drawer")),
+    ).toBe(true);
+
+    // And with no companies the button still shows
+    rerender(
+      <CompanyStrip
+        macs={[]}
+        selectedKey={null}
+        onSelect={() => {}}
+        onOpenDrawer={() => {}}
+      />,
+    );
+    expect(screen.getByTestId("open-drawer")).toBeTruthy();
+  });
+
   it("includes the viewed company's tab even when nothing is live in it, and renders an empty strip without a crash", () => {
     // Given a company with nothing live that is the viewed one
     const quiet = company("quiet", [0, 0, 0, 0], { active: false });

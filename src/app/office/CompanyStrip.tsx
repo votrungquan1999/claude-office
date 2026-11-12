@@ -79,60 +79,70 @@ export function CompanyStrip({
     <nav
       aria-label="Companies"
       data-testid="company-strip"
-      className="no-scrollbar flex h-56 w-full shrink-0 items-center gap-12 overflow-x-auto overflow-y-hidden whitespace-nowrap border-b-2 border-border bg-bg-dark px-8"
+      className="flex h-56 w-full shrink-0 items-stretch whitespace-nowrap border-b-2 border-border bg-bg-dark"
     >
-      {macs.flatMap((mac) => {
-        const tabs = mac.companies.filter(
-          (entry) => entry.active || entry.company.key === selectedKey,
-        );
-        if (tabs.length === 0) return [];
-        return (
-          <div
-            key={mac.machineId}
-            data-testid={`mac-group-${mac.machineId}`}
-            data-offline={String(!mac.online)}
-            className="flex shrink-0 items-center gap-8"
-            style={{ opacity: mac.online ? 1 : 0.5 }}
-          >
-            <span className="text-xs text-text-muted">
-              {mac.online ? mac.machineName : `${mac.machineName} · offline`}
-            </span>
-            {tabs.map(({ company, counts, needsYou }) => (
-              <button
-                key={company.key}
-                type="button"
-                data-testid="company-tab"
-                data-company-name={company.name}
-                aria-current={company.key === selectedKey ? "page" : undefined}
-                onClick={() => onSelect(company.key)}
-                className={`flex h-40 shrink-0 items-center gap-10 border-2 px-10 text-sm ${company.key === selectedKey ? "border-accent-bright bg-active-bg" : "border-border bg-btn-bg hover:bg-btn-hover"}`}
-              >
-                <span className="font-bold">{company.name}</span>
-                <CountRow counts={counts} />
-                {needsYou && (
-                  <span
-                    data-testid="company-badge"
-                    className="px-4 text-xs font-bold text-bg-dark"
-                    style={{ background: "var(--color-room-permission)" }}
-                  >
-                    {counts.needsPermission + counts.waitingForYou}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-        );
-      })}
-      <button
-        ref={drawerButtonRef}
-        type="button"
-        data-testid="open-drawer"
-        aria-haspopup="dialog"
-        onClick={onOpenDrawer}
-        className="ml-auto h-40 shrink-0 border-2 border-border bg-btn-bg px-10 text-sm hover:bg-btn-hover"
+      {/* Only the tabs scroll, so All companies never leaves the bar's edge. */}
+      <div
+        data-testid="company-tabs"
+        className="no-scrollbar flex min-w-0 flex-1 items-center gap-12 overflow-x-auto overflow-y-hidden px-8"
       >
-        All companies
-      </button>
+        {macs.flatMap((mac) => {
+          const tabs = mac.companies.filter(
+            (entry) => entry.active || entry.company.key === selectedKey,
+          );
+          if (tabs.length === 0) return [];
+          return (
+            <div
+              key={mac.machineId}
+              data-testid={`mac-group-${mac.machineId}`}
+              data-offline={String(!mac.online)}
+              className="flex shrink-0 items-center gap-8"
+              style={{ opacity: mac.online ? 1 : 0.5 }}
+            >
+              <span className="text-xs text-text-muted">
+                {mac.online ? mac.machineName : `${mac.machineName} · offline`}
+              </span>
+              {tabs.map(({ company, counts, needsYou }) => (
+                <button
+                  key={company.key}
+                  type="button"
+                  data-testid="company-tab"
+                  data-company-name={company.name}
+                  aria-current={
+                    company.key === selectedKey ? "page" : undefined
+                  }
+                  onClick={() => onSelect(company.key)}
+                  className={`flex h-40 shrink-0 items-center gap-10 border-2 px-10 text-sm ${company.key === selectedKey ? "border-accent-bright bg-active-bg" : "border-border bg-btn-bg hover:bg-btn-hover"}`}
+                >
+                  <span className="font-bold">{company.name}</span>
+                  <CountRow counts={counts} />
+                  {needsYou && (
+                    <span
+                      data-testid="company-badge"
+                      className="px-4 text-xs font-bold text-bg-dark"
+                      style={{ background: "var(--color-room-permission)" }}
+                    >
+                      {counts.needsPermission + counts.waitingForYou}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex shrink-0 items-center border-l-2 border-border px-8">
+        <button
+          ref={drawerButtonRef}
+          type="button"
+          data-testid="open-drawer"
+          aria-haspopup="dialog"
+          onClick={onOpenDrawer}
+          className="h-40 shrink-0 border-2 border-border bg-btn-bg px-10 text-sm hover:bg-btn-hover"
+        >
+          All companies
+        </button>
+      </div>
     </nav>
   );
 }

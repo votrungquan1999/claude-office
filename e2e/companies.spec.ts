@@ -2,7 +2,12 @@ import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import { MongoClient } from "mongodb";
 import { E2E_DB, E2E_MONGO_URI_FILE } from "./constants";
-import { seedFolders, signInAsOwner } from "./helpers";
+import {
+  seedFolders,
+  seedOnlineMachine,
+  seedSessions,
+  signInAsOwner,
+} from "./helpers";
 
 const HOUR = 3_600_000;
 
@@ -322,4 +327,92 @@ test("the drawer lists every Mac and company with four counts, greys the offline
     await sessions.deleteMany({});
     await client.close();
   }
+});
+
+test.describe("many companies", () => {
+  test.use({ viewport: { width: 1280, height: 800 }, hasTouch: false });
+
+  test("All companies stays at the bar's right edge while the company tabs scroll", async ({
+    context,
+    page,
+  }) => {
+    // Given one Mac with eight companies, more tabs than the bar is wide
+    const client = new MongoClient(
+      readFileSync(E2E_MONGO_URI_FILE, "utf8").trim(),
+    );
+    await client.connect();
+    const db = client.db(E2E_DB);
+    const names = [
+      "alpha-harbor",
+      "bravo-orchard",
+      "charlie-foundry",
+      "delta-lantern",
+      "echo-meadow",
+      "foxtrot-quarry",
+      "golf-station",
+      "hotel-workshop",
+    ];
+    await seedFolders(
+      db.collection("folders"),
+      names.map((name) => ({ machineId: "air", path: `/Users/q/${name}` })),
+    );
+    await seedOnlineMachine("air", "Air");
+    const sessions = db.collection("sessions");
+    await seedSessions(
+      sessions,
+      names.map((name) => ({
+        machineId: "air",
+        machineName: "Air",
+        sessionId: name,
+        cwd: `/Users/q/${name}`,
+        startCwd: `/Users/q/${name}`,
+      })),
+    );
+    await signInAsOwner(context);
+
+    try {
+      // When the owner opens the office
+      await page.goto("/");
+      await expect(page.getByTestId("company-tab")).toHaveCount(8);
+
+      // Then the tabs overflow their own scroller, not the page
+      const tabs = page.getByTestId("company-tabs");
+      const overflow = await tabs.evaluate((el) => ({
+        scroll: el.scrollWidth,
+        client: el.clientWidth,
+      }));
+      expect(overflow.scroll).toBeGreaterThan(overflow.client);
+      expect(
+        await page.evaluate(
+          () =>
+            document.documentElement.scrollWidth <= window.innerWidth &&
+            document.body.scrollWidth <= window.innerWidth,
+        ),
+      ).toBe(true);
+
+      // And All companies sits fully on screen at the bar's right edge
+      const button = page.getByTestId("open-drawer");
+      const before = await button.boundingBox();
+      const width = await page.evaluate(() => window.innerWidth);
+      if (!before) throw new Error("the All companies button has no box");
+      expect(before.x + before.width).toBeLessThanOrEqual(width);
+
+      // When the owner scrolls the tabs to their end
+      await tabs.evaluate((el) => {
+        el.scrollLeft = el.scrollWidth;
+      });
+
+      // Then the button has not moved and still opens the drawer
+      expect(await button.boundingBox()).toEqual(before);
+      await button.click();
+      await expect(
+        page.getByRole("dialog", { name: "All companies" }),
+      ).toBeVisible();
+    } finally {
+      await seedFolders(db.collection("folders"), []);
+      await db.collection("machines").deleteMany({});
+      await sessions.deleteMany({});
+      await client.close();
+    }
+  });
 });
