@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Room } from "../rooms";
 import { StackedRooms, type StackedTile } from "./StackedRooms";
@@ -80,5 +86,176 @@ describe("the stacked rooms", () => {
     expect(screen.getByRole("button", { name: /^ask,/ }).style.opacity).toBe(
       "1",
     );
+  });
+
+  it("folds a room to its header when the owner taps it, keeps the count, and opens it on the next tap", () => {
+    // Given two employees in Working and one in Idle
+    const tiles = [
+      tile("a", { task: "first" }),
+      tile("b", { task: "second" }),
+      tile("c", { room: Room.Idle, state: "idle", task: "rest" }),
+    ];
+    render(
+      <StackedRooms tiles={tiles} selectedKey={null} onSelect={vi.fn()} />,
+    );
+    const header = screen.getByRole("button", { name: "Working, 2" });
+    expect(header.getAttribute("aria-expanded")).toBe("true");
+    expect(header.getAttribute("aria-controls")).toBe(
+      within(screen.getByRole("region", { name: "Working" })).getAllByRole(
+        "button",
+        { name: /, Working$/ },
+      )[0].parentElement?.id,
+    );
+
+    // When the owner taps the Working header
+    fireEvent.click(header);
+
+    // Then its tiles are gone, the count stays, and Idle is untouched
+    expect(screen.queryByRole("button", { name: /^first,/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^second,/ })).toBeNull();
+    expect(header.getAttribute("aria-expanded")).toBe("false");
+    expect(header.hasAttribute("aria-controls")).toBe(false);
+    expect(header.textContent).toContain("2");
+    expect(screen.getByRole("button", { name: /^rest,/ })).toBeTruthy();
+
+    // When the owner taps it again
+    fireEvent.click(header);
+
+    // Then the tiles are back
+    expect(screen.getByRole("button", { name: /^first,/ })).toBeTruthy();
+    expect(header.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("shows a hidden caret after the count, down while a room is open and right once folded, and none on an empty room", () => {
+    // Given Working with one employee and the other rooms empty
+    render(
+      <StackedRooms
+        tiles={[tile("a", { task: "first" })]}
+        selectedKey={null}
+        onSelect={vi.fn()}
+      />,
+    );
+    const header = screen.getByRole("button", { name: "Working, 1" });
+    const caretOf = (el: HTMLElement) =>
+      el.querySelector('[aria-hidden="true"]:last-child');
+
+    // Then the open room shows a down caret that is hidden from screen readers
+    expect(caretOf(header)?.textContent).toBe("▼");
+
+    // When the owner folds it, the caret points right
+    fireEvent.click(header);
+    expect(caretOf(header)?.textContent).toBe("▶");
+
+    // And an empty room has no caret
+    const idle = screen.getByRole("region", { name: "Idle" });
+    expect(idle.textContent).not.toMatch(/[▼▶]/);
+  });
+
+  it("opens a folded Needs permission room when someone new arrives, but not a folded Idle room, and not on a re-render of the same people", () => {
+    // Given folded Needs permission and Idle rooms with one employee each
+    const ask = (key: string) =>
+      tile(key, {
+        room: Room.NeedsPermission,
+        state: "needsPermission",
+        task: key,
+      });
+    const rest = (key: string) =>
+      tile(key, { room: Room.Idle, state: "idle", task: key });
+    const props = { selectedKey: null, onSelect: vi.fn() };
+    const { rerender } = render(
+      <StackedRooms tiles={[ask("p1"), rest("i1")]} {...props} />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Needs permission, 1" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Idle, 1" }));
+
+    // When the same employees come back in a poll
+    rerender(<StackedRooms tiles={[ask("p1"), rest("i1")]} {...props} />);
+
+    // Then both rooms stay folded
+    expect(screen.queryByRole("button", { name: /^p1,/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^i1,/ })).toBeNull();
+
+    // When a new employee arrives in each
+    rerender(
+      <StackedRooms
+        tiles={[ask("p1"), ask("p2"), rest("i1"), rest("i2")]}
+        {...props}
+      />,
+    );
+
+    // Then Needs permission opens and Idle stays folded
+    expect(screen.getByRole("button", { name: /^p2,/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^i2,/ })).toBeNull();
+  });
+
+  it("opens a folded Needs permission room when an employee already on screen moves into it", () => {
+    // Given a folded Needs permission room and an employee working
+    const ask = (key: string) =>
+      tile(key, {
+        room: Room.NeedsPermission,
+        state: "needsPermission",
+        task: key,
+      });
+    const props = { selectedKey: null, onSelect: vi.fn() };
+    const { rerender } = render(
+      <StackedRooms tiles={[ask("p1"), tile("w1")]} {...props} />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Needs permission, 1" }),
+    );
+    expect(screen.queryByRole("button", { name: /^p1,/ })).toBeNull();
+
+    // When that same employee asks for permission
+    rerender(<StackedRooms tiles={[ask("p1"), ask("w1")]} {...props} />);
+
+    // Then the room opens with both
+    expect(screen.getByRole("button", { name: /^w1,/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^p1,/ })).toBeTruthy();
+  });
+
+  it("opens a folded Waiting for you room when someone new arrives", () => {
+    // Given a folded Waiting for you room with one employee
+    const wait = (key: string) =>
+      tile(key, {
+        room: Room.WaitingForYou,
+        state: "waitingForYou",
+        task: key,
+      });
+    const props = { selectedKey: null, onSelect: vi.fn() };
+    const { rerender } = render(
+      <StackedRooms tiles={[wait("q1")]} {...props} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Waiting for you, 1" }));
+    expect(screen.queryByRole("button", { name: /^q1,/ })).toBeNull();
+
+    // When a new employee arrives there
+    rerender(<StackedRooms tiles={[wait("q1"), wait("q2")]} {...props} />);
+
+    // Then the room opens with both
+    expect(screen.getByRole("button", { name: /^q2,/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^q1,/ })).toBeTruthy();
+  });
+
+  it("keeps a folded Needs permission room folded when someone arrives in a different room", () => {
+    // Given a folded Needs permission room whose tiles will not change
+    const ask = tile("p1", {
+      room: Room.NeedsPermission,
+      state: "needsPermission",
+      task: "p1",
+    });
+    const props = { selectedKey: null, onSelect: vi.fn() };
+    const { rerender } = render(<StackedRooms tiles={[ask]} {...props} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Needs permission, 1" }),
+    );
+
+    // When a new employee arrives in Working
+    rerender(<StackedRooms tiles={[ask, tile("w1")]} {...props} />);
+
+    // Then the new employee shows and Needs permission stays folded
+    expect(screen.getByRole("button", { name: /^w1,/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^p1,/ })).toBeNull();
   });
 });

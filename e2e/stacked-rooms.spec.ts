@@ -237,6 +237,43 @@ test.describe("the stacked rooms on a phone", () => {
     await expect(second).toBeFocused();
   });
 
+  test("tapping a room's header folds it to the header with its count and tapping again opens it, while an empty room has no button to fold", async ({
+    page,
+  }) => {
+    // Given two working employees and nobody idle
+    await seed(sessions, [
+      ["k1", "working", "Build invoice export"],
+      ["k2", "working", "Sketch the settings page"],
+    ]);
+    await page.goto("/");
+    const working = page.getByRole("region", { name: "Working" });
+    const header = working.getByRole("button", { name: "Working, 2" });
+    const tile = working.getByRole("button", {
+      name: /^Build invoice export,/,
+    });
+    await expect(tile).toBeVisible();
+
+    // When the owner taps the Working header
+    await header.tap();
+
+    // Then the tiles are gone and the header still shows the count
+    await expect(tile).toHaveCount(0);
+    await expect(header).toHaveAttribute("aria-expanded", "false");
+    await expect(header).toContainText("2");
+    expect((await header.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+
+    // When the owner taps it again
+    await header.tap();
+
+    // Then the tiles are back
+    await expect(tile).toBeVisible();
+
+    // And the empty Idle room has nothing to fold
+    const idle = page.getByRole("region", { name: "Idle" });
+    await expect(idle.getByRole("button")).toHaveCount(0);
+    await expect(idle).toContainText("Nobody here right now");
+  });
+
   test.describe("sideways", () => {
     test.use({ viewport: { width: 852, height: 393 } });
 
