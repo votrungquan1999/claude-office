@@ -185,6 +185,12 @@ export function CompanyDrawer({
                     <span className="break-words font-bold">
                       {company.name}
                     </span>
+                    {company.folderName !== company.name &&
+                      editingKey !== company.key && (
+                        <span className="break-words text-xs text-text-muted">
+                          {`folder ${company.folderName}`}
+                        </span>
+                      )}
                     <CountRow counts={counts} />
                   </button>
                   {path !== null && (
@@ -284,7 +290,12 @@ export function CompanyDrawer({
               style={{ opacity: 0.6 }}
             >
               <div className="flex min-w-0 flex-1 flex-col gap-4 p-8">
-                <span className="truncate font-bold">{folder.name}</span>
+                <span className="break-words font-bold">{folder.name}</span>
+                {folder.folderName !== folder.name && (
+                  <span className="break-words text-xs text-text-muted">
+                    {`folder ${folder.folderName}`}
+                  </span>
+                )}
                 <span className="text-xs text-text-muted">in Other</span>
               </div>
               <CompanySwitch

@@ -43,6 +43,8 @@ export interface SwitchedOffFolder {
   machineId: string;
   path: string;
   name: string;
+  /** The folder's own name, which differs from `name` once the owner names it. */
+  folderName: string;
 }
 
 export interface CompanyTree {
@@ -193,7 +195,12 @@ export function buildCompanyTree(input: CompanyTreeInput): CompanyTree {
     const nameOf = (path: string) =>
       namesByMac.get(machineId)?.get(path) ?? folderNameOf(path);
     for (const path of offUnique) {
-      switchedOff.push({ machineId, path, name: nameOf(path) });
+      switchedOff.push({
+        machineId,
+        path,
+        name: nameOf(path),
+        folderName: folderNameOf(path),
+      });
     }
     const named = paths.map((path) => ({
       key: `${machineId}\0${path}`,

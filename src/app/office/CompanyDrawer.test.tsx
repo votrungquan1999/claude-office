@@ -253,6 +253,141 @@ describe("the company drawer", () => {
     ]);
   });
 
+  it("shows the folder name under a renamed company only, not under an unnamed one or Other", () => {
+    // Given q is renamed to Harbor and p is not
+    const overview = buildOverview({
+      folders: [
+        { machineId: "m1", path: "/p", companyMode: true },
+        {
+          machineId: "m1",
+          path: "/q",
+          companyMode: true,
+          displayName: "Harbor",
+        },
+        { machineId: "m1", path: "/g", companyMode: false },
+      ],
+      sessions: [
+        live("m1", "a", "/p/x", "working"),
+        live("m1", "d", "/q/y", "working"),
+        live("m1", "z", "/g", "working"),
+      ],
+      machines: [{ machineId: "m1", machineName: "Studio", lastSeenAt: T }],
+      offlineMachineIds: new Set(),
+      departures: [],
+    });
+
+    // When the drawer renders
+    render(
+      <CompanyDrawer
+        overview={overview}
+        selectedKey={null}
+        sheet={false}
+        onSelect={() => {}}
+        onClose={() => {}}
+        onSetCompanyMode={() => {}}
+      />,
+    );
+
+    // Then only the renamed row names its folder
+    expect(
+      within(screen.getByTestId("drawer-company-Harbor")).getByText("folder q"),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByTestId("drawer-company-p")).queryByText(/^folder /),
+    ).toBeNull();
+    expect(
+      within(screen.getByTestId("drawer-company-Other")).queryByText(
+        /^folder /,
+      ),
+    ).toBeNull();
+  });
+
+  it("tells two companies with the same shown name apart by folder, and hides the line while that row is edited", () => {
+    // Given two api folders both named Shared
+    const overview = buildOverview({
+      folders: [
+        {
+          machineId: "m1",
+          path: "/a/api",
+          companyMode: true,
+          displayName: "Shared",
+        },
+        {
+          machineId: "m1",
+          path: "/b/api",
+          companyMode: true,
+          displayName: "Shared",
+        },
+      ],
+      sessions: [],
+      machines: [{ machineId: "m1", machineName: "Studio", lastSeenAt: T }],
+      offlineMachineIds: new Set(),
+      departures: [],
+    });
+    render(
+      <CompanyDrawer
+        overview={overview}
+        selectedKey={null}
+        sheet={false}
+        onSelect={() => {}}
+        onClose={() => {}}
+        onSetCompanyMode={() => {}}
+        onRename={() => {}}
+      />,
+    );
+
+    // Then each row names its own folder with the parent
+    expect(screen.getByText("folder a/api")).toBeTruthy();
+    expect(screen.getByText("folder b/api")).toBeTruthy();
+
+    // When the first row's editor opens
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Rename Shared" })[0],
+    );
+
+    // Then the editor names its folder, and exactly one folder line is gone
+    expect(screen.getAllByText(/^folder [ab]\/api$/)).toHaveLength(1);
+  });
+
+  it("shows the folder name on a dimmed switched-off row that has a custom name, and not on one without", () => {
+    // Given /g is switched off and named Archive, and /h is switched off without a name
+    const overview = buildOverview({
+      folders: [
+        {
+          machineId: "m1",
+          path: "/g",
+          companyMode: false,
+          displayName: "Archive",
+        },
+        { machineId: "m1", path: "/h", companyMode: false },
+      ],
+      sessions: [],
+      machines: [{ machineId: "m1", machineName: "Studio", lastSeenAt: T }],
+      offlineMachineIds: new Set(),
+      departures: [],
+    });
+
+    // When the drawer renders
+    render(
+      <CompanyDrawer
+        overview={overview}
+        selectedKey={null}
+        sheet={false}
+        onSelect={() => {}}
+        onClose={() => {}}
+        onSetCompanyMode={() => {}}
+      />,
+    );
+
+    // Then only the named row names its folder
+    expect(
+      within(screen.getByTestId("drawer-off-Archive")).getByText("folder g"),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByTestId("drawer-off-h")).queryByText(/^folder /),
+    ).toBeNull();
+  });
+
   it("opens a Name field filled with the company's name from its pencil, and Save asks once to rename it", () => {
     // Given an open drawer
     const onRename = vi.fn();
@@ -431,12 +566,13 @@ describe("the company drawer", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("shows a long company name in full, wrapped instead of cut short", () => {
-    // Given a company named with 100 characters
+  it("shows a long company name and its folder line in full, wrapped instead of cut short", () => {
+    // Given a company named with 100 characters, and a switched-off folder named the same way
     const long = "N".repeat(100);
     const overview = buildOverview({
       folders: [
         { machineId: "m1", path: "/q", companyMode: true, displayName: long },
+        { machineId: "m1", path: "/h", companyMode: false, displayName: long },
       ],
       sessions: [live("m1", "w", "/q", "idle")],
       machines: [{ machineId: "m1", machineName: "Studio", lastSeenAt: T }],
@@ -456,12 +592,20 @@ describe("the company drawer", () => {
       />,
     );
 
-    // Then the name wraps and is not clipped with an ellipsis
-    const name = within(screen.getByTestId(`drawer-company-${long}`)).getByText(
-      long,
-    );
-    expect(name.className).toContain("break-words");
-    expect(name.className).not.toContain("truncate");
+    // Then every line of both rows wraps and none is clipped with an ellipsis
+    for (const row of [
+      screen.getByTestId(`drawer-company-${long}`),
+      screen.getByTestId(`drawer-off-${long}`),
+    ]) {
+      const lines = within(row).getAllByText(
+        (text) => text === long || text === "folder q" || text === "folder h",
+      );
+      expect(lines).toHaveLength(2);
+      for (const line of lines) {
+        expect(line.className).toContain("break-words");
+        expect(line.className).not.toContain("truncate");
+      }
+    }
   });
 
   it("drops an open editor when its company disappears, and does not bring the draft back when the company returns", () => {
