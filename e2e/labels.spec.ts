@@ -12,6 +12,9 @@ import {
 
 keepOneCompany("m1", "/Users/q");
 
+// The canvas and its labels are not drawn on a phone, which shows stacked rooms.
+test.use({ viewport: { width: 1600, height: 1200 }, hasTouch: false });
+
 const base = {
   machineId: "m1",
   machineName: "Studio Mac",

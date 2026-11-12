@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import { MongoClient } from "mongodb";
 import { E2E_DB, E2E_MONGO_URI_FILE } from "./constants";
 import {
@@ -13,110 +13,121 @@ import {
 
 const HOUR = 3_600_000;
 
-test("the company strip shows each Mac's active companies with four counts and a badge, greys the offline Mac, and leaves out a company that only went home before today", async ({
-  context,
-  page,
-}) => {
-  // Given two Macs (the Mini is offline) with folders, sessions in every live state, one went home today and one only yesterday
-  const client = new MongoClient(
-    readFileSync(E2E_MONGO_URI_FILE, "utf8").trim(),
-  );
-  await client.connect();
-  const db = client.db(E2E_DB);
-  const now = Date.now();
-  await db.collection("machines").deleteMany({});
-  await db.collection("machines").insertMany([
-    { machineId: "air", machineName: "Air", lastSeenAt: new Date(now) },
-    {
-      machineId: "mini",
-      machineName: "Mini",
-      lastSeenAt: new Date(now - 600_000),
-    },
-  ]);
-  await seedFolders(db.collection("folders"), [
-    { machineId: "air", path: "/Users/q/personal" },
-    { machineId: "air", path: "/Users/q/ubet-devenv/workspace" },
-    { machineId: "air", path: "/Users/q/retired" },
-    { machineId: "mini", path: "/Users/q/lab" },
-  ]);
-  const session = (
-    machineId: string,
-    sessionId: string,
-    cwd: string,
-    state: string,
-    extra: Record<string, unknown> = {},
-  ) => ({
-    machineId,
-    machineName: machineId === "air" ? "Air" : "Mini",
-    sessionId,
-    cwd,
-    startCwd: cwd,
-    state,
-    startedAt: new Date(now - 2 * HOUR),
-    changedAt: new Date(now - 60_000),
-    ...extra,
+/** The employee tiles of the stacked rooms, not the room headers. */
+const roomTiles = (page: Page) =>
+  page.getByTestId("stacked-rooms").getByRole("button", {
+    name: /, (Needs permission|Waiting for you|Working|Idle)$/,
   });
-  const home = "/Users/q/personal";
-  const sessions = db.collection("sessions");
-  await sessions.deleteMany({});
-  await sessions.insertMany([
-    session("air", "w", `${home}/claude-office`, "working"),
-    session("air", "t", `${home}/claude-office`, "thinking"),
-    session("air", "f", `${home}/other-app`, "waitingForYou"),
-    session("air", "i", home, "idle"),
-    session("air", "p", "/Users/q/ubet-devenv/workspace", "needsPermission"),
-    session("air", "gone", "/Users/q/ubet-devenv/workspace", "wentHome", {
-      hadPrompt: true,
-      endedAt: new Date(now - 60_000),
-    }),
-    session("air", "old", "/Users/q/retired", "wentHome", {
-      hadPrompt: true,
-      endedAt: new Date(now - 30 * HOUR),
-    }),
-    session("mini", "m", "/Users/q/lab", "needsPermission"),
-  ]);
-  await signInAsOwner(context);
 
-  try {
-    // When the owner opens the office
-    await page.goto("/");
+test.describe("on a desktop", () => {
+  // Reads the tab's four labelled counts at a fixed desktop size.
+  test.use({ viewport: { width: 1600, height: 1200 }, hasTouch: false });
 
-    // Then the strip lists the three active companies and not the one that went home yesterday
-    const tabs = page.getByTestId("company-tab");
-    await expect(tabs).toHaveCount(3);
-    await expect(
-      tabs.evaluateAll((all) =>
-        all.map((t) => t.getAttribute("data-company-name")),
-      ),
-    ).resolves.toEqual(["personal", "workspace", "lab"]);
-
-    // And personal counts Thinking as Working and shows a badge for the one waiting for the owner
-    const personal = page.locator('[data-company-name="personal"]');
-    await expect(personal.getByLabel("2 working")).toBeVisible();
-    await expect(personal.getByLabel("0 needs permission")).toBeVisible();
-    await expect(personal.getByLabel("1 waiting for you")).toBeVisible();
-    await expect(personal.getByLabel("1 idle")).toBeVisible();
-    await expect(personal.getByTestId("company-badge")).toHaveText("1");
-
-    // And the company with a departure today keeps its live count, with a badge for the permission request
-    const workspace = page.locator('[data-company-name="workspace"]');
-    await expect(workspace.getByLabel("1 needs permission")).toBeVisible();
-    await expect(workspace.getByTestId("company-badge")).toHaveText("1");
-
-    // And the offline Mac is greyed with its count but no badge
-    const mini = page.getByTestId("mac-group-mini");
-    await expect(mini).toHaveAttribute("data-offline", "true");
-    await expect(mini.getByLabel("1 needs permission")).toBeVisible();
-    await expect(mini.getByTestId("company-badge")).toHaveCount(0);
-  } finally {
-    await seedFolders(db.collection("folders"), []);
+  test("the company strip shows each Mac's active companies with four counts and a badge, greys the offline Mac, and leaves out a company that only went home before today", async ({
+    context,
+    page,
+  }) => {
+    // Given two Macs (the Mini is offline) with folders, sessions in every live state, one went home today and one only yesterday
+    const client = new MongoClient(
+      readFileSync(E2E_MONGO_URI_FILE, "utf8").trim(),
+    );
+    await client.connect();
+    const db = client.db(E2E_DB);
+    const now = Date.now();
     await db.collection("machines").deleteMany({});
+    await db.collection("machines").insertMany([
+      { machineId: "air", machineName: "Air", lastSeenAt: new Date(now) },
+      {
+        machineId: "mini",
+        machineName: "Mini",
+        lastSeenAt: new Date(now - 600_000),
+      },
+    ]);
+    await seedFolders(db.collection("folders"), [
+      { machineId: "air", path: "/Users/q/personal" },
+      { machineId: "air", path: "/Users/q/ubet-devenv/workspace" },
+      { machineId: "air", path: "/Users/q/retired" },
+      { machineId: "mini", path: "/Users/q/lab" },
+    ]);
+    const session = (
+      machineId: string,
+      sessionId: string,
+      cwd: string,
+      state: string,
+      extra: Record<string, unknown> = {},
+    ) => ({
+      machineId,
+      machineName: machineId === "air" ? "Air" : "Mini",
+      sessionId,
+      cwd,
+      startCwd: cwd,
+      state,
+      startedAt: new Date(now - 2 * HOUR),
+      changedAt: new Date(now - 60_000),
+      ...extra,
+    });
+    const home = "/Users/q/personal";
+    const sessions = db.collection("sessions");
     await sessions.deleteMany({});
-    await client.close();
-  }
+    await sessions.insertMany([
+      session("air", "w", `${home}/claude-office`, "working"),
+      session("air", "t", `${home}/claude-office`, "thinking"),
+      session("air", "f", `${home}/other-app`, "waitingForYou"),
+      session("air", "i", home, "idle"),
+      session("air", "p", "/Users/q/ubet-devenv/workspace", "needsPermission"),
+      session("air", "gone", "/Users/q/ubet-devenv/workspace", "wentHome", {
+        hadPrompt: true,
+        endedAt: new Date(now - 60_000),
+      }),
+      session("air", "old", "/Users/q/retired", "wentHome", {
+        hadPrompt: true,
+        endedAt: new Date(now - 30 * HOUR),
+      }),
+      session("mini", "m", "/Users/q/lab", "needsPermission"),
+    ]);
+    await signInAsOwner(context);
+
+    try {
+      // When the owner opens the office
+      await page.goto("/");
+
+      // Then the strip lists the three active companies and not the one that went home yesterday
+      const tabs = page.getByTestId("company-tab");
+      await expect(tabs).toHaveCount(3);
+      await expect(
+        tabs.evaluateAll((all) =>
+          all.map((t) => t.getAttribute("data-company-name")),
+        ),
+      ).resolves.toEqual(["personal", "workspace", "lab"]);
+
+      // And personal counts Thinking as Working and shows a badge for the one waiting for the owner
+      const personal = page.locator('[data-company-name="personal"]');
+      await expect(personal.getByLabel("2 working")).toBeVisible();
+      await expect(personal.getByLabel("0 needs permission")).toBeVisible();
+      await expect(personal.getByLabel("1 waiting for you")).toBeVisible();
+      await expect(personal.getByLabel("1 idle")).toBeVisible();
+      await expect(personal.getByTestId("company-badge")).toHaveText("1");
+
+      // And the company with a departure today keeps its live count, with a badge for the permission request
+      const workspace = page.locator('[data-company-name="workspace"]');
+      await expect(workspace.getByLabel("1 needs permission")).toBeVisible();
+      await expect(workspace.getByTestId("company-badge")).toHaveText("1");
+
+      // And the offline Mac is greyed with its count but no badge
+      const mini = page.getByTestId("mac-group-mini");
+      await expect(mini).toHaveAttribute("data-offline", "true");
+      await expect(mini.getByLabel("1 needs permission")).toBeVisible();
+      await expect(mini.getByTestId("company-badge")).toHaveCount(0);
+    } finally {
+      await seedFolders(db.collection("folders"), []);
+      await db.collection("machines").deleteMany({});
+      await sessions.deleteMany({});
+      await client.close();
+    }
+  });
 });
 
-test("clicking a company tab shows only that company's employees, went-home list and phone cards, and the first company is shown to begin with", async ({
+test("clicking a company tab shows only that company's employees, went-home list and room tiles, and the first company is shown to begin with", async ({
   context,
   page,
 }) => {
@@ -177,15 +188,19 @@ test("clicking a company tab shows only that company's employees, went-home list
 
     // Then the first company by name, personal, is shown with its two employees, cards and its departure only
     await expect.poll(employees).toBe(2);
-    await expect(page.getByTestId("agent-card")).toHaveCount(2);
+    await expect(roomTiles(page)).toHaveCount(2);
     await expect.poll(async () => (await departures()).length).toBe(1);
     expect((await departures())[0]).toContain("pgone");
     await expect(
       page.locator('[data-company-name="personal"]'),
     ).toHaveAttribute("aria-current", "page");
 
-    // When the owner opens a personal employee's details and then clicks the workspace tab
-    await page.getByTestId("agent-card").first().click();
+    // When the owner closes the list, opens a personal employee's details and then clicks the workspace tab
+    await page
+      .getByTestId("went-home-drawer")
+      .getByRole("button", { name: "Close", exact: true })
+      .click();
+    await roomTiles(page).first().click();
     await expect(page.getByTestId("details-panel")).toBeVisible();
     await page.locator('[data-company-name="workspace"]').click();
 
@@ -193,7 +208,8 @@ test("clicking a company tab shows only that company's employees, went-home list
     await expect(page.getByTestId("details-panel")).toHaveCount(0);
     // The switch is immediate, not waiting for the next poll
     await expect.poll(employees, { timeout: 500 }).toBe(1);
-    await expect(page.getByTestId("agent-card")).toHaveCount(1);
+    await expect(roomTiles(page)).toHaveCount(1);
+    await openWentHome(page);
     await expect.poll(async () => (await departures())[0]).toContain("wgone");
     expect(await departures()).toHaveLength(1);
 
@@ -278,7 +294,7 @@ test("the drawer lists every Mac and company with four counts, greys the offline
     // Given the office is open on personal with a session's details showing
     await page.goto("/");
     await expect.poll(employees).toBe(1);
-    await page.getByTestId("agent-card").first().click();
+    await roomTiles(page).first().click();
     await expect(page.getByTestId("details-panel")).toBeVisible();
 
     // When the owner opens the drawer

@@ -6,6 +6,9 @@ import { keepOneCompany, signInAsOwner, waitForEmployees } from "./helpers";
 
 keepOneCompany("live-machine", "/Users/q");
 
+// The canvas and its labels are not drawn on a phone, which shows stacked rooms.
+test.use({ viewport: { width: 1600, height: 1200 }, hasTouch: false });
+
 test("a session written to the database while the office is open appears, and a later change relabels it, without a reload", async ({
   context,
   page,

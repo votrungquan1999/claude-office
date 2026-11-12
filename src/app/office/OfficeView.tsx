@@ -4,13 +4,19 @@ import { useEffect, useRef, useState } from "react";
 import { loadOfficeAssets } from "@/office/assetLoader";
 import { MobileAgentBar } from "@/office/components/MobileAgentBar";
 import { OfficeCanvas } from "@/office/components/OfficeCanvas";
+import {
+  StackedRooms,
+  type StackedTile,
+} from "@/office/components/StackedRooms";
 import { ToolOverlay } from "@/office/components/ToolOverlay";
 import { OfficeState } from "@/office/engine/officeState";
 import { fitZoom } from "@/office/fitZoom";
 import { useHasMouse } from "@/office/hooks/useHasMouse";
 import { useIsMobile } from "@/office/hooks/useIsMobile";
+import { useIsPhone } from "@/office/hooks/useIsPhone";
 import { useIsSidewaysPhone } from "@/office/hooks/useIsSidewaysPhone";
 import { macBlock, offlineMachineIds } from "@/office/offline";
+import { ROOM_OF_STATE } from "@/office/rooms";
 import { createSceneSync, lookOf } from "@/office/sceneSync";
 import { installTestHooks } from "@/office/testHooks";
 import { dayStartOf, todaysDepartures } from "@/office/wentHome";
@@ -230,6 +236,7 @@ export function OfficeView() {
   // Once the owner zooms by hand, resizing no longer re-fits the office.
   const userZoomed = useRef(false);
   const isMobile = useIsMobile();
+  const isPhone = useIsPhone();
   const hasMouse = useHasMouse();
   const sideways = useIsSidewaysPhone();
   const dataRef = useRef<OfficeData>({
@@ -558,6 +565,24 @@ export function OfficeView() {
     ];
   });
 
+  const tiles: StackedTile[] = agentIds.flatMap((id) => {
+    const key = sceneSync.sessionKeyOf(id) ?? "";
+    const session = sessions.get(key);
+    const room = session && ROOM_OF_STATE[session.state];
+    if (!session || !room) return [];
+    return [
+      {
+        key,
+        room,
+        task: session.deskName ?? folderName(session.cwd),
+        ...lookOf(key),
+        state: session.state,
+        offline: offlineIds.has(session.machineId),
+        since: Date.parse(session.stateSince ?? session.startedAt),
+      },
+    ];
+  });
+
   const activity = Object.fromEntries(
     agentIds.flatMap((id) => {
       const session = sessions.get(sceneSync.sessionKeyOf(id) ?? "");
@@ -691,38 +716,65 @@ export function OfficeView() {
           ref={containerRef}
           className="relative h-full min-w-0 flex-1 overflow-hidden"
         >
-          <OfficeCanvas
-            officeState={officeState}
-            onClick={(id) => openDetails(sceneSync.sessionKeyOf(id) ?? null)}
-            zoom={zoom}
-            onZoomChange={(next) => {
-              userZoomed.current = true;
-              setZoom(next);
-            }}
-            panRef={panRef}
-            showAreas={false}
-          />
-          {loaded && (
+          {isPhone ? (
+            <div className="flex h-full flex-col">
+              {/* Its own row, so the status never covers a room header. */}
+              <div className="flex shrink-0 justify-end px-10 pt-4">
+                <ConnectionStatus
+                  lastUpdatedAt={lastUpdatedAt}
+                  connectionLost={connectionLost}
+                  now={now.getTime()}
+                  inFlow
+                />
+              </div>
+              <div className="min-h-0 flex-1">
+                {loaded && (
+                  <StackedRooms
+                    tiles={tiles}
+                    selectedKey={selectedKey}
+                    onSelect={openDetails}
+                  />
+                )}
+              </div>
+            </div>
+          ) : (
             <>
-              <RoomSigns
+              <OfficeCanvas
                 officeState={officeState}
-                containerRef={containerRef}
+                onClick={(id) =>
+                  openDetails(sceneSync.sessionKeyOf(id) ?? null)
+                }
                 zoom={zoom}
+                onZoomChange={(next) => {
+                  userZoomed.current = true;
+                  setZoom(next);
+                }}
                 panRef={panRef}
-                roomCounts={() => sceneSync.roomCounts()}
+                showAreas={false}
               />
-              <ToolOverlay
-                officeState={officeState}
-                agents={agentIds}
-                activity={activity}
-                containerRef={containerRef}
-                zoom={zoom}
-                panRef={panRef}
-              />
+              {loaded && (
+                <>
+                  <RoomSigns
+                    officeState={officeState}
+                    containerRef={containerRef}
+                    zoom={zoom}
+                    panRef={panRef}
+                    roomCounts={() => sceneSync.roomCounts()}
+                  />
+                  <ToolOverlay
+                    officeState={officeState}
+                    agents={agentIds}
+                    activity={activity}
+                    containerRef={containerRef}
+                    zoom={zoom}
+                    panRef={panRef}
+                  />
+                </>
+              )}
             </>
           )}
           {/* Above the details card (z-60) so the pill stays pressable while a card is open. */}
-          {!sideways && (
+          {!sideways && !isPhone && (
             <div className="absolute top-2 left-2 z-[65]">
               <TagFilter
                 view={tagFilterView}
@@ -740,12 +792,14 @@ export function OfficeView() {
               buttonRef={drawerButtonRef}
             />
           )}
-          <ConnectionStatus
-            lastUpdatedAt={lastUpdatedAt}
-            connectionLost={connectionLost}
-            now={now.getTime()}
-            besideDrawer={drawerOpen && !isMobile}
-          />
+          {!isPhone && (
+            <ConnectionStatus
+              lastUpdatedAt={lastUpdatedAt}
+              connectionLost={connectionLost}
+              now={now.getTime()}
+              besideDrawer={drawerOpen && !isMobile}
+            />
+          )}
           {/* Steps aside for the details sheet, which spans the bottom of the office. */}
           {!(isMobile && selectedSession) && (
             <WentHomeButton
@@ -855,7 +909,7 @@ export function OfficeView() {
           />
         )}
       </div>
-      {isMobile && (
+      {isMobile && !isPhone && (
         <MobileAgentBar
           cards={cards}
           selectedId={officeState.selectedAgentId}

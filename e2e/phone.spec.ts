@@ -142,12 +142,12 @@ async function makeCardBusy(sessions: Collection) {
 }
 
 /**
- * Opens the busy card on a phone and checks the sheet sits inside the screen with its button in view.
+ * Opens the busy employee's tile on a phone and checks the sheet sits inside the screen with its button in view.
  * @param page - The office page.
  * @param sideways - True on a short screen, where the sheet scrolls as a whole and every step is reachable.
  */
 async function expectSheetFits(page: Page, sideways = false) {
-  await page.getByTestId("agent-card").filter({ hasText: "one:" }).tap();
+  await page.getByRole("button", { name: /^one:/ }).tap();
   const panel = page.getByTestId("details-panel");
   await expect(panel.getByTestId("wants-to-run")).toBeVisible();
   const screen = page.viewportSize();
@@ -265,7 +265,7 @@ test.describe("the office on a phone", () => {
     // When it closes and a details sheet opens, the button stays hidden
     await drawer.getByRole("button", { name: /close/i }).tap();
     await expect(hire).toBeVisible();
-    await page.getByTestId("agent-card").filter({ hasText: "one:" }).tap();
+    await page.getByRole("button", { name: /^one:/ }).tap();
     await expect(page.getByTestId("details-panel")).toBeVisible();
     await expect(hire).toBeHidden();
   });
@@ -278,7 +278,7 @@ test.describe("the office on a phone", () => {
     await openOffice(page);
 
     // When the owner opens the session's details sheet
-    await page.getByTestId("agent-card").filter({ hasText: "one:" }).tap();
+    await page.getByRole("button", { name: /^one:/ }).tap();
     const link = page
       .getByTestId("details-panel")
       .getByTestId("remote-control-link");
@@ -291,19 +291,29 @@ test.describe("the office on a phone", () => {
     await expect(link).not.toHaveAttribute("target");
   });
 
-  test("fits the screen with long names, shows the whole office, and lists every session in the card bar", async ({
+  test("fits the screen with long names and lists every session as a tile", async ({
     page,
   }) => {
     // When the owner opens the office on a phone
     await openOffice(page);
 
-    // Then nothing scrolls sideways
-    const overflow = await page.evaluate(
-      () => document.documentElement.scrollWidth - window.innerWidth,
-    );
-    expect(overflow).toBeLessThanOrEqual(0);
+    // Then the rooms do not scroll sideways
+    const rooms = page.getByTestId("stacked-rooms");
+    expect(
+      await rooms.evaluate((el) => el.scrollWidth - el.clientWidth),
+    ).toBeLessThanOrEqual(0);
 
-    // And the whole office is on screen: its opposite corners are both inside the canvas
+    // And every session has a tile with its desk name
+    const tiles = page.getByRole("button", { name: /^(one|two|three):/ });
+    await expect(tiles).toHaveCount(3);
+    await expect(tiles.first()).toContainText("one:");
+  });
+
+  // Parked until the canvas tests run at a 1024x768 touch viewport.
+  test.fixme("shows the whole office: its opposite corners are both inside the canvas", async ({
+    page,
+  }) => {
+    await openOffice(page);
     const corners = await page.evaluate(() => {
       const hooks = window.__officeTestHooks;
       const size = hooks?.getLayoutSize();
@@ -319,14 +329,10 @@ test.describe("the office on a phone", () => {
     expect(corners?.first?.y).toBeGreaterThanOrEqual(0);
     expect(corners?.last?.x).toBeLessThanOrEqual(corners?.width ?? 0);
     expect(corners?.last?.y).toBeLessThanOrEqual(corners?.height ?? 0);
-
-    // And the card bar has one card per session, each with its desk name
-    const cards = page.getByTestId("agent-card");
-    await expect(cards).toHaveCount(3);
-    await expect(cards.first()).toContainText("one:");
   });
 
-  test("hangs each room sign on its wall row without covering a seat, or the employee on it, in the room's first desk row", async ({
+  // Parked until the canvas tests run at a 1024x768 touch viewport.
+  test.fixme("hangs each room sign on its wall row without covering a seat, or the employee on it, in the room's first desk row", async ({
     page,
   }) => {
     // When the owner opens the office on a phone
@@ -377,7 +383,7 @@ test.describe("the office on a phone", () => {
     await expect(panel).toHaveCount(0);
 
     // When the owner taps the second card
-    await page.getByTestId("agent-card").filter({ hasText: "two:" }).tap();
+    await page.getByRole("button", { name: /^two:/ }).tap();
 
     // Then the details panel shows that session's desk name and folder
     await expect(panel).toContainText(`two: ${LONG_NAME}`);
@@ -386,7 +392,7 @@ test.describe("the office on a phone", () => {
     );
 
     // When the owner taps the third card
-    await page.getByTestId("agent-card").filter({ hasText: "three:" }).tap();
+    await page.getByRole("button", { name: /^three:/ }).tap();
 
     // Then the panel switches to it, and the page still does not scroll sideways
     await expect(panel).toContainText(`three: ${LONG_NAME}`);
@@ -396,7 +402,7 @@ test.describe("the office on a phone", () => {
     expect(overflow).toBeLessThanOrEqual(0);
   });
 
-  test("a one-finger drag pans the office and keeps the camera from jumping back to the selected employee", async ({
+  test.fixme("a one-finger drag pans the office and keeps the camera from jumping back to the selected employee", async ({
     page,
   }) => {
     // Given the office with an employee selected, so the camera follows it
@@ -419,7 +425,7 @@ test.describe("the office on a phone", () => {
     expect(await panOf(page)).toEqual(dragged);
   });
 
-  test("pinching with two fingers zooms the office in, and pinching back zooms it out", async ({
+  test.fixme("pinching with two fingers zooms the office in, and pinching back zooms it out", async ({
     page,
   }) => {
     // Given the office at its fit-to-screen zoom
@@ -460,7 +466,7 @@ test.describe("the office on a phone", () => {
     expect(await zoomOf(page)).toBeLessThan(zoomedIn);
   });
 
-  test("tapping an employee on the canvas opens its details at once", async ({
+  test.fixme("tapping an employee on the canvas opens its details at once", async ({
     page,
   }) => {
     // Given the office on a phone, and where the employee of the second session stands
@@ -555,7 +561,8 @@ test.describe("the office on a sideways phone", () => {
     await expectSheetFits(page, true);
   });
 
-  test("folds the company strip into one button over the canvas that opens the drawer, and rotating back restores the strip with the drawer still open", async ({
+  // Retired when the sideways mode goes.
+  test.fixme("folds the company strip into one button over the canvas that opens the drawer, and rotating back restores the strip with the drawer still open", async ({
     page,
   }) => {
     // When the owner opens the office sideways

@@ -3,6 +3,8 @@ interface ConnectionStatusProps {
   lastUpdatedAt: number | null;
   connectionLost: boolean;
   now: number;
+  /** Sits in the layout's flow instead of floating over the corner, so it never covers what is below. */
+  inFlow?: boolean;
   /** Sits left of a 420 px right drawer, so the drawer never covers it. */
   besideDrawer?: boolean;
 }
@@ -16,6 +18,7 @@ export function ConnectionStatus({
   lastUpdatedAt,
   connectionLost,
   now,
+  inFlow = false,
   besideDrawer = false,
 }: ConnectionStatusProps) {
   const minutes =
@@ -24,7 +27,7 @@ export function ConnectionStatus({
       : Math.max(0, Math.floor((now - lastUpdatedAt) / 60_000));
   return (
     <div
-      className={`absolute top-2 z-20 flex flex-col items-end gap-1 text-xs ${besideDrawer ? "right-[428px] max-w-[calc(100%-580px)]" : "right-2"}`}
+      className={`flex flex-col items-end gap-1 text-xs ${inFlow ? "" : `absolute top-2 z-20 ${besideDrawer ? "right-[428px] max-w-[calc(100%-580px)]" : "right-2"}`}`}
     >
       {connectionLost && (
         <p role="alert" className="border-2 border-border bg-bg p-1 font-bold">

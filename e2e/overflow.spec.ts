@@ -6,6 +6,9 @@ import { keepOneCompany, signInAsOwner, waitForEmployees } from "./helpers";
 
 keepOneCompany("m1", "/Users/q");
 
+// The canvas and its labels are not drawn on a phone, which shows stacked rooms.
+test.use({ viewport: { width: 1600, height: 1200 }, hasTouch: false });
+
 test("a room with more sessions than seats shows its count against its seats on the sign, and a room under capacity shows only its name", async ({
   context,
   page,
@@ -41,7 +44,7 @@ test("a room with more sessions than seats shows its count against its seats on 
     await expect(sign("needsPermission")).toHaveText(
       "Needs permission 14 / 12",
     );
-    // And the longest sign still fits inside the phone's screen
+    // And the longest sign still fits inside the screen
     const box = await sign("needsPermission").boundingBox();
     const width = page.viewportSize()?.width ?? 0;
     expect(box?.x).toBeGreaterThanOrEqual(0);

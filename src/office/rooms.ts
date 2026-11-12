@@ -16,6 +16,22 @@ export const ROOM_ORDER: Room[] = [
   Room.Idle,
 ];
 
+/** Rooms in the order the phone stacks them: the ones that need the owner first. */
+export const STACKED_ROOM_ORDER: Room[] = [
+  Room.NeedsPermission,
+  Room.WaitingForYou,
+  Room.Working,
+  Room.Idle,
+];
+
+/** The color each room shows on its sign, its counts and its stacked background. */
+export const ROOM_COLORS: Record<Room, string> = {
+  [Room.Working]: "var(--color-room-working)",
+  [Room.NeedsPermission]: "var(--color-room-permission)",
+  [Room.WaitingForYou]: "var(--color-room-waiting-for-you)",
+  [Room.Idle]: "var(--color-room-idle)",
+};
+
 /** The sign each room shows. */
 export const ROOM_DISPLAY_NAMES: Record<Room, string> = {
   [Room.Working]: "Working",

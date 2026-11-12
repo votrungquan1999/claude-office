@@ -1,4 +1,5 @@
 import { type Ref, useEffect, useRef, useState } from "react";
+import { ROOM_COLORS, Room } from "@/office/rooms";
 import type { CompanyCounts, MacOverview } from "@/shared/overview";
 import { renameToSend } from "./renameRule";
 
@@ -34,18 +35,18 @@ interface CountSpec {
 
 /** The four counts in room order, with the room's own color. */
 export const COUNT_SPECS: readonly CountSpec[] = [
-  { room: "working", label: "working", color: "var(--color-room-working)" },
+  { room: "working", label: "working", color: ROOM_COLORS[Room.Working] },
   {
     room: "needsPermission",
     label: "needs permission",
-    color: "var(--color-room-permission)",
+    color: ROOM_COLORS[Room.NeedsPermission],
   },
   {
     room: "waitingForYou",
     label: "waiting for you",
-    color: "var(--color-room-waiting-for-you)",
+    color: ROOM_COLORS[Room.WaitingForYou],
   },
-  { room: "idle", label: "idle", color: "var(--color-room-idle)" },
+  { room: "idle", label: "idle", color: ROOM_COLORS[Room.Idle] },
 ];
 
 /**

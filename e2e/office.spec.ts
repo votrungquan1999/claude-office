@@ -11,6 +11,9 @@ import {
 
 keepOneCompany("m1", "/Users/q");
 
+// The canvas and its labels are not drawn on a phone, which shows stacked rooms.
+test.use({ viewport: { width: 1600, height: 1200 }, hasTouch: false });
+
 const ROOMS = ["working", "needsPermission", "waitingForYou", "idle"];
 const SEATS: Record<string, number> = {
   working: 24,

@@ -6,6 +6,9 @@ import { keepOneCompany, signInAsOwner, waitForEmployees } from "./helpers";
 
 keepOneCompany("e2e-machine", "/Users/q");
 
+// The canvas and its labels are not drawn on a phone, which shows stacked rooms.
+test.use({ viewport: { width: 1600, height: 1200 }, hasTouch: false });
+
 test("a session stored for a Mac shows up as an employee labelled with the machine and folder", async ({
   context,
   page,
