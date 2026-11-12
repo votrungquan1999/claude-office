@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import { MongoClient } from "mongodb";
 import { E2E_DB, E2E_MONGO_URI_FILE } from "./constants";
 import {
+  openWentHome,
   seedFolders,
   seedOnlineMachine,
   seedSessions,
@@ -169,8 +170,9 @@ test("clicking a company tab shows only that company's employees, went-home list
     page.getByTestId("went-home-list").locator("li").allTextContents();
 
   try {
-    // When the owner opens the office
+    // When the owner opens the office and its went-home drawer
     await page.goto("/");
+    await openWentHome(page);
 
     // Then the first company by name, personal, is shown with its two employees, cards and its departure only
     await expect.poll(employees).toBe(2);

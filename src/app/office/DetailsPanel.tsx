@@ -29,6 +29,8 @@ interface DetailsPanelProps {
   offlineMachineIds: ReadonlySet<string>;
   /** Phones get a bottom sheet instead of a side panel. */
   sheet: boolean;
+  /** Stacks above a list sheet, so a card opened from that list sits on top of it. */
+  raised?: boolean;
   onClose: () => void;
   /** Known folders of every Mac, to warn when the start folder is untrusted. */
   folders?: FolderDto[];
@@ -206,6 +208,7 @@ function Card({
   serverOffsetMs = 0,
   offlineMachineIds,
   sheet,
+  raised = false,
   onClose,
   folders = [],
   macBlock,
@@ -236,7 +239,7 @@ function Card({
   return (
     <aside
       data-testid="details-panel"
-      className={`absolute z-[60] flex flex-col border-2 border-border bg-bg text-sm [@media(max-height:500px)]:overflow-y-auto ${
+      className={`absolute ${sheet && raised ? "z-[75]" : "z-[60]"} flex flex-col border-2 border-border bg-bg text-sm [@media(max-height:500px)]:overflow-y-auto ${
         sheet
           ? "inset-x-0 bottom-0 max-h-[80%] border-x-0 border-b-0"
           : "top-[60px] left-2 max-h-[calc(100%-68px)] w-[360px] max-w-[calc(100%-1rem)] shadow-[6px_6px_0_var(--color-bg-dark)]"

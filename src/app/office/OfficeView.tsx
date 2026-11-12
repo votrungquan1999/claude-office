@@ -11,7 +11,7 @@ import { useHasMouse } from "@/office/hooks/useHasMouse";
 import { useIsMobile } from "@/office/hooks/useIsMobile";
 import { useIsSidewaysPhone } from "@/office/hooks/useIsSidewaysPhone";
 import { macBlock, offlineMachineIds } from "@/office/offline";
-import { createSceneSync } from "@/office/sceneSync";
+import { createSceneSync, lookOf } from "@/office/sceneSync";
 import { installTestHooks } from "@/office/testHooks";
 import { dayStartOf, todaysDepartures } from "@/office/wentHome";
 import type { FolderDto } from "@/shared/folders";
@@ -52,7 +52,8 @@ import {
 import { RoomSigns } from "./RoomSigns";
 import { TagFilter } from "./TagFilter";
 import { useOfficeChanges } from "./useOfficeChanges";
-import { WentHomeList } from "./WentHomeList";
+import { WentHomeButton } from "./WentHomeButton";
+import { WentHomeDrawer, type WentHomeRow } from "./WentHomeDrawer";
 import { postWake } from "./wake";
 
 /**
@@ -202,6 +203,8 @@ export function OfficeView() {
     useState<ReadonlySet<string>>(readCollapsedMacs);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [hireOpen, setHireOpen] = useState(false);
+  const [wentHomeOpen, setWentHomeOpen] = useState(false);
+  const wentHomeButtonRef = useRef<HTMLButtonElement>(null);
   // Wake orders by session, so selecting another employee and back shows the same pending order and outcome.
   const [wakes, setWakes] = useState<Map<string, OrderClickState>>(new Map());
   // Dismiss orders by session, kept apart from wakes for the same reason.
@@ -213,6 +216,8 @@ export function OfficeView() {
   // How far the server's clock is ahead of this browser's, from the latest answer.
   const [serverOffsetMs, setServerOffsetMs] = useState(0);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  // A details card opened while the went-home drawer was open sits above it.
+  const [cardOverWentHome, setCardOverWentHome] = useState(false);
   const [zoom, setZoom] = useState(1);
   const panRef = useRef({ x: 0, y: 0 });
   const zoomRef = useRef(zoom);
@@ -623,6 +628,42 @@ export function OfficeView() {
     (session) => overview.tree.companyOf(session)?.companyKey === companyKey,
   );
 
+  const wentHomeRows: WentHomeRow[] = loaded
+    ? departures.map((session) => {
+        const key = sessionKey(session);
+        const placed = overview.tree.companyOf(session);
+        return {
+          key,
+          ...lookOf(key),
+          task: session.deskName ?? folderName(session.cwd),
+          where: `${session.machineName} / ${placed?.companyName}${placed?.project ? `/${placed.project}` : ""}`,
+          time: new Date(session.endedAt ?? "").toLocaleTimeString("en-GB", {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+        };
+      })
+    : [];
+  // A card opened while the went-home drawer is open is the newer overlay, however it was opened.
+  const openDetails = (key: string | null) => {
+    setSelectedKey(key);
+    setCardOverWentHome(wentHomeOpen && key !== null);
+  };
+  const closeDetails = () => {
+    setSelectedKey(null);
+    officeState.selectedAgentId = null;
+    setCardOverWentHome(false);
+  };
+  const openWentHome = () => {
+    setCardOverWentHome(false);
+    setWentHomeOpen(true);
+  };
+  const closeWentHome = () => {
+    setCardOverWentHome(false);
+    setWentHomeOpen(false);
+    wentHomeButtonRef.current?.focus();
+  };
+
   return (
     <div className="flex h-full w-full flex-col">
       {!sideways && (
@@ -640,143 +681,173 @@ export function OfficeView() {
           renamable={hasMouse}
         />
       )}
-      <div
-        ref={containerRef}
-        className="relative min-h-0 w-full flex-1 overflow-hidden"
-      >
-        <OfficeCanvas
-          officeState={officeState}
-          onClick={(id) => setSelectedKey(sceneSync.sessionKeyOf(id) ?? null)}
-          zoom={zoom}
-          onZoomChange={(next) => {
-            userZoomed.current = true;
-            setZoom(next);
-          }}
-          panRef={panRef}
-          showAreas={false}
-        />
-        {loaded && (
-          <>
-            <RoomSigns
-              officeState={officeState}
-              containerRef={containerRef}
-              zoom={zoom}
-              panRef={panRef}
-              roomCounts={() => sceneSync.roomCounts()}
-            />
-            <ToolOverlay
-              officeState={officeState}
-              agents={agentIds}
-              activity={activity}
-              containerRef={containerRef}
-              zoom={zoom}
-              panRef={panRef}
-            />
-          </>
-        )}
-        {/* Above the details card (z-60) so the pill stays pressable while a card is open. */}
-        {!sideways && (
-          <div className="absolute top-2 left-2 z-[65]">
-            <TagFilter
-              view={tagFilterView}
-              onSelect={selectTag}
-              sheet={isMobile}
-              covered={drawerOpen || selectedSession !== null}
-            />
-          </div>
-        )}
-        {sideways && (
-          <CompactCompanyButton
-            macs={overview.macs}
-            selectedKey={companyKey}
-            onOpenDrawer={openDrawer}
-            buttonRef={drawerButtonRef}
-          />
-        )}
-        <ConnectionStatus
-          lastUpdatedAt={lastUpdatedAt}
-          connectionLost={connectionLost}
-          now={now.getTime()}
-        />
-        <WentHomeList
-          departures={departures}
-          folded={isMobile}
-          onSelect={(session) => setSelectedKey(sessionKey(session))}
-        />
-        {/* Over the office below the bar, so it takes no layout height; the drawer shows its own copy in the row. */}
-        {renameError && !drawerOpen && (
-          <p
-            role="alert"
-            data-testid="rename-error"
-            className="absolute top-2 left-1/2 z-[66] -translate-x-1/2 border-2 border-warning bg-bg px-10 py-6 text-xs font-bold text-warning"
-          >
-            {renameError.message}
-          </p>
-        )}
-        {drawerOpen && (
-          <CompanyDrawer
-            overview={overview}
-            selectedKey={companyKey}
-            sheet={isMobile}
-            fullHeight={sideways}
-            onSelect={(key) => {
-              selectCompany(key);
-              closeDrawer();
+      <div className="flex min-h-0 w-full flex-1">
+        <div
+          ref={containerRef}
+          className="relative h-full min-w-0 flex-1 overflow-hidden"
+        >
+          <OfficeCanvas
+            officeState={officeState}
+            onClick={(id) => openDetails(sceneSync.sessionKeyOf(id) ?? null)}
+            zoom={zoom}
+            onZoomChange={(next) => {
+              userZoomed.current = true;
+              setZoom(next);
             }}
-            error={switchError}
-            renameError={renameError}
-            onSetCompanyMode={(machineId, path, mode) =>
-              void setCompanyMode(machineId, path, mode)
-            }
-            onRename={(machineId, path, name) =>
-              void renameCompany(machineId, path, name)
-            }
-            onClose={closeDrawer}
+            panRef={panRef}
+            showAreas={false}
           />
-        )}
-        {/* Hidden under the phone's bottom sheet and the drawer, which cover its corner. */}
-        {!drawerOpen && !(isMobile && selectedSession) && hireButton}
-        {hireOpen && (
-          <HireDialog
-            macs={hireMacs}
+          {loaded && (
+            <>
+              <RoomSigns
+                officeState={officeState}
+                containerRef={containerRef}
+                zoom={zoom}
+                panRef={panRef}
+                roomCounts={() => sceneSync.roomCounts()}
+              />
+              <ToolOverlay
+                officeState={officeState}
+                agents={agentIds}
+                activity={activity}
+                containerRef={containerRef}
+                zoom={zoom}
+                panRef={panRef}
+              />
+            </>
+          )}
+          {/* Above the details card (z-60) so the pill stays pressable while a card is open. */}
+          {!sideways && (
+            <div className="absolute top-2 left-2 z-[65]">
+              <TagFilter
+                view={tagFilterView}
+                onSelect={selectTag}
+                sheet={isMobile}
+                covered={drawerOpen || selectedSession !== null}
+              />
+            </div>
+          )}
+          {sideways && (
+            <CompactCompanyButton
+              macs={overview.macs}
+              selectedKey={companyKey}
+              onOpenDrawer={openDrawer}
+              buttonRef={drawerButtonRef}
+            />
+          )}
+          <ConnectionStatus
+            lastUpdatedAt={lastUpdatedAt}
+            connectionLost={connectionLost}
+            now={now.getTime()}
+          />
+          {/* Steps aside for the details sheet, which spans the bottom of the office. */}
+          {!(isMobile && selectedSession) && (
+            <WentHomeButton
+              label="Went home today"
+              count={departures.length}
+              open={wentHomeOpen}
+              onClick={() => (wentHomeOpen ? closeWentHome() : openWentHome())}
+              buttonRef={wentHomeButtonRef}
+            />
+          )}
+          {/* Over the office below the bar, so it takes no layout height; the drawer shows its own copy in the row. */}
+          {renameError && !drawerOpen && (
+            <p
+              role="alert"
+              data-testid="rename-error"
+              className="absolute top-2 left-1/2 z-[66] -translate-x-1/2 border-2 border-warning bg-bg px-10 py-6 text-xs font-bold text-warning"
+            >
+              {renameError.message}
+            </p>
+          )}
+          {drawerOpen && (
+            <CompanyDrawer
+              overview={overview}
+              selectedKey={companyKey}
+              sheet={isMobile}
+              fullHeight={sideways}
+              onSelect={(key) => {
+                selectCompany(key);
+                closeDrawer();
+              }}
+              error={switchError}
+              renameError={renameError}
+              onSetCompanyMode={(machineId, path, mode) =>
+                void setCompanyMode(machineId, path, mode)
+              }
+              onRename={(machineId, path, name) =>
+                void renameCompany(machineId, path, name)
+              }
+              onClose={closeDrawer}
+            />
+          )}
+          {/* Hidden while a right panel or the phone's details sheet is open, so it never sits over or beside them. */}
+          {!drawerOpen &&
+            !wentHomeOpen &&
+            !(isMobile && selectedSession) &&
+            hireButton}
+          {hireOpen && (
+            <HireDialog
+              macs={hireMacs}
+              folders={folders}
+              initialMachineId={viewedCompany?.machineId ?? null}
+              initialFolder={viewedCompany?.path ?? null}
+              onClose={() => setHireOpen(false)}
+            />
+          )}
+          {wentHomeOpen && isMobile && (
+            <WentHomeDrawer
+              companyName={viewedCompany?.name ?? ""}
+              rows={wentHomeRows}
+              sheet
+              detailsOpen={cardOverWentHome && selectedKey !== null}
+              onSelect={openDetails}
+              onCloseDetails={closeDetails}
+              onClose={closeWentHome}
+            />
+          )}
+          <DetailsPanel
+            raised={wentHomeOpen}
+            session={selectedSession}
+            serverOffsetMs={serverOffsetMs}
+            project={
+              selectedSession
+                ? overview.tree.companyOf(selectedSession)?.project
+                : undefined
+            }
+            tagLabels={tagFilterView.labels}
+            offlineMachineIds={offlineIds}
             folders={folders}
-            initialMachineId={viewedCompany?.machineId ?? null}
-            initialFolder={viewedCompany?.path ?? null}
-            onClose={() => setHireOpen(false)}
+            macBlock={
+              selectedSession
+                ? macBlock(
+                    machines.find(
+                      (machine) =>
+                        machine.machineId === selectedSession.machineId,
+                    ),
+                    serverNowIso,
+                  )
+                : undefined
+            }
+            wake={selectedKey ? wakes.get(selectedKey) : undefined}
+            onWake={() => void wakeSelected()}
+            dismiss={selectedKey ? dismisses.get(selectedKey) : undefined}
+            onDismiss={() => void dismissSelected()}
+            sheet={isMobile}
+            onClose={closeDetails}
+          />
+        </div>
+        {wentHomeOpen && !isMobile && (
+          <WentHomeDrawer
+            companyName={viewedCompany?.name ?? ""}
+            rows={wentHomeRows}
+            sheet={false}
+            detailsOpen={cardOverWentHome && selectedKey !== null}
+            onSelect={openDetails}
+            onCloseDetails={closeDetails}
+            onClose={closeWentHome}
           />
         )}
-        <DetailsPanel
-          session={selectedSession}
-          serverOffsetMs={serverOffsetMs}
-          project={
-            selectedSession
-              ? overview.tree.companyOf(selectedSession)?.project
-              : undefined
-          }
-          tagLabels={tagFilterView.labels}
-          offlineMachineIds={offlineIds}
-          folders={folders}
-          macBlock={
-            selectedSession
-              ? macBlock(
-                  machines.find(
-                    (machine) =>
-                      machine.machineId === selectedSession.machineId,
-                  ),
-                  serverNowIso,
-                )
-              : undefined
-          }
-          wake={selectedKey ? wakes.get(selectedKey) : undefined}
-          onWake={() => void wakeSelected()}
-          dismiss={selectedKey ? dismisses.get(selectedKey) : undefined}
-          onDismiss={() => void dismissSelected()}
-          sheet={isMobile}
-          onClose={() => {
-            setSelectedKey(null);
-            officeState.selectedAgentId = null;
-          }}
-        />
       </div>
       {isMobile && (
         <MobileAgentBar
@@ -784,7 +855,7 @@ export function OfficeView() {
           selectedId={officeState.selectedAgentId}
           onSelect={(id) => {
             officeState.selectAndFollow(id);
-            setSelectedKey(sceneSync.sessionKeyOf(id) ?? null);
+            openDetails(sceneSync.sessionKeyOf(id) ?? null);
           }}
         />
       )}

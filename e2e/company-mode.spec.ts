@@ -2,7 +2,12 @@ import { readFileSync } from "node:fs";
 import { expect, type Page, test } from "@playwright/test";
 import { MongoClient } from "mongodb";
 import { E2E_BASE_URL, E2E_DB, E2E_MONGO_URI_FILE } from "./constants";
-import { seedFolders, signInAsOwner, waitForEmployees } from "./helpers";
+import {
+  openWentHome,
+  seedFolders,
+  signInAsOwner,
+  waitForEmployees,
+} from "./helpers";
 
 const HOUR = 3_600_000;
 
@@ -462,7 +467,7 @@ test("a session that went home today in a switched-off folder keeps Other in the
         page.evaluate(() => window.__officeTestHooks?.getCharacters().length),
       )
       .toBe(0);
-    await expect(page.getByTestId("went-home-list")).toContainText("gone");
+    await expect(await openWentHome(page)).toContainText("gone");
   } finally {
     await cleanup();
   }

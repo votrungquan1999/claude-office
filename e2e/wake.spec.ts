@@ -3,6 +3,7 @@ import {
   clearCommands,
   clickEmployee,
   employeeLabelled,
+  openWentHome,
   readCommands,
   seedFolders,
   seedSessions,
@@ -102,8 +103,8 @@ test("Wake is offered for a went-home employee and not a running one, sends one 
   await expect(panel.getByTestId("wake-button")).toHaveCount(0);
 
   // When the owner opens the went-home employee from the list
-  const entry = page
-    .getByTestId("went-home-list")
+  const list = await openWentHome(page);
+  const entry = list
     .getByRole("listitem")
     .filter({ hasText: "Home on Up Mac" });
   await entry.click();
@@ -163,8 +164,7 @@ test("Wake is disabled for an offline Mac, and for an out-of-date agent with the
 
   // When the owner opens the went-home employee of the offline Mac
   await page.locator('[data-company-name="down"]').click();
-  await page
-    .getByTestId("went-home-list")
+  await (await openWentHome(page))
     .getByRole("listitem")
     .filter({ hasText: "Home on Down Mac" })
     .click();
@@ -174,8 +174,7 @@ test("Wake is disabled for an offline Mac, and for an out-of-date agent with the
 
   // When the owner opens the went-home employee of the out-of-date Mac
   await page.locator('[data-company-name="old"]').click();
-  await page
-    .getByTestId("went-home-list")
+  await (await openWentHome(page))
     .getByRole("listitem")
     .filter({ hasText: "Home on Old Mac" })
     .click();

@@ -321,3 +321,16 @@ export async function overlaps(a: Locator, b: Locator): Promise<boolean> {
     boxB.y < boxA.y + boxA.height
   );
 }
+
+/**
+ * Opens the went-home drawer when it is closed, and returns its list.
+ * @param page - The office page.
+ * @returns The list of today's departures.
+ */
+export async function openWentHome(page: Page): Promise<Locator> {
+  const drawer = page.getByTestId("went-home-drawer");
+  if (!(await drawer.isVisible()))
+    await page.getByTestId("went-home-button").click();
+  await expect(drawer).toBeVisible();
+  return page.getByTestId("went-home-list");
+}

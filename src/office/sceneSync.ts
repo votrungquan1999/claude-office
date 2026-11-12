@@ -58,7 +58,7 @@ function hashKey(key: string): number {
 }
 
 /** A character look that depends only on the session, so every reload and device shows the same one. */
-function lookOf(key: string): { palette: number; hueShift: number } {
+export function lookOf(key: string): { palette: number; hueShift: number } {
   const hash = hashKey(key);
   return {
     palette: hash % getLoadedCharacterCount(),

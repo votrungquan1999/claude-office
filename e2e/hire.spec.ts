@@ -315,9 +315,11 @@ test("on desktop the Hire button floats over the office, outside the strip and c
   expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
   expect(box?.width ?? 0).toBeGreaterThanOrEqual(44);
 
-  // And it covers neither the connection status nor the went-home list
+  // And it covers neither the connection status nor the went-home button
   expect(await overlaps(hire, page.getByTestId("last-updated"))).toBe(false);
-  expect(await overlaps(hire, page.getByTestId("went-home-list"))).toBe(false);
+  expect(await overlaps(hire, page.getByTestId("went-home-button"))).toBe(
+    false,
+  );
 
   // When an employee's details panel is open, the button is still visible and clear of it
   await clickEmployee(page, await employeeLabelled(page, "Existing desk"));

@@ -5,6 +5,7 @@ import { E2E_DB, E2E_MONGO_URI_FILE } from "./constants";
 import {
   clickEmployee,
   keepOneCompany,
+  openWentHome,
   seedSessions,
   signInAsOwner,
 } from "./helpers";
@@ -62,9 +63,8 @@ test("a kept employee whose window closed stays in the office, and its details s
     await expect(panel.getByTestId("terminal-box")).toHaveCount(0);
 
     // And the went-home list does not hold it
-    await expect(
-      page.getByTestId("went-home-list").getByRole("listitem"),
-    ).toHaveCount(0);
+    const list = await openWentHome(page);
+    await expect(list.getByRole("listitem")).toHaveCount(0);
   } finally {
     await sessions.deleteMany({});
     await client.close();

@@ -235,9 +235,9 @@ test.describe("the office on a phone", () => {
       page.getByTestId("company-strip").getByTestId("hire-button"),
     ).toHaveCount(0);
 
-    // And it overlaps neither the connection status nor the went-home list
+    // And it overlaps neither the connection status nor the went-home button
     expect(await overlaps(hire, page.getByTestId("last-updated"))).toBe(false);
-    expect(await overlaps(hire, page.getByTestId("went-home-list"))).toBe(
+    expect(await overlaps(hire, page.getByTestId("went-home-button"))).toBe(
       false,
     );
 
@@ -489,7 +489,7 @@ test.describe("the office on a phone", () => {
     );
   });
 
-  test("keeps the went-home list folded until it is tapped, so it does not cover the office", async ({
+  test("keeps the went-home list behind its button until it is tapped, so it does not cover the office", async ({
     page,
   }) => {
     // Given a session that ended a moment ago
@@ -510,12 +510,13 @@ test.describe("the office on a phone", () => {
     await openOffice(page);
     const entry = page.getByRole("button", { name: /Closed task/ });
 
-    // Then the list is folded to its title
-    await expect(page.getByText("Went home today")).toBeVisible();
+    // Then only the button shows, with the count
+    const button = page.getByTestId("went-home-button");
+    await expect(button).toHaveText(/^Went home today\s*1$/);
     await expect(entry).toBeHidden();
 
-    // When the owner taps the title
-    await page.getByText("Went home today").tap();
+    // When the owner taps the button
+    await button.tap();
 
     // Then the departure is listed, and tapping it opens its details
     await expect(entry).toBeVisible();
@@ -583,13 +584,13 @@ test.describe("the office on a sideways phone", () => {
       Math.abs(heights.canvas - (heights.screen - heights.bar)),
     ).toBeLessThanOrEqual(2);
     expect(await zoomOf(page)).toBeGreaterThanOrEqual(2);
-    // And the Hire button floats over the canvas, clear of the compact button, status and went-home list
+    // And the Hire button floats over the canvas, clear of the compact button, status and went-home button
     const hire = page.getByTestId("hire-button");
     await expect(hire).toBeVisible();
     expect((await hire.boundingBox())?.height).toBeGreaterThanOrEqual(44);
     expect(await overlaps(hire, compact)).toBe(false);
     expect(await overlaps(hire, page.getByTestId("last-updated"))).toBe(false);
-    expect(await overlaps(hire, page.getByTestId("went-home-list"))).toBe(
+    expect(await overlaps(hire, page.getByTestId("went-home-button"))).toBe(
       false,
     );
 
