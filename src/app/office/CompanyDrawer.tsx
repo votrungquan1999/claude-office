@@ -13,6 +13,8 @@ export interface CompanyDrawerProps {
   fullHeight?: boolean;
   /** Why the last switch did not stick, shown until the next one. */
   error?: string | null;
+  /** The company whose last rename the server refused, shown inside its row. */
+  renameError?: { machineId: string; path: string; message: string } | null;
   onSelect: (companyKey: string) => void;
   /** Asks to switch company mode on or off for one folder of one Mac. */
   onSetCompanyMode: (
@@ -69,6 +71,7 @@ export function CompanyDrawer({
   sheet,
   fullHeight = false,
   error = null,
+  renameError = null,
   onSelect,
   onSetCompanyMode,
   onRename,
@@ -231,6 +234,15 @@ export function CompanyDrawer({
                     />
                   )}
                 </div>
+                {renameError?.machineId === company.machineId &&
+                  renameError.path === path && (
+                    <p
+                      role="alert"
+                      className="px-8 pb-6 text-xs font-bold text-warning"
+                    >
+                      {renameError.message}
+                    </p>
+                  )}
                 {path !== null && editingKey === company.key && (
                   <form
                     onSubmit={(event) => {

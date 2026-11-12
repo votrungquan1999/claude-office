@@ -324,6 +324,284 @@ test.describe("renaming a company", () => {
     }
   });
 
+  test("a rename the server refuses puts the old name back and shows Could not rename in the drawer row", async ({
+    context,
+    page,
+  }) => {
+    // Given the server refuses every rename
+    const client = new MongoClient(
+      readFileSync(E2E_MONGO_URI_FILE, "utf8").trim(),
+    );
+    await client.connect();
+    const db = client.db(E2E_DB);
+    await seedFolders(db.collection("folders"), [
+      { machineId: "air", path: "/Users/q/alpha" },
+      { machineId: "air", path: "/Users/q/bravo" },
+    ]);
+    await seedOnlineMachine("air", "Air");
+    const sessions = db.collection("sessions");
+    await seedSessions(
+      sessions,
+      ["alpha", "bravo"].map((name) => ({
+        sessionId: name,
+        machineId: "air",
+        machineName: "Air",
+        cwd: `/Users/q/${name}`,
+        startCwd: `/Users/q/${name}`,
+      })),
+    );
+    await signInAsOwner(context);
+    await page.route("**/api/office/folders/display-name", (route) =>
+      route.fulfill({ status: 500, body: "{}" }),
+    );
+
+    try {
+      await page.goto("/");
+      await expect.poll(() => tabNames(page)).toEqual(["alpha", "bravo"]);
+
+      // When the owner renames alpha to Zulu from the drawer
+      await page.getByTestId("open-drawer").click();
+      const drawer = page.getByRole("dialog", { name: "All companies" });
+      await drawer.getByRole("button", { name: "Rename alpha" }).click();
+      await drawer.getByLabel("Name for folder alpha").fill("Zulu");
+      await drawer.getByRole("button", { name: "Save" }).click();
+
+      // Then alpha is back on the tab and the row, and the row says it could not rename
+      await expect(
+        drawer.getByTestId("drawer-company-alpha").getByRole("alert"),
+      ).toHaveText("Could not rename. Try again.");
+      await expect.poll(() => tabNames(page)).toEqual(["alpha", "bravo"]);
+      await expect(drawer.getByTestId("drawer-company-Zulu")).toHaveCount(0);
+    } finally {
+      await seedFolders(db.collection("folders"), []);
+      await db.collection("machines").deleteMany({});
+      await sessions.deleteMany({});
+      await client.close();
+    }
+  });
+
+  test("a rename the server refuses puts the old name back and shows Could not rename under the bar for a tab rename, until the owner switches company or opens the drawer", async ({
+    context,
+    page,
+  }) => {
+    // Given the server refuses every rename
+    const client = new MongoClient(
+      readFileSync(E2E_MONGO_URI_FILE, "utf8").trim(),
+    );
+    await client.connect();
+    const db = client.db(E2E_DB);
+    await seedFolders(db.collection("folders"), [
+      { machineId: "air", path: "/Users/q/alpha" },
+      { machineId: "air", path: "/Users/q/bravo" },
+    ]);
+    await seedOnlineMachine("air", "Air");
+    const sessions = db.collection("sessions");
+    await seedSessions(
+      sessions,
+      ["alpha", "bravo"].map((name) => ({
+        sessionId: name,
+        machineId: "air",
+        machineName: "Air",
+        cwd: `/Users/q/${name}`,
+        startCwd: `/Users/q/${name}`,
+      })),
+    );
+    await signInAsOwner(context);
+    await page.route("**/api/office/folders/display-name", (route) =>
+      route.fulfill({ status: 500, body: "{}" }),
+    );
+
+    try {
+      await page.goto("/");
+      await expect.poll(() => tabNames(page)).toEqual(["alpha", "bravo"]);
+
+      // When the owner renames alpha to Zulu from its tab
+      await page
+        .getByTestId("company-tab")
+        .filter({ hasText: "alpha" })
+        .dblclick();
+      await page.getByLabel("Name for folder alpha").fill("Zulu");
+      await page.keyboard.press("Enter");
+
+      // Then alpha is back on the tab and an alert under the bar says it could not rename
+      await expect(page.getByTestId("rename-error")).toHaveText(
+        "Could not rename. Try again.",
+      );
+      await expect.poll(() => tabNames(page)).toEqual(["alpha", "bravo"]);
+
+      // And switching to bravo clears it
+      await page
+        .getByTestId("company-tab")
+        .filter({ hasText: "bravo" })
+        .click();
+      await expect(page.getByTestId("rename-error")).toHaveCount(0);
+
+      // And after a refused rename of bravo, opening the drawer clears it
+      await page
+        .getByTestId("company-tab")
+        .filter({ hasText: "bravo" })
+        .dblclick();
+      await page.getByLabel("Name for folder bravo").fill("Yankee");
+      await page.keyboard.press("Enter");
+      await expect(page.getByTestId("rename-error")).toHaveText(
+        "Could not rename. Try again.",
+      );
+      await page.getByTestId("open-drawer").click();
+      await expect(page.getByTestId("rename-error")).toHaveCount(0);
+      await expect(
+        page
+          .getByRole("dialog", { name: "All companies" })
+          .getByTestId("drawer-company-bravo")
+          .getByRole("alert"),
+      ).toHaveCount(0);
+    } finally {
+      await seedFolders(db.collection("folders"), []);
+      await db.collection("machines").deleteMany({});
+      await sessions.deleteMany({});
+      await client.close();
+    }
+  });
+
+  test("a second rename sent while the first is still refused keeps the second name and shows no error", async ({
+    context,
+    page,
+  }) => {
+    // Given two companies, and the first rename request is held until the second has gone out
+    const client = new MongoClient(
+      readFileSync(E2E_MONGO_URI_FILE, "utf8").trim(),
+    );
+    await client.connect();
+    const db = client.db(E2E_DB);
+    await seedFolders(db.collection("folders"), [
+      { machineId: "air", path: "/Users/q/alpha" },
+      { machineId: "air", path: "/Users/q/bravo" },
+    ]);
+    await seedOnlineMachine("air", "Air");
+    const sessions = db.collection("sessions");
+    await seedSessions(
+      sessions,
+      ["alpha", "bravo"].map((name) => ({
+        sessionId: name,
+        machineId: "air",
+        machineName: "Air",
+        cwd: `/Users/q/${name}`,
+        startCwd: `/Users/q/${name}`,
+      })),
+    );
+    await signInAsOwner(context);
+    let held: Route | undefined;
+    let calls = 0;
+    await page.route("**/api/office/folders/display-name", async (route) => {
+      calls += 1;
+      if (calls === 1) held = route;
+      else await route.continue();
+    });
+
+    try {
+      await page.goto("/");
+      await expect.poll(() => tabNames(page)).toEqual(["alpha", "bravo"]);
+
+      // When the owner renames alpha to Zulu, then renames it again to Yankee
+      await page
+        .getByTestId("company-tab")
+        .filter({ hasText: "alpha" })
+        .dblclick();
+      await page.getByLabel("Name for folder alpha").fill("Zulu");
+      await page.keyboard.press("Enter");
+      await expect.poll(() => tabNames(page)).toEqual(["bravo", "Zulu"]);
+      await page
+        .getByTestId("company-tab")
+        .filter({ hasText: "Zulu" })
+        .dblclick();
+      await page.getByLabel("Name for folder alpha").fill("Yankee");
+      await page.keyboard.press("Enter");
+      await expect.poll(() => calls).toBe(2);
+
+      // And the server then refuses the first request
+      await held?.fulfill({ status: 500, body: "{}" });
+      expect((await held?.request().response())?.status()).toBe(500);
+
+      // Then the tab keeps the second name and no error shows
+      await expect.poll(() => tabNames(page)).toEqual(["bravo", "Yankee"]);
+      await expect(page.getByTestId("rename-error")).toHaveCount(0);
+    } finally {
+      await seedFolders(db.collection("folders"), []);
+      await db.collection("machines").deleteMany({});
+      await sessions.deleteMany({});
+      await client.close();
+    }
+  });
+
+  test("a refusal of an older request never reverts a newer name that carries the same value", async ({
+    context,
+    page,
+  }) => {
+    // Given two companies, and the first rename request is held
+    const client = new MongoClient(
+      readFileSync(E2E_MONGO_URI_FILE, "utf8").trim(),
+    );
+    await client.connect();
+    const db = client.db(E2E_DB);
+    await seedFolders(db.collection("folders"), [
+      { machineId: "air", path: "/Users/q/alpha" },
+      { machineId: "air", path: "/Users/q/bravo" },
+    ]);
+    await seedOnlineMachine("air", "Air");
+    const sessions = db.collection("sessions");
+    await seedSessions(
+      sessions,
+      ["alpha", "bravo"].map((name) => ({
+        sessionId: name,
+        machineId: "air",
+        machineName: "Air",
+        cwd: `/Users/q/${name}`,
+        startCwd: `/Users/q/${name}`,
+      })),
+    );
+    await signInAsOwner(context);
+    let held: Route | undefined;
+    let calls = 0;
+    await page.route("**/api/office/folders/display-name", async (route) => {
+      calls += 1;
+      if (calls === 1) held = route;
+      else await route.continue();
+    });
+    const rename = async (from: string, to: string) => {
+      await page
+        .getByTestId("company-tab")
+        .filter({ hasText: from })
+        .dblclick();
+      await page.getByLabel("Name for folder alpha").fill(to);
+      await page.keyboard.press("Enter");
+    };
+
+    try {
+      await page.goto("/");
+      await expect.poll(() => tabNames(page)).toEqual(["alpha", "bravo"]);
+
+      // When the owner renames alpha to Zulu, then Yankee, then Zulu again
+      await rename("alpha", "Zulu");
+      await expect.poll(() => calls).toBe(1);
+      await rename("Zulu", "Yankee");
+      await expect.poll(() => calls).toBe(2);
+      await rename("Yankee", "Zulu");
+      await expect.poll(() => calls).toBe(3);
+
+      // And the server then refuses the first request
+      await held?.fulfill({ status: 500, body: "{}" });
+      expect((await held?.request().response())?.status()).toBe(500);
+
+      // Then the tab keeps the last name and no error shows
+      await expect.poll(() => tabNames(page)).toEqual(["bravo", "Zulu"]);
+      await expect(page.getByTestId("rename-error")).toHaveCount(0);
+    } finally {
+      await seedFolders(db.collection("folders"), []);
+      await db.collection("machines").deleteMany({});
+      await sessions.deleteMany({});
+      await client.close();
+    }
+  });
+
   test("a name the server stored gives way to the name another device saved", async ({
     context,
     page,

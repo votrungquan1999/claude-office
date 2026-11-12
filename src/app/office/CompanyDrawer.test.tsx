@@ -570,6 +570,38 @@ describe("the company drawer", () => {
     expect(onRename).not.toHaveBeenCalled();
   });
 
+  it("shows a refused rename's message in the failed company's row only", () => {
+    // Given the server refused the rename of folder q
+    render(
+      <CompanyDrawer
+        overview={fixture()}
+        selectedKey={null}
+        sheet={false}
+        onSelect={() => {}}
+        onClose={() => {}}
+        onSetCompanyMode={() => {}}
+        renameError={{
+          machineId: "m1",
+          path: "/q",
+          message: "Could not rename. Try again.",
+        }}
+      />,
+    );
+
+    // Then q's row carries the alert and p's row does not
+    expect(
+      within(screen.getByTestId("drawer-company-q")).getByRole("alert")
+        .textContent,
+    ).toBe("Could not rename. Try again.");
+    expect(
+      within(
+        within(screen.getByTestId("drawer-mac-m1")).getByTestId(
+          "drawer-company-p",
+        ),
+      ).queryByRole("alert"),
+    ).toBeNull();
+  });
+
   it("cancels only the editor on Escape in the field, keeps one editor open at a time, and puts no pencil on Other or a switched-off row", () => {
     // Given a drawer with two Macs' companies, an Other row and a switched-off folder
     const overview = buildOverview({

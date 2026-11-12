@@ -5,6 +5,7 @@ import {
   applyNames,
   applyOverrides,
   overrideKey,
+  refuseName,
   settleNames,
   settleOverrides,
 } from "./officeStore";
@@ -150,5 +151,60 @@ describe("pending company names", () => {
 
     // Then request 2's name is still waiting for its own answer
     expect(after.get(key)).toEqual(pending("Yankee", 2));
+  });
+});
+
+describe("a refused rename", () => {
+  it("takes back its own name", () => {
+    // Given request 1's name pending on a named folder
+    const key = overrideKey("m1", "/g");
+    const names = new Map([[key, pending("Zulu", 1)]]);
+    const record = [{ ...folder("/g", true), displayName: "Alpha" }];
+
+    // When request 1 is refused
+    const reverted = refuseName(names, key, 1);
+
+    // Then the folder shows its old name
+    expect(applyNames(record, reverted)).toEqual(record);
+  });
+
+  it("leaves a newer request's name alone even when both carry the same value", () => {
+    // Given request 3 renamed the company back to the name request 1 carried
+    const key = overrideKey("m1", "/g");
+    const names = new Map([[key, pending("Zulu", 3)]]);
+
+    // When request 1 is refused
+    const after = refuseName(names, key, 1);
+
+    // Then request 3's name stays
+    expect(after).toBe(names);
+  });
+
+  it("leaves no record behind on a company that had none", () => {
+    // Given a name on a folder no answer knows
+    const key = overrideKey("m1", "/g/a");
+    const names = new Map([[key, pending("Billing", 1)]]);
+    expect(applyNames([], names)).toHaveLength(1);
+
+    // When the server refuses it
+    const reverted = refuseName(names, key, 1);
+
+    // Then no record is made up for the folder
+    expect(applyNames([], reverted)).toEqual([]);
+  });
+
+  it("leaves a pending company-mode switch on the same folder in force", () => {
+    // Given a switch and a name pending on one folder with no record
+    const key = overrideKey("m1", "/g/a");
+    const overrides = new Map([[key, false]]);
+    const names = new Map([[key, pending("Billing", 1)]]);
+
+    // When the name is refused
+    const reverted = refuseName(names, key, 1);
+
+    // Then the folder is still there, off
+    expect(applyNames(applyOverrides([], overrides), reverted)).toEqual([
+      folder("/g/a", false),
+    ]);
   });
 });

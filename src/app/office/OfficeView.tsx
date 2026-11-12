@@ -186,6 +186,12 @@ export function OfficeView() {
   const [overrides, setOverrides] = useState<ModeOverrides>(new Map());
   const [names, setNames] = useState<NameOverrides>(new Map());
   const [switchError, setSwitchError] = useState<string | null>(null);
+  // The company whose last rename was refused; its own state so a switch error never wipes it.
+  const [renameError, setRenameError] = useState<{
+    machineId: string;
+    path: string;
+    message: string;
+  } | null>(null);
   const [companyKey, setCompanyKey] = useState<string | null>(null);
   const [tagPick, setTagPick] = useState<TagPick>({
     companyKey: null,
@@ -387,6 +393,7 @@ export function OfficeView() {
   ) => {
     const key = overrideKey(machineId, path);
     const token = ++renameTokenRef.current;
+    setRenameError(null);
     commit(
       {
         ...dataRef.current,
@@ -419,11 +426,17 @@ export function OfficeView() {
     const reverted = refuseName(dataRef.current.names, key, token);
     if (reverted === dataRef.current.names) return;
     commit({ ...dataRef.current, names: reverted }, false);
+    setRenameError({
+      machineId,
+      path,
+      message: "Could not rename. Try again.",
+    });
   };
 
   /** Opens the company drawer; a details panel left open would sit under it, so it closes. */
   const openDrawer = () => {
     setSwitchError(null);
+    setRenameError(null);
     setSelectedKey(null);
     officeState.selectedAgentId = null;
     setDrawerOpen(true);
@@ -455,6 +468,8 @@ export function OfficeView() {
   const selectCompany = (key: string) => {
     // Pressing the viewed company is not a switch; a double-click to rename must keep the filter.
     if (key === companyRef.current) return;
+    // A refused rename is old news once the owner has moved on.
+    setRenameError(null);
     companyRef.current = key;
     setCompanyKey(key);
     resetTagPick(key);
@@ -688,6 +703,16 @@ export function OfficeView() {
           folded={isMobile}
           onSelect={(session) => setSelectedKey(sessionKey(session))}
         />
+        {/* Over the office below the bar, so it takes no layout height; the drawer shows its own copy in the row. */}
+        {renameError && !drawerOpen && (
+          <p
+            role="alert"
+            data-testid="rename-error"
+            className="absolute top-2 left-1/2 z-[66] -translate-x-1/2 border-2 border-warning bg-bg px-10 py-6 text-xs font-bold text-warning"
+          >
+            {renameError.message}
+          </p>
+        )}
         {drawerOpen && (
           <CompanyDrawer
             overview={overview}
@@ -699,6 +724,7 @@ export function OfficeView() {
               closeDrawer();
             }}
             error={switchError}
+            renameError={renameError}
             onSetCompanyMode={(machineId, path, mode) =>
               void setCompanyMode(machineId, path, mode)
             }
