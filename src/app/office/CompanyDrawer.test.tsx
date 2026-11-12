@@ -133,7 +133,7 @@ describe("the company drawer", () => {
     // When the owner presses the q company
     fireEvent.click(
       within(screen.getByTestId("drawer-company-q")).getByRole("button", {
-        name: /q/,
+        name: /^q/,
       }),
     );
 
@@ -251,5 +251,257 @@ describe("the company drawer", () => {
       ["m1", "/g/a", false],
       ["m1", "/g", true],
     ]);
+  });
+
+  it("opens a Name field filled with the company's name from its pencil, and Save asks once to rename it", () => {
+    // Given an open drawer
+    const onRename = vi.fn();
+    const onSelect = vi.fn();
+    render(
+      <CompanyDrawer
+        overview={fixture()}
+        selectedKey={null}
+        sheet={false}
+        onSelect={onSelect}
+        onClose={() => {}}
+        onSetCompanyMode={() => {}}
+        onRename={onRename}
+      />,
+    );
+
+    // When the owner presses q's pencil
+    fireEvent.click(screen.getByRole("button", { name: "Rename q" }));
+
+    // Then the field names the folder and starts with the current name
+    const field = screen.getByLabelText(
+      "Name for folder q",
+    ) as HTMLInputElement;
+    expect(field.value).toBe("q");
+
+    // When the owner types a name and presses Save
+    fireEvent.change(field, { target: { value: "  Harbor  " } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    // Then the drawer asks once for the trimmed name, the editor is gone, and the row was not picked
+    expect(onRename.mock.calls).toEqual([["m1", "/q", "Harbor"]]);
+    expect(screen.queryByLabelText("Name for folder q")).toBeNull();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("sends nothing for an unchanged name or a Cancel, sends null for a blank name, and returns focus to the pencil", () => {
+    // Given an open drawer
+    const onRename = vi.fn();
+    render(
+      <CompanyDrawer
+        overview={fixture()}
+        selectedKey={null}
+        sheet={false}
+        onSelect={() => {}}
+        onClose={() => {}}
+        onSetCompanyMode={() => {}}
+        onRename={onRename}
+      />,
+    );
+    const pencil = screen.getByRole("button", { name: "Rename q" });
+
+    // When the owner saves the name untouched
+    fireEvent.click(pencil);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    // Then nothing is sent, the editor closes and the pencil has focus
+    expect(onRename).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("Name for folder q")).toBeNull();
+    expect(document.activeElement).toBe(pencil);
+
+    // When the owner types a name and cancels
+    fireEvent.click(pencil);
+    fireEvent.change(screen.getByLabelText("Name for folder q"), {
+      target: { value: "Dropped" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    // Then nothing is sent and the pencil has focus
+    expect(onRename).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(pencil);
+
+    // When the owner clears the field and saves
+    fireEvent.click(pencil);
+    fireEvent.change(screen.getByLabelText("Name for folder q"), {
+      target: { value: "   " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    // Then the drawer asks once to put the folder name back
+    expect(onRename.mock.calls).toEqual([["m1", "/q", null]]);
+  });
+
+  it("cancels only the editor on Escape in the field, keeps one editor open at a time, and puts no pencil on Other or a switched-off row", () => {
+    // Given a drawer with two Macs' companies, an Other row and a switched-off folder
+    const overview = buildOverview({
+      folders: [
+        { machineId: "m1", path: "/g", companyMode: false },
+        { machineId: "m1", path: "/q", companyMode: true },
+      ],
+      sessions: [
+        live("m1", "x", "/g/a", "working"),
+        live("m1", "z", "/g", "idle"),
+        live("m1", "w", "/q", "idle"),
+      ],
+      machines: [{ machineId: "m1", machineName: "Studio", lastSeenAt: T }],
+      offlineMachineIds: new Set(),
+      departures: [],
+    });
+    const onClose = vi.fn();
+    const onRename = vi.fn();
+    render(
+      <CompanyDrawer
+        overview={overview}
+        selectedKey={null}
+        sheet={false}
+        onSelect={() => {}}
+        onClose={onClose}
+        onSetCompanyMode={() => {}}
+        onRename={onRename}
+      />,
+    );
+
+    // Then only the two real companies have a pencil
+    expect(
+      screen
+        .getAllByRole("button", { name: /^Rename / })
+        .map((b) => b.ariaLabel),
+    ).toEqual(["Rename a", "Rename q"]);
+
+    // When the owner types in a's editor, then opens q's
+    fireEvent.click(screen.getByRole("button", { name: "Rename a" }));
+    fireEvent.change(screen.getByLabelText("Name for folder a"), {
+      target: { value: "Lost" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Rename q" }));
+
+    // Then a's editor is gone with its text and q's is open
+    expect(screen.queryByLabelText("Name for folder a")).toBeNull();
+    expect(
+      (screen.getByLabelText("Name for folder q") as HTMLInputElement).value,
+    ).toBe("q");
+
+    // When the owner presses Escape in the field
+    fireEvent.keyDown(screen.getByLabelText("Name for folder q"), {
+      key: "Escape",
+    });
+
+    // Then only the editor closes
+    expect(screen.queryByLabelText("Name for folder q")).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onRename).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+  });
+
+  it("cancels only the editor on Escape pressed on Save or Cancel, and the drawer stays", () => {
+    // Given an open drawer
+    const onClose = vi.fn();
+    const onRename = vi.fn();
+    render(
+      <CompanyDrawer
+        overview={fixture()}
+        selectedKey={null}
+        sheet={false}
+        onSelect={() => {}}
+        onClose={onClose}
+        onSetCompanyMode={() => {}}
+        onRename={onRename}
+      />,
+    );
+
+    for (const name of ["Save", "Cancel"]) {
+      // When the editor is open and Escape is pressed on that button
+      fireEvent.click(screen.getByRole("button", { name: "Rename q" }));
+      fireEvent.keyDown(screen.getByRole("button", { name }), {
+        key: "Escape",
+      });
+
+      // Then only the editor closes, and nothing was saved
+      expect(screen.queryByLabelText("Name for folder q")).toBeNull();
+      expect(onClose).not.toHaveBeenCalled();
+      expect(onRename).not.toHaveBeenCalled();
+    }
+
+    // And with no editor open, Escape closes the drawer
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows a long company name in full, wrapped instead of cut short", () => {
+    // Given a company named with 100 characters
+    const long = "N".repeat(100);
+    const overview = buildOverview({
+      folders: [
+        { machineId: "m1", path: "/q", companyMode: true, displayName: long },
+      ],
+      sessions: [live("m1", "w", "/q", "idle")],
+      machines: [{ machineId: "m1", machineName: "Studio", lastSeenAt: T }],
+      offlineMachineIds: new Set(),
+      departures: [],
+    });
+
+    // When the drawer renders
+    render(
+      <CompanyDrawer
+        overview={overview}
+        selectedKey={null}
+        sheet={false}
+        onSelect={() => {}}
+        onClose={() => {}}
+        onSetCompanyMode={() => {}}
+      />,
+    );
+
+    // Then the name wraps and is not clipped with an ellipsis
+    const name = within(screen.getByTestId(`drawer-company-${long}`)).getByText(
+      long,
+    );
+    expect(name.className).toContain("break-words");
+    expect(name.className).not.toContain("truncate");
+  });
+
+  it("drops an open editor when its company disappears, and does not bring the draft back when the company returns", () => {
+    // Given a drawer with q's editor open and a draft typed
+    const withQ = buildOverview({
+      folders: [{ machineId: "m1", path: "/q", companyMode: true }],
+      sessions: [live("m1", "w", "/q", "idle")],
+      machines: [{ machineId: "m1", machineName: "Studio", lastSeenAt: T }],
+      offlineMachineIds: new Set(),
+      departures: [],
+    });
+    const without = buildOverview({
+      folders: [],
+      sessions: [],
+      machines: [{ machineId: "m1", machineName: "Studio", lastSeenAt: T }],
+      offlineMachineIds: new Set(),
+      departures: [],
+    });
+    const drawer = (overview: typeof withQ) => (
+      <CompanyDrawer
+        overview={overview}
+        selectedKey={null}
+        sheet={false}
+        onSelect={() => {}}
+        onClose={() => {}}
+        onSetCompanyMode={() => {}}
+        onRename={() => {}}
+      />
+    );
+    const { rerender } = render(drawer(withQ));
+    fireEvent.click(screen.getByRole("button", { name: "Rename q" }));
+    fireEvent.change(screen.getByLabelText("Name for folder q"), {
+      target: { value: "Stale" },
+    });
+
+    // When q disappears and then comes back
+    rerender(drawer(without));
+    rerender(drawer(withQ));
+
+    // Then no editor is open for it
+    expect(screen.queryByLabelText("Name for folder q")).toBeNull();
   });
 });

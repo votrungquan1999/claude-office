@@ -13,6 +13,8 @@ export interface FolderDocument {
   existsOnMac?: boolean;
   /** Whether Claude Code trusts the folder; absent when the Mac cannot tell. */
   cliTrusted?: boolean;
+  /** The owner's name for the company; absent means the folder name. The agent never writes it. */
+  displayName?: string;
 }
 
 export interface FolderRecorderOptions {

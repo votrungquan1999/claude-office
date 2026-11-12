@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { Overview } from "@/shared/overview";
 import { CountRow } from "./CompanyStrip";
 
@@ -19,6 +19,8 @@ export interface CompanyDrawerProps {
     path: string,
     companyMode: boolean,
   ) => void;
+  /** Asks to name a company, or with null to put its folder name back. */
+  onRename?: (machineId: string, path: string, name: string | null) => void;
   onClose: () => void;
   /** Extra controls under the title, such as the tag filter on a sideways phone. */
   extra?: ReactNode;
@@ -68,9 +70,27 @@ export function CompanyDrawer({
   error = null,
   onSelect,
   onSetCompanyMode,
+  onRename,
   onClose,
   extra,
 }: CompanyDrawerProps) {
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+  // Pencils by company, so closing an editor can hand focus back.
+  const pencils = useRef(new Map<string, HTMLButtonElement>());
+  const closeEditor = (companyKey: string) => {
+    setEditingKey(null);
+    pencils.current.get(companyKey)?.focus();
+  };
+  // A company that disappears while it is being named takes its editor with it.
+  const editingGone =
+    editingKey !== null &&
+    !overview.macs.some((mac) =>
+      mac.companies.some((entry) => entry.company.key === editingKey),
+    );
+  useEffect(() => {
+    if (editingGone) setEditingKey(null);
+  }, [editingGone]);
   // Escape closes the drawer wherever focus is, so the listener sits on the document.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -162,9 +182,38 @@ export function CompanyDrawer({
                     onClick={() => onSelect(company.key)}
                     className="flex min-w-0 flex-1 flex-col gap-4 p-8 text-left hover:bg-btn-hover"
                   >
-                    <span className="truncate font-bold">{company.name}</span>
+                    <span className="break-words font-bold">
+                      {company.name}
+                    </span>
                     <CountRow counts={counts} />
                   </button>
+                  {path !== null && (
+                    <button
+                      type="button"
+                      ref={(element) => {
+                        if (element) pencils.current.set(company.key, element);
+                        else pencils.current.delete(company.key);
+                      }}
+                      aria-label={`Rename ${company.name}`}
+                      onClick={() => {
+                        setEditingKey(company.key);
+                        setDraft(company.name);
+                      }}
+                      className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center hover:bg-btn-hover"
+                    >
+                      <svg
+                        aria-hidden="true"
+                        width="14"
+                        height="14"
+                        viewBox="0 0 14 14"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
+                        <path d="M2 12l1-3 7-7 2 2-7 7z" />
+                      </svg>
+                    </button>
+                  )}
                   {path !== null && (
                     <CompanySwitch
                       label={`Company mode for ${company.name}`}
@@ -175,6 +224,54 @@ export function CompanyDrawer({
                     />
                   )}
                 </div>
+                {path !== null && editingKey === company.key && (
+                  <form
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      closeEditor(company.key);
+                      const name = draft.trim();
+                      // An unchanged name sends nothing; a blank one puts the folder name back.
+                      if (name !== company.name) {
+                        onRename?.(company.machineId, path, name || null);
+                      }
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Escape") return;
+                      // Escape anywhere in the editor cancels the edit; the drawer stays open.
+                      event.stopPropagation();
+                      event.nativeEvent.stopImmediatePropagation();
+                      closeEditor(company.key);
+                    }}
+                    className="flex flex-col gap-6 border-t-2 border-border p-8"
+                  >
+                    <label className="flex flex-col gap-4 text-xs text-text-muted">
+                      {`Name for folder ${company.folderName}`}
+                      <input
+                        // biome-ignore lint/a11y/noAutofocus: the editor opens from the owner's press on its pencil
+                        autoFocus
+                        maxLength={100}
+                        value={draft}
+                        onChange={(event) => setDraft(event.target.value)}
+                        className="border-2 border-border bg-bg-dark px-8 py-6 text-sm text-text"
+                      />
+                    </label>
+                    <div className="flex gap-8">
+                      <button
+                        type="submit"
+                        className="min-h-[44px] flex-1 border-2 border-border bg-btn-bg px-10 hover:bg-btn-hover"
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => closeEditor(company.key)}
+                        className="min-h-[44px] flex-1 border-2 border-border bg-btn-bg px-10 hover:bg-btn-hover"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                )}
               </div>
             );
           })}

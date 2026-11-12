@@ -33,13 +33,19 @@ import { readCollapsedMacs, storeCollapsedMacs } from "./collapsedMacs";
 import { postCompanyMode } from "./companyMode";
 import { DetailsPanel, type OrderClickState } from "./DetailsPanel";
 import { postDismiss } from "./dismiss";
+import { postDisplayName } from "./displayName";
 import { HireDialog, type HireMac } from "./HireDialog";
 import {
+  acceptName,
+  applyNames,
   applyOverrides,
   type ModeOverrides,
   mergeSessions,
+  type NameOverrides,
   overrideKey,
+  refuseName,
   type SessionMap,
+  settleNames,
   settleOverrides,
 } from "./officeStore";
 import { RoomSigns } from "./RoomSigns";
@@ -90,6 +96,8 @@ interface OfficeData {
   folders: FolderDto[];
   /** Switches the owner pressed that no answer has confirmed yet. */
   overrides: ModeOverrides;
+  /** Company names the owner pressed that no answer has confirmed yet. */
+  names: NameOverrides;
   offline: ReadonlySet<string>;
 }
 
@@ -102,7 +110,10 @@ interface OfficeData {
 function overviewOf(data: OfficeData, now: Date) {
   const sessions = [...data.sessions.values()];
   return buildOverview({
-    folders: applyOverrides(data.folders, data.overrides),
+    folders: applyNames(
+      applyOverrides(data.folders, data.overrides),
+      data.names,
+    ),
     sessions,
     machines: data.machines,
     offlineMachineIds: data.offline,
@@ -172,6 +183,7 @@ export function OfficeView() {
   const [machines, setMachines] = useState<MachineDto[]>([]);
   const [folders, setFolders] = useState<FolderDto[]>([]);
   const [overrides, setOverrides] = useState<ModeOverrides>(new Map());
+  const [names, setNames] = useState<NameOverrides>(new Map());
   const [switchError, setSwitchError] = useState<string | null>(null);
   const [companyKey, setCompanyKey] = useState<string | null>(null);
   const [tagPick, setTagPick] = useState<TagPick>({
@@ -208,11 +220,14 @@ export function OfficeView() {
     machines: [],
     folders: [],
     overrides: new Map(),
+    names: new Map(),
     offline: new Set(),
   });
   // The poll reads refs only, so the picked company lives in one too.
   const companyRef = useRef<string | null>(null);
   const tagPickRef = useRef<TagPick>({ companyKey: null, selection: SHOW_ALL });
+  // Numbers each rename request, so an answer to an old one never touches a newer name.
+  const renameTokenRef = useRef(0);
   // The browser's own midnight decides which departures count as today.
   const [dayStart] = useState(() => dayStartOf(new Date()).toISOString());
 
@@ -278,6 +293,7 @@ export function OfficeView() {
     setMachines(data.machines);
     setFolders(data.folders);
     setOverrides(data.overrides);
+    setNames(data.names);
     // Resolved here from the merged data, so the first paint already shows the right company.
     const overview = overviewOf(data, new Date());
     // A pick read back from storage holds only while its company is active; one made in this page holds while it exists.
@@ -304,7 +320,11 @@ export function OfficeView() {
   };
 
   /** Folds one answer into the sessions and the scene. */
-  const onAnswer = (answer: ChangesResponse, firstLoad: boolean) => {
+  const onAnswer = (
+    answer: ChangesResponse,
+    firstLoad: boolean,
+    poll: number,
+  ) => {
     setServerOffsetMs(Date.parse(answer.serverNow) - Date.now());
     const sessions = mergeSessions(
       firstLoad ? new Map() : dataRef.current.sessions,
@@ -317,6 +337,7 @@ export function OfficeView() {
         folders: answer.folders,
         // A switch stays in force until an answer agrees, so a poll already in flight cannot flip it back.
         overrides: settleOverrides(dataRef.current.overrides, answer.folders),
+        names: settleNames(dataRef.current.names, answer.folders, poll),
         // Judged against the server's clock: the phone's may be minutes off.
         offline: offlineMachineIds(answer.machines, answer.serverNow, [
           ...[...sessions.values()].map((session) => session.machineId),
@@ -354,6 +375,48 @@ export function OfficeView() {
     if (companyRef.current === pickDuring) companyRef.current = pickBefore;
     commit({ ...dataRef.current, overrides: reverted }, false);
     setSwitchError("Could not change company mode. Try again.");
+  };
+
+  /** Names a company at once and sends it; a refused request puts the old name back. */
+  const renameCompany = async (
+    machineId: string,
+    path: string,
+    displayName: string | null,
+  ) => {
+    const key = overrideKey(machineId, path);
+    const token = ++renameTokenRef.current;
+    commit(
+      {
+        ...dataRef.current,
+        names: new Map(dataRef.current.names).set(key, {
+          name: displayName,
+          token,
+          storedAfterPoll: null,
+        }),
+      },
+      false,
+    );
+    const sent = await postDisplayName({ machineId, path, displayName });
+    if (sent) {
+      // The server holds it now; an answer to a poll started from here on is the truth, whatever name it shows.
+      commit(
+        {
+          ...dataRef.current,
+          names: acceptName(
+            dataRef.current.names,
+            key,
+            token,
+            lastStartedPoll(),
+          ),
+        },
+        false,
+      );
+      return;
+    }
+    // A later rename of the same company owns the pending name now, so this failure leaves it alone.
+    const reverted = refuseName(dataRef.current.names, key, token);
+    if (reverted === dataRef.current.names) return;
+    commit({ ...dataRef.current, names: reverted }, false);
   };
 
   /** Opens the company drawer; a details panel left open would sit under it, so it closes. */
@@ -396,7 +459,7 @@ export function OfficeView() {
   };
 
   // Employees need the layout's seats, so polling starts only after the assets.
-  const { lastUpdatedAt, connectionLost } = useOfficeChanges({
+  const { lastUpdatedAt, connectionLost, lastStartedPoll } = useOfficeChanges({
     enabled: loaded,
     dayStart,
     onAnswer,
@@ -474,7 +537,7 @@ export function OfficeView() {
   );
 
   const overview = overviewOf(
-    { sessions, machines, folders, overrides, offline: offlineIds },
+    { sessions, machines, folders, overrides, names, offline: offlineIds },
     now,
   );
   const tagFilterView = tagFilterOf(
@@ -630,6 +693,9 @@ export function OfficeView() {
             error={switchError}
             onSetCompanyMode={(machineId, path, mode) =>
               void setCompanyMode(machineId, path, mode)
+            }
+            onRename={(machineId, path, name) =>
+              void renameCompany(machineId, path, name)
             }
             onClose={closeDrawer}
           />

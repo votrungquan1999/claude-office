@@ -301,7 +301,7 @@ test("the drawer lists every Mac and company with four counts, greys the offline
     // When the owner picks workspace
     await drawer
       .getByTestId("drawer-company-workspace")
-      .getByRole("button")
+      .getByRole("button", { name: /^workspace/ })
       .click();
 
     // Then the drawer closes and the office shows workspace, with focus back on the trigger

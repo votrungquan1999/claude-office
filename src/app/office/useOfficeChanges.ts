@@ -15,8 +15,8 @@ export interface UseOfficeChangesOptions {
   intervalMs?: number;
   /** ISO time of the browser's local midnight, sent with the first load. */
   dayStart: string;
-  /** Called with every answer; `firstLoad` is true for the one without a cursor. */
-  onAnswer: (answer: ChangesResponse, firstLoad: boolean) => void;
+  /** Called with every answer; `firstLoad` is true for the one without a cursor, `poll` numbers polls in the order they started. */
+  onAnswer: (answer: ChangesResponse, firstLoad: boolean, poll: number) => void;
   /** Called once when the session has expired; polling stops. */
   onUnauthorized: () => void;
 }
@@ -28,14 +28,19 @@ export interface OfficeChangesStatus {
   connectionLost: boolean;
 }
 
+export interface OfficeChanges extends OfficeChangesStatus {
+  /** The number of the last poll started so far; 0 before the first. */
+  lastStartedPoll: () => number;
+}
+
 /**
  * Keeps the office current by polling the changes API while the tab is visible.
  * @param options - Timing and callbacks.
- * @returns Whether the last poll worked and when it last did.
+ * @returns Whether the last poll worked, when it last did, and how many polls have started.
  */
 export function useOfficeChanges(
   options: UseOfficeChangesOptions,
-): OfficeChangesStatus {
+): OfficeChanges {
   const { enabled, intervalMs = 3000, dayStart } = options;
   const [status, setStatus] = useState<OfficeChangesStatus>({
     lastUpdatedAt: null,
@@ -43,6 +48,7 @@ export function useOfficeChanges(
   });
   const latest = useRef(options);
   latest.current = options;
+  const pollsStarted = useRef(0);
 
   useEffect(() => {
     if (!enabled) return;
@@ -52,6 +58,7 @@ export function useOfficeChanges(
     let timer: ReturnType<typeof setTimeout> | undefined;
     let controller: AbortController | undefined;
     const poll = async (signal: AbortSignal) => {
+      const number = ++pollsStarted.current;
       const query = cursor
         ? `since=${encodeURIComponent(cursor)}`
         : `dayStart=${encodeURIComponent(dayStart)}`;
@@ -61,7 +68,7 @@ export function useOfficeChanges(
       if (response.status === 401) throw new SessionExpiredError();
       if (!response.ok) throw new Error(`changes answered ${response.status}`);
       const body = changesResponseSchema.parse(await response.json());
-      latest.current.onAnswer(body, cursor === undefined);
+      latest.current.onAnswer(body, cursor === undefined, number);
       cursor = body.cursor;
     };
     // A chain, not an interval: the next poll starts one interval after the last one ended.
@@ -109,5 +116,5 @@ export function useOfficeChanges(
     };
   }, [enabled, intervalMs, dayStart]);
 
-  return status;
+  return { ...status, lastStartedPoll: () => pollsStarted.current };
 }

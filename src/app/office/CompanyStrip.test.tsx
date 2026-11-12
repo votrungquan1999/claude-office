@@ -19,6 +19,7 @@ const company = (
     key: `${options.machineId ?? "m1"}\0/${name}`,
     machineId: options.machineId ?? "m1",
     name,
+    folderName: name,
     path: `/${name}`,
     other: false,
   },
@@ -380,6 +381,35 @@ describe("the company strip", () => {
     ).toEqual(["here"]);
     expect(screen.getByTestId("mac-badge-m1").textContent).toBe("3");
     expect(screen.queryByTestId("mac-badge-m2")).toBeNull();
+  });
+
+  it("carries a company's full name as the tab's hover text so a long name can be cut short", () => {
+    // Given a company with a long name
+    const long = "a-very-long-company-name-that-needs-cutting";
+    const macs: MacOverview[] = [
+      {
+        machineId: "m1",
+        machineName: "Air",
+        online: true,
+        switchedOff: [],
+        companies: [company(long, [1, 0, 0, 0])],
+      },
+    ];
+
+    // When the strip renders
+    render(
+      <CompanyStrip
+        macs={macs}
+        selectedKey={null}
+        onSelect={() => {}}
+        onOpenDrawer={() => {}}
+        collapsedMacs={new Set()}
+        onToggleMac={() => {}}
+      />,
+    );
+
+    // Then the tab's hover text is the full name
+    expect(screen.getByTestId("company-tab").getAttribute("title")).toBe(long);
   });
 
   it("includes the viewed company's tab even when nothing is live in it, and renders an empty strip without a crash", () => {

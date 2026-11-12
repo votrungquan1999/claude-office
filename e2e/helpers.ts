@@ -122,6 +122,8 @@ export interface SeedFolder {
   existsOnMac?: boolean;
   /** Whether Claude Code trusts the folder; left out when the Mac cannot tell. */
   cliTrusted?: boolean;
+  /** The owner's name for the company. */
+  displayName?: string;
 }
 
 /**
@@ -137,13 +139,21 @@ export async function seedFolders(
   if (records.length === 0) return;
   await folders.insertMany(
     records.map(
-      ({ machineId, path, companyMode, existsOnMac, cliTrusted }) => ({
+      ({
+        machineId,
+        path,
+        companyMode,
+        existsOnMac,
+        cliTrusted,
+        displayName,
+      }) => ({
         machineId,
         path,
         companyMode: companyMode ?? true,
         firstSeenAt: new Date(),
         ...(existsOnMac === undefined ? {} : { existsOnMac }),
         ...(cliTrusted === undefined ? {} : { cliTrusted }),
+        ...(displayName === undefined ? {} : { displayName }),
       }),
     ),
   );

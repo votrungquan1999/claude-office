@@ -149,13 +149,16 @@ export function CompanyStrip({
                   type="button"
                   data-testid="company-tab"
                   data-company-name={company.name}
+                  title={company.name}
                   aria-current={
                     company.key === selectedKey ? "page" : undefined
                   }
                   onClick={() => onSelect(company.key)}
                   className={`flex h-40 shrink-0 items-center gap-10 border-2 px-10 text-sm ${company.key === selectedKey ? "border-accent-bright bg-active-bg" : "border-border bg-btn-bg hover:bg-btn-hover"}`}
                 >
-                  <span className="font-bold">{company.name}</span>
+                  <span className="max-w-[200px] truncate font-bold">
+                    {company.name}
+                  </span>
                   <CountRow counts={counts} />
                   {needsYou && (
                     <span

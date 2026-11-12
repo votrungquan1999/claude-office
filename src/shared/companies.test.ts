@@ -184,6 +184,79 @@ describe("the company tree", () => {
     expect(tree.companies.map((c) => c.name)).toEqual(["a/app", "b/app"]);
   });
 
+  it("keeps the parent folder on the other of two same-named companies when one is renamed", () => {
+    // Given two company folders both called app, the first renamed
+    const tree = buildCompanyTree({
+      folders: [
+        {
+          machineId: "m1",
+          path: "/a/app",
+          companyMode: true,
+          displayName: "Mine",
+        },
+        { machineId: "m1", path: "/b/app", companyMode: true },
+      ],
+      sessions: [],
+      machineIds: MAC,
+    });
+
+    // Then the renamed one shows its name and the other still tells its parent
+    expect(tree.companies.map((c) => c.name).sort()).toEqual(["Mine", "b/app"]);
+  });
+
+  it("names a company by the owner's name, keeps its folder name, sorts by the shown name, and places sessions under the shown name", () => {
+    // Given three company folders, the middle one renamed to sort first, and a session started in it
+    const tree = buildCompanyTree({
+      folders: [
+        { machineId: "m1", path: "/w/alpha", companyMode: true },
+        {
+          machineId: "m1",
+          path: "/w/harbor-labs",
+          companyMode: true,
+          displayName: "Aardvark",
+        },
+        { machineId: "m1", path: "/w/zulu", companyMode: true },
+      ],
+      sessions: [session("s1", "/w/harbor-labs/api")],
+      machineIds: MAC,
+    });
+
+    // Then the renamed company leads the list under its new name and still knows its folder
+    expect(tree.companies.map((c) => [c.name, c.folderName])).toEqual([
+      ["Aardvark", "harbor-labs"],
+      ["alpha", "alpha"],
+      ["zulu", "zulu"],
+    ]);
+    expect(tree.companyOf(session("s1", "/w/harbor-labs/api"))).toMatchObject({
+      companyName: "Aardvark",
+      project: "api",
+    });
+  });
+
+  it("names a switched-off folder by the owner's name too, and counts only folder names toward repeats", () => {
+    // Given /a/x switched off with a name, /b/x switched off without one, and a company /c/x named like them
+    const tree = buildCompanyTree({
+      folders: [
+        {
+          machineId: "m1",
+          path: "/a/x",
+          companyMode: false,
+          displayName: "Mine",
+        },
+        { machineId: "m1", path: "/b/x", companyMode: false },
+        { machineId: "m1", path: "/c/x", companyMode: true },
+      ],
+      sessions: [],
+      machineIds: MAC,
+    });
+
+    // Then the named row shows its name, and the other two still tell their parents apart
+    expect(
+      Object.fromEntries(tree.switchedOff.map((f) => [f.path, f.name])),
+    ).toEqual({ "/a/x": "Mine", "/b/x": "b/x" });
+    expect(tree.companies.map((c) => c.name)).toEqual(["c/x", "Other"]);
+  });
+
   it("adds the parent folder to switched-off names that repeat among a Mac's companies and switched-off folders", () => {
     // Given /a/x and /b/x are both switched off, and a company /c/y is not
     const tree = buildCompanyTree({

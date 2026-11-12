@@ -10,6 +10,8 @@ export const folderDtoSchema = z.object({
   existsOnMac: z.boolean().optional(),
   /** Whether Claude Code trusts the folder; absent when the Mac cannot tell. */
   cliTrusted: z.boolean().optional(),
+  /** The owner's name for the company; absent means the folder name. */
+  displayName: z.string().optional(),
 });
 
 export type FolderDto = z.infer<typeof folderDtoSchema>;
@@ -22,3 +24,12 @@ export const setCompanyModeRequestSchema = z.object({
 });
 
 export type SetCompanyModeRequest = z.infer<typeof setCompanyModeRequestSchema>;
+
+/** The owner's request to name a company, or to put its folder name back with a blank or null name. */
+export const setDisplayNameRequestSchema = z.object({
+  machineId: z.string().min(1),
+  path: z.string().min(1),
+  displayName: z.string().trim().max(100).nullable(),
+});
+
+export type SetDisplayNameRequest = z.infer<typeof setDisplayNameRequestSchema>;

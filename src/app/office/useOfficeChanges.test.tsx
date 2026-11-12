@@ -91,6 +91,34 @@ describe("the office polls for changes", () => {
     ]);
   });
 
+  it("numbers each poll as it starts and hands the number to its answer, so a caller can tell polls started before an event from those after", async () => {
+    // Given a server whose second answer is held until released
+    let release: () => void = () => {};
+    fetchMock
+      .mockImplementationOnce(async () => json(answer("c1")))
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            release = () => resolve(json(answer("c2")));
+          }),
+      )
+      .mockImplementation(async () => json(answer("c3")));
+
+    // When the first poll has answered and the second has started
+    const { result, onAnswer } = mount();
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    await act(() => vi.advanceTimersByTimeAsync(INTERVAL));
+
+    // Then the second poll counts as started before it answers
+    expect(result.current.lastStartedPoll()).toBe(2);
+    expect(onAnswer.mock.calls.map(([, , poll]) => poll)).toEqual([1]);
+
+    // And its answer and the next carry their own numbers
+    await act(async () => release());
+    await act(() => vi.advanceTimersByTimeAsync(INTERVAL));
+    expect(onAnswer.mock.calls.map(([, , poll]) => poll)).toEqual([1, 2, 3]);
+  });
+
   it("stops asking while the tab is hidden, asks at once when it comes back, and then carries on every interval", async () => {
     // Given an office that has loaded
     fetchMock.mockImplementation(async () => json(answer("c1")));

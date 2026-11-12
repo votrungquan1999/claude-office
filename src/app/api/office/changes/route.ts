@@ -41,6 +41,7 @@ interface FolderDocument {
   firstSeenAt: Date;
   existsOnMac?: boolean;
   cliTrusted?: boolean;
+  displayName?: string;
 }
 
 interface MachineRow {
@@ -165,10 +166,18 @@ export async function GET(request: NextRequest) {
       ...(machine.agentVersion ? { agentVersion: machine.agentVersion } : {}),
     })),
     folders: folders.map(
-      ({ machineId, path, companyMode, existsOnMac, cliTrusted }) => ({
+      ({
         machineId,
         path,
         companyMode,
+        existsOnMac,
+        cliTrusted,
+        displayName,
+      }) => ({
+        machineId,
+        path,
+        companyMode,
+        ...(displayName === undefined ? {} : { displayName }),
         ...(existsOnMac === undefined ? {} : { existsOnMac }),
         ...(cliTrusted === undefined ? {} : { cliTrusted }),
       }),

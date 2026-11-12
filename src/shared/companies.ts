@@ -21,7 +21,10 @@ export interface Company {
   /** Unique across Macs: the Mac plus the company folder, or the Mac's "Other" sentinel. */
   key: string;
   machineId: string;
+  /** What the company is called: the owner's name when set, else the folder name. */
   name: string;
+  /** The name derived from the folder, kept even when the owner renamed the company. */
+  folderName: string;
   /** The company folder; null for the Mac's "Other" company. */
   path: string | null;
   other: boolean;
@@ -135,9 +138,11 @@ function companyPaths(
 export function buildCompanyTree(input: CompanyTreeInput): CompanyTree {
   const knownByMac = new Map<string, Set<string>>();
   const offByMac = new Map<string, Set<string>>();
+  // The owner's names, by Mac and normalised folder.
+  const namesByMac = new Map<string, Map<string, string>>();
   const startOf = (session: CompanySessionInput) =>
     normalize(session.startCwd ?? session.cwd);
-  for (const { machineId, path, companyMode } of input.folders) {
+  for (const { machineId, path, companyMode, displayName } of input.folders) {
     // A Mac with no record is hidden until it reports, and keeps its switches meanwhile.
     if (!input.machineIds.has(machineId)) continue;
     const normalized = normalize(path);
@@ -145,6 +150,12 @@ export function buildCompanyTree(input: CompanyTreeInput): CompanyTree {
       machineId,
       (knownByMac.get(machineId) ?? new Set()).add(normalized),
     );
+    if (displayName) {
+      namesByMac.set(
+        machineId,
+        (namesByMac.get(machineId) ?? new Map()).set(normalized, displayName),
+      );
+    }
     if (!companyMode) {
       offByMac.set(
         machineId,
@@ -175,10 +186,12 @@ export function buildCompanyTree(input: CompanyTreeInput): CompanyTree {
     for (const path of [...paths, ...offUnique]) {
       taken.set(lastSegment(path), (taken.get(lastSegment(path)) ?? 0) + 1);
     }
-    const nameOf = (path: string) =>
+    const folderNameOf = (path: string) =>
       (taken.get(lastSegment(path)) ?? 0) > 1
         ? nameWithParent(path)
         : lastSegment(path);
+    const nameOf = (path: string) =>
+      namesByMac.get(machineId)?.get(path) ?? folderNameOf(path);
     for (const path of offUnique) {
       switchedOff.push({ machineId, path, name: nameOf(path) });
     }
@@ -186,6 +199,7 @@ export function buildCompanyTree(input: CompanyTreeInput): CompanyTree {
       key: `${machineId}\0${path}`,
       machineId,
       name: nameOf(path),
+      folderName: folderNameOf(path),
       path,
       other: false,
     }));
@@ -202,6 +216,7 @@ export function buildCompanyTree(input: CompanyTreeInput): CompanyTree {
       key: `${machineId}\0\0other`,
       machineId,
       name: "Other",
+      folderName: "Other",
       path: null,
       other: true,
     };

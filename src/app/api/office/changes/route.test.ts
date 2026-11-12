@@ -204,6 +204,40 @@ describe("the office changes API", () => {
     );
   });
 
+  it("passes on the owner's name for each folder, and none for an unnamed folder", async () => {
+    // Given a named and an unnamed folder
+    const db = await getDb();
+    await db.collection("folders").deleteMany({});
+    await db.collection("folders").insertMany([
+      {
+        machineId: "m1",
+        path: "/named",
+        companyMode: true,
+        firstSeenAt: new Date(T0),
+        displayName: "Harbor",
+      },
+      {
+        machineId: "m1",
+        path: "/plain",
+        companyMode: true,
+        firstSeenAt: new Date(T0),
+      },
+    ]);
+
+    // When the owner asks for the changes
+    const body = changesResponseSchema.parse(
+      await (await GET(changesRequest(ownerHeaders))).json(),
+    );
+
+    // Then the named folder carries its name and the other carries no field
+    expect(
+      Object.fromEntries(body.folders.map((f) => [f.path, f.displayName])),
+    ).toEqual({ "/named": "Harbor", "/plain": undefined });
+    expect(body.folders.find((f) => f.path === "/plain")).not.toHaveProperty(
+      "displayName",
+    );
+  });
+
   it("passes on which employees are waiting at the Mac or starting", async () => {
     // Given a waiting row, a starting row and a plain open row
     const db = await getDb();
