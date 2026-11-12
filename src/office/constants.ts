@@ -434,9 +434,6 @@ export const MOBILE_MEDIA_QUERY =
 /** A real phone: a touch screen whose short side is at most 500px, in either orientation. iPads and narrow mouse windows never match. */
 export const PHONE_MEDIA_QUERY =
   "(pointer: coarse) and (max-width: 500px), (pointer: coarse) and (max-height: 500px)";
-/** A phone held sideways: wide but short, so the company strip would eat the office's height. An iPad (1024x768) does not match. */
-export const SIDEWAYS_PHONE_QUERY =
-  "(orientation: landscape) and (max-height: 500px)";
 /** Slide duration between the office and terminal pages. */
 export const MOBILE_VIEW_TRANSITION_MS = 300;
 /** Width of the screen-edge strips that arm the view-switch swipe: right

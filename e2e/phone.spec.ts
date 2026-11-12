@@ -175,8 +175,9 @@ async function expectSheetFits(page: Page, sideways = false) {
       const sheetBox = await panel.boundingBox();
       expect(rowBox?.height ?? 0).toBeGreaterThanOrEqual(10);
       expect(rowBox?.y ?? 0).toBeGreaterThanOrEqual(sheetBox?.y ?? 0);
+      // Scrolling snaps to device pixels (1/3 px at dpr 3), so a row can end a fraction past the edge.
       expect((rowBox?.y ?? 0) + (rowBox?.height ?? 0)).toBeLessThanOrEqual(
-        (sheetBox?.y ?? 0) + (sheetBox?.height ?? 0),
+        (sheetBox?.y ?? 0) + (sheetBox?.height ?? 0) + 0.5,
       );
     }
   } else {
@@ -561,81 +562,49 @@ test.describe("the office on a sideways phone", () => {
     await expectSheetFits(page, true);
   });
 
-  // Retired when the sideways mode goes.
-  test.fixme("folds the company strip into one button over the canvas that opens the drawer, and rotating back restores the strip with the drawer still open", async ({
+  test("shows the same company bar and stacked rooms as upright, and its drawer opens as a sheet that survives turning the phone upright", async ({
     page,
   }) => {
     // When the owner opens the office sideways
     await openOffice(page);
 
-    // Then one compact button names the viewed company, and the strip is gone
-    const compact = page.getByTestId("compact-company-button");
-    await expect(compact).toBeVisible();
-    await expect(compact).toContainText("q");
-    expect((await compact.boundingBox())?.height).toBeGreaterThanOrEqual(40);
-    await expect(page.getByTestId("company-strip")).toHaveCount(0);
+    // Then the company bar shows its tabs, with no folded company button
+    await expect(page.getByTestId("company-strip")).toBeVisible();
+    await expect(page.getByTestId("company-tab")).toHaveCount(1);
+    await expect(page.getByTestId("compact-company-button")).toHaveCount(0);
 
-    // And the canvas keeps the height the card bar leaves, the strip taking none
-    const heights = await page.evaluate(() => ({
-      canvas:
-        document
-          .querySelector('[data-testid="office-canvas"]')
-          ?.getBoundingClientRect().height ?? 0,
-      bar:
-        document
-          .querySelector('[data-testid="agent-card-bar"]')
-          ?.getBoundingClientRect().height ?? 0,
-      screen: window.innerHeight,
-    }));
+    // And the same four rooms as upright are there, and the page itself does not scroll
+    for (const name of [
+      "Needs permission",
+      "Waiting for you",
+      "Working",
+      "Idle",
+    ]) {
+      await expect(page.getByRole("region", { name })).toHaveCount(1);
+    }
     expect(
-      Math.abs(heights.canvas - (heights.screen - heights.bar)),
-    ).toBeLessThanOrEqual(2);
-    expect(await zoomOf(page)).toBeGreaterThanOrEqual(2);
-    // And the Hire button floats over the canvas, clear of the compact button, status and went-home button
-    const hire = page.getByTestId("hire-button");
-    await expect(hire).toBeVisible();
-    expect((await hire.boundingBox())?.height).toBeGreaterThanOrEqual(44);
-    expect(await overlaps(hire, compact)).toBe(false);
-    expect(await overlaps(hire, page.getByTestId("last-updated"))).toBe(false);
-    expect(await overlaps(hire, page.getByTestId("went-home-button"))).toBe(
-      false,
-    );
+      await page.evaluate(
+        () => document.documentElement.scrollHeight - window.innerHeight,
+      ),
+    ).toBeLessThanOrEqual(0);
 
-    // When the owner taps the button
-    await compact.tap();
+    // When the owner opens All companies from the bar
+    await page.getByTestId("open-drawer").tap();
 
-    // Then the drawer opens as a sheet covering the canvas's full height
+    // Then the drawer is a sheet that leaves room above it, with its close button in reach
     const drawer = page.getByRole("dialog", { name: "All companies" });
     await expect(drawer).toBeVisible();
-    expect((await drawer.boundingBox())?.height).toBeGreaterThanOrEqual(
-      heights.canvas - 2,
-    );
+    const strip = await page.getByTestId("company-strip").boundingBox();
+    const sheet = await drawer.boundingBox();
+    const available = 393 - (strip?.height ?? 0);
+    expect(sheet?.height ?? available).toBeLessThan(available - 2);
+    await expect(drawer.getByRole("button", { name: /close/i })).toBeVisible();
 
     // When the phone is turned upright
     await page.setViewportSize({ width: 393, height: 852 });
 
-    // Then the strip's tabs are back and the drawer is still open
-    await expect(page.getByTestId("company-tab")).toHaveCount(1);
-    await expect(page.getByTestId("compact-company-button")).toHaveCount(0);
+    // Then the drawer is still open
     await expect(drawer).toBeVisible();
-  });
-
-  test("shows the count of sessions that need the owner on the folded company button", async ({
-    page,
-  }) => {
-    // Given one session that needs permission
-    await sessions.updateOne(
-      { sessionId: "two" },
-      { $set: { state: "needsPermission" } },
-    );
-
-    // When the owner opens the office sideways
-    await openOffice(page);
-
-    // Then the folded button's badge reads 1
-    await expect(
-      page.getByTestId("compact-company-button").getByTestId("company-badge"),
-    ).toHaveText("1");
   });
 });
 

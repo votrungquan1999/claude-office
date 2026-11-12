@@ -14,7 +14,6 @@ import { fitZoom } from "@/office/fitZoom";
 import { useHasMouse } from "@/office/hooks/useHasMouse";
 import { useIsMobile } from "@/office/hooks/useIsMobile";
 import { useIsPhone } from "@/office/hooks/useIsPhone";
-import { useIsSidewaysPhone } from "@/office/hooks/useIsSidewaysPhone";
 import { macBlock, offlineMachineIds } from "@/office/offline";
 import { ROOM_OF_STATE } from "@/office/rooms";
 import { createSceneSync, lookOf } from "@/office/sceneSync";
@@ -34,7 +33,7 @@ import {
   type TagFilterSelection,
 } from "@/shared/tag-filter";
 import { CompanyDrawer } from "./CompanyDrawer";
-import { CompactCompanyButton, CompanyStrip } from "./CompanyStrip";
+import { CompanyStrip } from "./CompanyStrip";
 import { ConnectionStatus } from "./ConnectionStatus";
 import { readCollapsedMacs, storeCollapsedMacs } from "./collapsedMacs";
 import { postCompanyMode } from "./companyMode";
@@ -238,7 +237,6 @@ export function OfficeView() {
   const isMobile = useIsMobile();
   const isPhone = useIsPhone();
   const hasMouse = useHasMouse();
-  const sideways = useIsSidewaysPhone();
   const dataRef = useRef<OfficeData>({
     sessions: new Map(),
     machines: [],
@@ -696,21 +694,19 @@ export function OfficeView() {
 
   return (
     <div className="flex h-full w-full flex-col">
-      {!sideways && (
-        <CompanyStrip
-          macs={overview.macs}
-          selectedKey={companyKey}
-          onSelect={selectCompany}
-          onOpenDrawer={toggleDrawer}
-          drawerButtonRef={drawerButtonRef}
-          collapsedMacs={collapsedMacs}
-          onToggleMac={toggleMac}
-          onRename={(machineId, path, name) =>
-            void renameCompany(machineId, path, name)
-          }
-          renamable={hasMouse}
-        />
-      )}
+      <CompanyStrip
+        macs={overview.macs}
+        selectedKey={companyKey}
+        onSelect={selectCompany}
+        onOpenDrawer={toggleDrawer}
+        drawerButtonRef={drawerButtonRef}
+        collapsedMacs={collapsedMacs}
+        onToggleMac={toggleMac}
+        onRename={(machineId, path, name) =>
+          void renameCompany(machineId, path, name)
+        }
+        renamable={hasMouse}
+      />
       <div className="flex min-h-0 w-full flex-1">
         <div
           ref={containerRef}
@@ -774,7 +770,7 @@ export function OfficeView() {
             </>
           )}
           {/* Above the details card (z-60) so the pill stays pressable while a card is open. */}
-          {!sideways && !isPhone && (
+          {!isPhone && (
             <div className="absolute top-2 left-2 z-[65]">
               <TagFilter
                 view={tagFilterView}
@@ -783,14 +779,6 @@ export function OfficeView() {
                 covered={rightPanel !== null || selectedSession !== null}
               />
             </div>
-          )}
-          {sideways && (
-            <CompactCompanyButton
-              macs={overview.macs}
-              selectedKey={companyKey}
-              onOpenDrawer={toggleDrawer}
-              buttonRef={drawerButtonRef}
-            />
           )}
           {!isPhone && (
             <ConnectionStatus
@@ -825,7 +813,6 @@ export function OfficeView() {
               overview={overview}
               selectedKey={companyKey}
               sheet={isMobile}
-              fullHeight={sideways}
               onSelect={(key) => {
                 selectCompany(key);
                 closeDrawer();

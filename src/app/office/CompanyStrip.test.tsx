@@ -8,7 +8,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildOverview, type MacOverview } from "@/shared/overview";
-import { CompactCompanyButton, CompanyStrip } from "./CompanyStrip";
+import { CompanyStrip } from "./CompanyStrip";
 
 const company = (
   name: string,
@@ -498,48 +498,6 @@ describe("the company strip", () => {
     const other = within(tabs[1] as HTMLElement);
     expect(other.getByLabelText("1 working")).toBeTruthy();
     expect(other.getByLabelText("1 idle")).toBeTruthy();
-  });
-});
-
-describe("the compact company button", () => {
-  afterEach(cleanup);
-
-  it("names the viewed company and badges what needs the owner on online Macs, once", () => {
-    // Given the viewed company is calm, another online one needs the owner, and an offline Mac's does not count
-    const calm = company("calm", [1, 0, 0, 0]);
-    const macs: MacOverview[] = [
-      {
-        machineId: "m1",
-        machineName: "Air",
-        online: true,
-        switchedOff: [],
-        companies: [calm, company("urgent", [0, 2, 1, 0], { needsYou: true })],
-      },
-      {
-        machineId: "m2",
-        machineName: "Mini",
-        online: false,
-        switchedOff: [],
-        companies: [company("lab", [0, 4, 0, 0], { machineId: "m2" })],
-      },
-    ];
-    const opened: string[] = [];
-
-    // When it renders and is pressed
-    render(
-      <CompactCompanyButton
-        macs={macs}
-        selectedKey={calm.company.key}
-        onOpenDrawer={() => opened.push("open")}
-      />,
-    );
-    const button = screen.getByTestId("compact-company-button");
-    fireEvent.click(button);
-
-    // Then it shows the viewed company and a badge of 3, and asked to open once
-    expect(button.textContent).toBe("calm3");
-    expect(within(button).getByTestId("company-badge").textContent).toBe("3");
-    expect(opened).toEqual(["open"]);
   });
 });
 
