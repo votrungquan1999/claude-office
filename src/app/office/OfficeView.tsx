@@ -471,7 +471,6 @@ export function OfficeView() {
     companyKey,
     tagPick,
   );
-  const tagFilter = <TagFilter view={tagFilterView} onSelect={selectTag} />;
   const viewedCompany = overview.macs
     .flatMap((mac) => mac.companies)
     .find((entry) => entry.company.key === companyKey)?.company;
@@ -539,7 +538,6 @@ export function OfficeView() {
           onSelect={selectCompany}
           onOpenDrawer={openDrawer}
           drawerButtonRef={drawerButtonRef}
-          trailing={tagFilter}
         />
       )}
       <div
@@ -576,6 +574,17 @@ export function OfficeView() {
             />
           </>
         )}
+        {/* Above the details card (z-60) so the pill stays pressable while a card is open. */}
+        {!sideways && (
+          <div className="absolute top-2 left-2 z-[65]">
+            <TagFilter
+              view={tagFilterView}
+              onSelect={selectTag}
+              sheet={isMobile}
+              covered={drawerOpen || selectedSession !== null}
+            />
+          </div>
+        )}
         {sideways && (
           <CompactCompanyButton
             macs={overview.macs}
@@ -609,7 +618,6 @@ export function OfficeView() {
               void setCompanyMode(machineId, path, mode)
             }
             onClose={closeDrawer}
-            extra={sideways ? tagFilter : undefined}
           />
         )}
         {/* Hidden under the phone's bottom sheet and the drawer, which cover its corner. */}

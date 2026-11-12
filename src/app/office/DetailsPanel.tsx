@@ -232,13 +232,14 @@ function Card({
   const box =
     offline || session.notRunning || launching ? null : boxOf(session, nowMs);
   const tags = session.tags ?? [];
+  // The desktop card starts below the repo pill's spot, tags or not, so it never covers the pill or jumps.
   return (
     <aside
       data-testid="details-panel"
       className={`absolute z-[60] flex flex-col border-2 border-border bg-bg text-sm [@media(max-height:500px)]:overflow-y-auto ${
         sheet
           ? "inset-x-0 bottom-0 max-h-[80%] border-x-0 border-b-0"
-          : "top-2 left-2 max-h-[calc(100%-1rem)] w-[360px] max-w-[calc(100%-1rem)] shadow-[6px_6px_0_var(--color-bg-dark)]"
+          : "top-[60px] left-2 max-h-[calc(100%-68px)] w-[360px] max-w-[calc(100%-1rem)] shadow-[6px_6px_0_var(--color-bg-dark)]"
       }`}
     >
       <div

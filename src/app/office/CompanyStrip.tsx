@@ -1,4 +1,4 @@
-import type { ReactNode, Ref } from "react";
+import type { Ref } from "react";
 import type { CompanyCounts, MacOverview } from "@/shared/overview";
 
 export interface CompanyStripProps {
@@ -11,8 +11,6 @@ export interface CompanyStripProps {
   onOpenDrawer: () => void;
   /** The drawer's trigger, so focus can return to it. */
   drawerButtonRef?: Ref<HTMLButtonElement>;
-  /** Controls that sit on the strip's own line after the tabs, so they take no office height. */
-  trailing?: ReactNode;
 }
 
 interface CountSpec {
@@ -76,7 +74,6 @@ export function CompanyStrip({
   onSelect,
   onOpenDrawer,
   drawerButtonRef,
-  trailing,
 }: CompanyStripProps) {
   return (
     <nav
@@ -136,7 +133,6 @@ export function CompanyStrip({
       >
         All companies
       </button>
-      {trailing}
     </nav>
   );
 }
