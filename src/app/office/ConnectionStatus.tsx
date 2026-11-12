@@ -3,6 +3,8 @@ interface ConnectionStatusProps {
   lastUpdatedAt: number | null;
   connectionLost: boolean;
   now: number;
+  /** Sits left of a 420 px right drawer, so the drawer never covers it. */
+  besideDrawer?: boolean;
 }
 
 /**
@@ -14,13 +16,16 @@ export function ConnectionStatus({
   lastUpdatedAt,
   connectionLost,
   now,
+  besideDrawer = false,
 }: ConnectionStatusProps) {
   const minutes =
     lastUpdatedAt === null
       ? null
       : Math.max(0, Math.floor((now - lastUpdatedAt) / 60_000));
   return (
-    <div className="absolute top-2 right-2 z-20 flex flex-col items-end gap-1 text-xs">
+    <div
+      className={`absolute top-2 z-20 flex flex-col items-end gap-1 text-xs ${besideDrawer ? "right-[428px] max-w-[calc(100%-580px)]" : "right-2"}`}
+    >
       {connectionLost && (
         <p role="alert" className="border-2 border-border bg-bg p-1 font-bold">
           Connection lost. Showing the last known office.

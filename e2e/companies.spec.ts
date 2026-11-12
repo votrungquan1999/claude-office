@@ -4,6 +4,7 @@ import { MongoClient } from "mongodb";
 import { E2E_DB, E2E_MONGO_URI_FILE } from "./constants";
 import {
   openWentHome,
+  overlaps,
   seedFolders,
   seedOnlineMachine,
   seedSessions,
@@ -550,5 +551,141 @@ test.describe("folding a Mac", () => {
       await sessions.deleteMany({});
       await client.close();
     }
+  });
+});
+
+test.describe("the companies drawer on a desktop", () => {
+  test.use({ viewport: { width: 1280, height: 800 }, hasTouch: false });
+
+  /** One online Mac with one company of the given name and one live employee. */
+  async function seedOneCompany(displayName?: string) {
+    const client = new MongoClient(
+      readFileSync(E2E_MONGO_URI_FILE, "utf8").trim(),
+    );
+    await client.connect();
+    const db = client.db(E2E_DB);
+    await seedFolders(db.collection("folders"), [
+      { machineId: "air", path: "/Users/q/alpha", displayName },
+    ]);
+    await seedOnlineMachine("air", "Air");
+    await seedSessions(db.collection("sessions"), [
+      {
+        sessionId: "alpha",
+        machineId: "air",
+        machineName: "Air",
+        cwd: "/Users/q/alpha",
+        startCwd: "/Users/q/alpha",
+      },
+    ]);
+    return {
+      async cleanup() {
+        await seedFolders(db.collection("folders"), []);
+        await db.collection("machines").deleteMany({});
+        await db.collection("sessions").deleteMany({});
+        await client.close();
+      },
+    };
+  }
+
+  test("a 100-character name and its folder line show in full inside the drawer row, wrapped", async ({
+    context,
+    page,
+  }) => {
+    // Given a company named with 100 characters
+    const long = "N".repeat(100);
+    const seeded = await seedOneCompany(long);
+    await signInAsOwner(context);
+
+    try {
+      // When the owner opens All companies
+      await page.goto("/");
+      await page.getByTestId("open-drawer").click();
+
+      // Then the name wraps onto several lines and nothing is clipped
+      const row = page.getByTestId(`drawer-company-${long}`);
+      const name = row.getByText(long, { exact: true });
+      await expect(name).toBeVisible();
+      const box = await name.boundingBox();
+      expect(box?.height).toBeGreaterThan(30);
+      const clipped = await name.evaluate(
+        (element) => element.scrollWidth > element.clientWidth,
+      );
+      expect(clipped).toBe(false);
+      const rowBox = await row.boundingBox();
+      expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(
+        (rowBox?.x ?? 0) + (rowBox?.width ?? 0),
+      );
+    } finally {
+      await seeded.cleanup();
+    }
+  });
+
+  test("the drawer leaves the Connection lost message visible instead of covering it", async ({
+    context,
+    page,
+  }) => {
+    // Given an office that loaded and then lost its connection
+    const seeded = await seedOneCompany();
+    await signInAsOwner(context);
+
+    try {
+      await page.goto("/");
+      await expect(page.getByTestId("company-tab")).toBeVisible();
+      await page.route("**/api/office/changes*", (route) => route.abort());
+      const alert = page
+        .getByRole("alert")
+        .filter({ hasText: "Connection lost" });
+      await expect(alert).toBeVisible({ timeout: 15_000 });
+
+      // When the owner opens All companies
+      await page.getByTestId("open-drawer").click();
+      const drawer = page.getByRole("dialog", { name: "All companies" });
+      await expect(drawer).toBeVisible();
+
+      // Then the message is still visible and beside the drawer, not under it
+      await expect(alert).toBeVisible();
+      expect(await overlaps(alert, drawer)).toBe(false);
+      const box = await alert.boundingBox();
+      const drawerBox = await drawer.boundingBox();
+      expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(
+        drawerBox?.x ?? 0,
+      );
+    } finally {
+      await seeded.cleanup();
+    }
+  });
+
+  test.describe("on a touch tablet", () => {
+    test.use({ viewport: { width: 1024, height: 768 }, hasTouch: true });
+
+    test("the sheet leaves the Connection lost message visible instead of covering it", async ({
+      context,
+      page,
+    }) => {
+      // Given an office that loaded and then lost its connection
+      const seeded = await seedOneCompany();
+      await signInAsOwner(context);
+
+      try {
+        await page.goto("/");
+        await expect(page.getByTestId("company-tab")).toBeVisible();
+        await page.route("**/api/office/changes*", (route) => route.abort());
+        const alert = page
+          .getByRole("alert")
+          .filter({ hasText: "Connection lost" });
+        await expect(alert).toBeVisible({ timeout: 15_000 });
+
+        // When the owner opens All companies
+        await page.getByTestId("open-drawer").tap();
+        const sheet = page.getByRole("dialog", { name: "All companies" });
+        await expect(sheet).toBeVisible();
+
+        // Then the message is still visible and clear of the sheet
+        await expect(alert).toBeVisible();
+        expect(await overlaps(alert, sheet)).toBe(false);
+      } finally {
+        await seeded.cleanup();
+      }
+    });
   });
 });

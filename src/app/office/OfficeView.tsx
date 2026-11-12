@@ -201,9 +201,13 @@ export function OfficeView() {
   // Read at first render (the view loads client-only) so a reload never flashes the folded Macs open.
   const [collapsedMacs, setCollapsedMacs] =
     useState<ReadonlySet<string>>(readCollapsedMacs);
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  // One right-hand panel at a time, so switching is a single state change.
+  const [rightPanel, setRightPanel] = useState<"companies" | "wentHome" | null>(
+    null,
+  );
+  const drawerOpen = rightPanel === "companies";
+  const wentHomeOpen = rightPanel === "wentHome";
   const [hireOpen, setHireOpen] = useState(false);
-  const [wentHomeOpen, setWentHomeOpen] = useState(false);
   const wentHomeButtonRef = useRef<HTMLButtonElement>(null);
   // Wake orders by session, so selecting another employee and back shows the same pending order and outcome.
   const [wakes, setWakes] = useState<Map<string, OrderClickState>>(new Map());
@@ -444,14 +448,15 @@ export function OfficeView() {
     setRenameError(null);
     setSelectedKey(null);
     officeState.selectedAgentId = null;
-    setDrawerOpen(true);
+    setRightPanel("companies");
   };
 
   /** Closes the drawer and puts focus back on the button that opened it. */
   const closeDrawer = () => {
-    setDrawerOpen(false);
+    setRightPanel(null);
     drawerButtonRef.current?.focus();
   };
+  const toggleDrawer = () => (drawerOpen ? closeDrawer() : openDrawer());
 
   /** Folds a Mac's group in the company bar, or opens it again. */
   const toggleMac = (machineId: string) => {
@@ -656,11 +661,11 @@ export function OfficeView() {
   };
   const openWentHome = () => {
     setCardOverWentHome(false);
-    setWentHomeOpen(true);
+    setRightPanel("wentHome");
   };
   const closeWentHome = () => {
     setCardOverWentHome(false);
-    setWentHomeOpen(false);
+    setRightPanel(null);
     wentHomeButtonRef.current?.focus();
   };
 
@@ -671,7 +676,7 @@ export function OfficeView() {
           macs={overview.macs}
           selectedKey={companyKey}
           onSelect={selectCompany}
-          onOpenDrawer={openDrawer}
+          onOpenDrawer={toggleDrawer}
           drawerButtonRef={drawerButtonRef}
           collapsedMacs={collapsedMacs}
           onToggleMac={toggleMac}
@@ -723,7 +728,7 @@ export function OfficeView() {
                 view={tagFilterView}
                 onSelect={selectTag}
                 sheet={isMobile}
-                covered={drawerOpen || selectedSession !== null}
+                covered={rightPanel !== null || selectedSession !== null}
               />
             </div>
           )}
@@ -731,7 +736,7 @@ export function OfficeView() {
             <CompactCompanyButton
               macs={overview.macs}
               selectedKey={companyKey}
-              onOpenDrawer={openDrawer}
+              onOpenDrawer={toggleDrawer}
               buttonRef={drawerButtonRef}
             />
           )}
@@ -739,6 +744,7 @@ export function OfficeView() {
             lastUpdatedAt={lastUpdatedAt}
             connectionLost={connectionLost}
             now={now.getTime()}
+            besideDrawer={drawerOpen && !isMobile}
           />
           {/* Steps aside for the details sheet, which spans the bottom of the office. */}
           {!(isMobile && selectedSession) && (

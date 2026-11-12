@@ -243,6 +243,65 @@ test("the went-home button stays at zero and the drawer says nobody has gone hom
   }
 });
 
+test("only one right drawer is open at a time: All companies closes Went home and the other way round", async ({
+  context,
+  page,
+}) => {
+  // Given one departure today
+  const client = new MongoClient(
+    readFileSync(E2E_MONGO_URI_FILE, "utf8").trim(),
+  );
+  await client.connect();
+  const sessions = client.db(E2E_DB).collection("sessions");
+  await sessions.deleteMany({});
+  await sessions.insertOne({
+    machineName: "Studio Mac",
+    machineId: "m1",
+    sessionId: "today",
+    cwd: "/Users/q/projects/today",
+    state: "wentHome",
+    hadPrompt: true,
+    startedAt: new Date("2026-11-07T01:00:00.000Z"),
+    endedAt: new Date("2026-11-08T01:05:00.000Z"),
+    changedAt: new Date("2026-11-08T01:05:00.000Z"),
+  });
+  await signInAsOwner(context);
+  await page.clock.install({ time: new Date("2026-11-08T03:00:00.000Z") });
+
+  try {
+    await page.goto("/");
+    const wentHome = page.getByRole("dialog", { name: "Went home today" });
+    const companies = page.getByRole("dialog", { name: "All companies" });
+    await openWentHome(page);
+    await expect(wentHome).toHaveCount(1);
+
+    // When the owner opens All companies
+    await page.getByTestId("open-drawer").click();
+
+    // Then Went home closes
+    await expect(companies).toHaveCount(1);
+    await expect(wentHome).toHaveCount(0);
+
+    // When the owner opens Went home
+    await page.getByTestId("went-home-button").click();
+
+    // Then All companies closes
+    await expect(wentHome).toHaveCount(1);
+    await expect(companies).toHaveCount(0);
+
+    // When the owner opens All companies and presses it again
+    await page.getByTestId("open-drawer").click();
+    await expect(companies).toHaveCount(1);
+    await page.getByTestId("open-drawer").click();
+
+    // Then All companies closes
+    await expect(companies).toHaveCount(0);
+  } finally {
+    await sessions.deleteMany({});
+    await client.close();
+  }
+});
+
 test.describe("on a touch tablet", () => {
   test.use({ viewport: { width: 1024, height: 768 }, hasTouch: true });
 
