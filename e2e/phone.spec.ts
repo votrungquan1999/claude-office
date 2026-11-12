@@ -310,8 +310,94 @@ test.describe("the office on a phone", () => {
     await expect(tiles.first()).toContainText("one:");
   });
 
-  // Parked until the canvas tests run at a 1024x768 touch viewport.
-  test.fixme("shows the whole office: its opposite corners are both inside the canvas", async ({
+  test("tapping a tile opens that session's details, and tapping another switches to it", async ({
+    page,
+  }) => {
+    // Given the office on a phone with three sessions, the third waiting for the owner in a room above the sheet
+    await sessions.updateOne(
+      { sessionId: "three" },
+      { $set: { state: "waitingForYou" } },
+    );
+    await openOffice(page);
+    const panel = page.getByTestId("details-panel");
+    await expect(panel).toHaveCount(0);
+
+    // When the owner taps the second tile
+    await page.getByRole("button", { name: /^two:/ }).tap();
+
+    // Then the details panel shows that session's desk name and folder
+    await expect(panel).toContainText(`two: ${LONG_NAME}`);
+    await expect(panel).toContainText(
+      "a-really-long-folder-name-for-session-two",
+    );
+
+    // When the owner taps the third tile
+    await page.getByRole("button", { name: /^three:/ }).tap();
+
+    // Then the panel switches to it, and the page still does not scroll sideways
+    await expect(panel).toContainText(`three: ${LONG_NAME}`);
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
+  });
+
+  test("keeps the went-home list behind its button until it is tapped, so it does not cover the office", async ({
+    page,
+  }) => {
+    // Given a session that ended a moment ago
+    await sessions.insertOne({
+      machineId: "m1",
+      machineName: "Mac",
+      sessionId: "gone",
+      deskName: "Closed task",
+      cwd: "/Users/q/projects/closed",
+      state: "wentHome",
+      hadPrompt: true,
+      startedAt: new Date(Date.now() - 60_000),
+      endedAt: new Date(),
+      changedAt: new Date(),
+    });
+
+    // When the owner opens the office on a phone
+    await openOffice(page);
+    const entry = page.getByRole("button", { name: /Closed task/ });
+
+    // Then only the button shows, with the count
+    const button = page.getByTestId("went-home-button");
+    await expect(button).toHaveText(/^Went home today\s*1$/);
+    await expect(entry).toBeHidden();
+
+    // When the owner taps the button
+    await button.tap();
+
+    // Then the departure is listed, and tapping it opens its details
+    await expect(entry).toBeVisible();
+    await entry.tap();
+    await expect(page.getByTestId("details-panel")).toContainText(
+      "Closed task",
+    );
+  });
+});
+
+test.describe("the office on an iPad: canvas touch gestures and room signs", () => {
+  test.use({ viewport: { width: 1024, height: 768 } });
+  let client: MongoClient;
+  let sessions: Collection;
+
+  test.beforeEach(async ({ context }) => {
+    client = new MongoClient(readFileSync(E2E_MONGO_URI_FILE, "utf8").trim());
+    await client.connect();
+    sessions = client.db(E2E_DB).collection("sessions");
+    await seed(sessions);
+    await signInAsOwner(context);
+  });
+  test.afterEach(async () => {
+    await sessions.deleteMany({});
+    await client.close();
+  });
+
+  test("shows the whole office: its opposite corners are both inside the canvas", async ({
     page,
   }) => {
     await openOffice(page);
@@ -332,11 +418,10 @@ test.describe("the office on a phone", () => {
     expect(corners?.last?.y).toBeLessThanOrEqual(corners?.height ?? 0);
   });
 
-  // Parked until the canvas tests run at a 1024x768 touch viewport.
-  test.fixme("hangs each room sign on its wall row without covering a seat, or the employee on it, in the room's first desk row", async ({
+  test("hangs each room sign on its wall row without covering a seat, or the employee on it, in the room's first desk row", async ({
     page,
   }) => {
-    // When the owner opens the office on a phone
+    // When the owner opens the office on an iPad
     await openOffice(page);
 
     // Then no sign overlaps a seat tile of its room's first desk row or the employee standing there
@@ -375,35 +460,7 @@ test.describe("the office on a phone", () => {
     expect(overlaps.hits).toEqual([]);
   });
 
-  test("tapping a card opens that session's details, and tapping another switches to it", async ({
-    page,
-  }) => {
-    // Given the office on a phone with three sessions
-    await openOffice(page);
-    const panel = page.getByTestId("details-panel");
-    await expect(panel).toHaveCount(0);
-
-    // When the owner taps the second card
-    await page.getByRole("button", { name: /^two:/ }).tap();
-
-    // Then the details panel shows that session's desk name and folder
-    await expect(panel).toContainText(`two: ${LONG_NAME}`);
-    await expect(panel).toContainText(
-      "a-really-long-folder-name-for-session-two",
-    );
-
-    // When the owner taps the third card
-    await page.getByRole("button", { name: /^three:/ }).tap();
-
-    // Then the panel switches to it, and the page still does not scroll sideways
-    await expect(panel).toContainText(`three: ${LONG_NAME}`);
-    const overflow = await page.evaluate(
-      () => document.documentElement.scrollWidth - window.innerWidth,
-    );
-    expect(overflow).toBeLessThanOrEqual(0);
-  });
-
-  test.fixme("a one-finger drag pans the office and keeps the camera from jumping back to the selected employee", async ({
+  test("a one-finger drag pans the office and keeps the camera from jumping back to the selected employee", async ({
     page,
   }) => {
     // Given the office with an employee selected, so the camera follows it
@@ -426,7 +483,7 @@ test.describe("the office on a phone", () => {
     expect(await panOf(page)).toEqual(dragged);
   });
 
-  test.fixme("pinching with two fingers zooms the office in, and pinching back zooms it out", async ({
+  test("pinching with two fingers zooms the office in, and pinching back zooms it out", async ({
     page,
   }) => {
     // Given the office at its fit-to-screen zoom
@@ -467,10 +524,10 @@ test.describe("the office on a phone", () => {
     expect(await zoomOf(page)).toBeLessThan(zoomedIn);
   });
 
-  test.fixme("tapping an employee on the canvas opens its details at once", async ({
+  test("tapping an employee on the canvas opens its details at once", async ({
     page,
   }) => {
-    // Given the office on a phone, and where the employee of the second session stands
+    // Given the office on an iPad, and where the employee of the second session stands
     await openOffice(page);
     const id = await employeeLabelled(page, "two:");
     const point = await page.evaluate((employeeId) => {
@@ -493,43 +550,6 @@ test.describe("the office on a phone", () => {
     // Then the details of that session are open, with no second tap
     await expect(page.getByTestId("details-panel")).toContainText(
       `two: ${LONG_NAME}`,
-    );
-  });
-
-  test("keeps the went-home list behind its button until it is tapped, so it does not cover the office", async ({
-    page,
-  }) => {
-    // Given a session that ended a moment ago
-    await sessions.insertOne({
-      machineId: "m1",
-      machineName: "Mac",
-      sessionId: "gone",
-      deskName: "Closed task",
-      cwd: "/Users/q/projects/closed",
-      state: "wentHome",
-      hadPrompt: true,
-      startedAt: new Date(Date.now() - 60_000),
-      endedAt: new Date(),
-      changedAt: new Date(),
-    });
-
-    // When the owner opens the office on a phone
-    await openOffice(page);
-    const entry = page.getByRole("button", { name: /Closed task/ });
-
-    // Then only the button shows, with the count
-    const button = page.getByTestId("went-home-button");
-    await expect(button).toHaveText(/^Went home today\s*1$/);
-    await expect(entry).toBeHidden();
-
-    // When the owner taps the button
-    await button.tap();
-
-    // Then the departure is listed, and tapping it opens its details
-    await expect(entry).toBeVisible();
-    await entry.tap();
-    await expect(page.getByTestId("details-panel")).toContainText(
-      "Closed task",
     );
   });
 });
@@ -608,12 +628,58 @@ test.describe("the office on a sideways phone", () => {
   });
 });
 
-for (const viewport of [
-  { width: 1024, height: 768 },
-  { width: 700, height: 800 },
-]) {
-  test.describe(`the office at ${viewport.width} x ${viewport.height}`, () => {
-    test.use({ viewport });
+// `cards`: the mobile shell's card strip shows below 769 px wide or on a wide touch screen.
+const PIXEL_OFFICE_SCREENS = [
+  {
+    name: "an iPad landscape",
+    width: 1024,
+    height: 768,
+    mouse: false,
+    cards: true,
+  },
+  {
+    name: "an iPad portrait",
+    width: 744,
+    height: 1133,
+    mouse: false,
+    cards: true,
+  },
+  {
+    name: "a wide touch window",
+    width: 700,
+    height: 800,
+    mouse: false,
+    cards: true,
+  },
+  {
+    name: "a narrow mouse window",
+    width: 400,
+    height: 800,
+    mouse: true,
+    cards: true,
+  },
+  {
+    name: "a mid-width mouse window",
+    width: 700,
+    height: 800,
+    mouse: true,
+    cards: true,
+  },
+  {
+    name: "a short mouse window",
+    width: 800,
+    height: 400,
+    mouse: true,
+    cards: false,
+  },
+];
+
+for (const screen of PIXEL_OFFICE_SCREENS) {
+  test.describe(`the office on ${screen.name} (${screen.width} x ${screen.height})`, () => {
+    test.use({
+      viewport: { width: screen.width, height: screen.height },
+      ...(screen.mouse ? { hasTouch: false, isMobile: false } : {}),
+    });
     let client: MongoClient;
     let sessions: Collection;
 
@@ -629,15 +695,32 @@ for (const viewport of [
       await client.close();
     });
 
-    test("keeps the company strip and does not fold it into a button", async ({
+    test("keeps the pixel office, the company strip with its four counts and the floating Hire button, and shows no stacked rooms", async ({
       page,
     }) => {
       // When the owner opens the office
       await openOffice(page);
 
-      // Then the strip shows and no folded button replaces it
-      await expect(page.getByTestId("company-strip")).toBeVisible();
-      await expect(page.getByTestId("compact-company-button")).toHaveCount(0);
+      // Then the pixel office shows and the stacked rooms do not
+      await expect(page.getByTestId("office-canvas")).toBeVisible();
+      await expect(page.getByTestId("stacked-rooms")).toHaveCount(0);
+
+      // And the strip shows the four labelled counts and the All companies text
+      const tab = page.getByTestId("company-tab");
+      await expect(tab.getByLabel("3 working")).toBeVisible();
+      await expect(tab.getByLabel("0 needs permission")).toBeVisible();
+      await expect(tab.getByLabel("0 waiting for you")).toBeVisible();
+      await expect(tab.getByLabel("0 idle")).toBeVisible();
+      await expect(page.getByTestId("open-drawer")).toHaveText("All companies");
+
+      // And the Hire button floats over the office, with no phone bottom bar
+      await expect(page.getByTestId("hire-button")).toBeVisible();
+      await expect(page.getByTestId("phone-bottom-bar")).toHaveCount(0);
+
+      // And the card strip lists every session where the mobile shell shows one
+      await expect(page.getByTestId("agent-card")).toHaveCount(
+        screen.cards ? 3 : 0,
+      );
     });
   });
 }
