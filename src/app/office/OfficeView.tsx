@@ -7,6 +7,7 @@ import { OfficeCanvas } from "@/office/components/OfficeCanvas";
 import { ToolOverlay } from "@/office/components/ToolOverlay";
 import { OfficeState } from "@/office/engine/officeState";
 import { fitZoom } from "@/office/fitZoom";
+import { useHasMouse } from "@/office/hooks/useHasMouse";
 import { useIsMobile } from "@/office/hooks/useIsMobile";
 import { useIsSidewaysPhone } from "@/office/hooks/useIsSidewaysPhone";
 import { macBlock, offlineMachineIds } from "@/office/offline";
@@ -214,6 +215,7 @@ export function OfficeView() {
   // Once the owner zooms by hand, resizing no longer re-fits the office.
   const userZoomed = useRef(false);
   const isMobile = useIsMobile();
+  const hasMouse = useHasMouse();
   const sideways = useIsSidewaysPhone();
   const dataRef = useRef<OfficeData>({
     sessions: new Map(),
@@ -451,6 +453,8 @@ export function OfficeView() {
 
   /** Switches the office to another company at once. */
   const selectCompany = (key: string) => {
+    // Pressing the viewed company is not a switch; a double-click to rename must keep the filter.
+    if (key === companyRef.current) return;
     companyRef.current = key;
     setCompanyKey(key);
     resetTagPick(key);
@@ -615,6 +619,10 @@ export function OfficeView() {
           drawerButtonRef={drawerButtonRef}
           collapsedMacs={collapsedMacs}
           onToggleMac={toggleMac}
+          onRename={(machineId, path, name) =>
+            void renameCompany(machineId, path, name)
+          }
+          renamable={hasMouse}
         />
       )}
       <div

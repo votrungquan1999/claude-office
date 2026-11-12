@@ -1,5 +1,6 @@
-import type { Ref } from "react";
+import { type Ref, useEffect, useRef, useState } from "react";
 import type { CompanyCounts, MacOverview } from "@/shared/overview";
+import { renameToSend } from "./renameRule";
 
 export interface CompanyStripProps {
   /** Every Mac with its companies. */
@@ -15,6 +16,14 @@ export interface CompanyStripProps {
   collapsedMacs: ReadonlySet<string>;
   /** Asks to fold or open a Mac's group. */
   onToggleMac: (machineId: string) => void;
+  /** Asks to name a company; null puts the folder name back. */
+  onRename?: (
+    machineId: string,
+    path: string,
+    displayName: string | null,
+  ) => void;
+  /** Whether a double-click on a tab opens the name editor; true only with a mouse. */
+  renamable?: boolean;
 }
 
 interface CountSpec {
@@ -80,7 +89,22 @@ export function CompanyStrip({
   drawerButtonRef,
   collapsedMacs,
   onToggleMac,
+  onRename,
+  renamable = false,
 }: CompanyStripProps) {
+  const [editing, setEditing] = useState<{ key: string; draft: string } | null>(
+    null,
+  );
+  // The blur that follows Enter or Escape must not save a second time.
+  const finished = useRef(false);
+  const knownKeys = new Set(
+    macs.flatMap((mac) => mac.companies.map((entry) => entry.company.key)),
+  );
+  // A company that disappears while it is being named takes its editor with it.
+  const editingGone = editing !== null && !knownKeys.has(editing.key);
+  useEffect(() => {
+    if (editingGone) setEditing(null);
+  }, [editingGone]);
   return (
     <nav
       aria-label="Companies"
@@ -143,34 +167,94 @@ export function CompanyStrip({
                   {hiddenNeeds}
                 </span>
               )}
-              {shown.map(({ company, counts, needsYou }) => (
-                <button
-                  key={company.key}
-                  type="button"
-                  data-testid="company-tab"
-                  data-company-name={company.name}
-                  title={company.name}
-                  aria-current={
-                    company.key === selectedKey ? "page" : undefined
-                  }
-                  onClick={() => onSelect(company.key)}
-                  className={`flex h-40 shrink-0 items-center gap-10 border-2 px-10 text-sm ${company.key === selectedKey ? "border-accent-bright bg-active-bg" : "border-border bg-btn-bg hover:bg-btn-hover"}`}
-                >
-                  <span className="max-w-[200px] truncate font-bold">
-                    {company.name}
-                  </span>
-                  <CountRow counts={counts} />
-                  {needsYou && (
-                    <span
-                      data-testid="company-badge"
-                      className="px-4 text-xs font-bold text-bg-dark"
-                      style={{ background: "var(--color-room-permission)" }}
+              {shown.map(({ company, counts, needsYou }) => {
+                const { path } = company;
+                if (editing?.key === company.key && path !== null) {
+                  const finish = (save: boolean) => {
+                    if (finished.current) return;
+                    finished.current = true;
+                    setEditing(null);
+                    const request = save
+                      ? renameToSend(editing.draft, company)
+                      : null;
+                    if (request) {
+                      onRename?.(company.machineId, path, request.displayName);
+                    }
+                  };
+                  return (
+                    <div
+                      key={company.key}
+                      className="flex h-40 shrink-0 items-center gap-8 border-2 border-accent-bright bg-active-bg px-10 text-sm"
                     >
-                      {counts.needsPermission + counts.waitingForYou}
+                      <input
+                        // biome-ignore lint/a11y/noAutofocus: the editor opens from the owner's double-click on its tab
+                        autoFocus
+                        aria-label={`Name for folder ${company.folderName}`}
+                        maxLength={100}
+                        value={editing.draft}
+                        onFocus={(event) => event.currentTarget.select()}
+                        onChange={(event) =>
+                          setEditing({
+                            key: company.key,
+                            draft: event.target.value,
+                          })
+                        }
+                        onBlur={() => finish(true)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            finish(true);
+                          } else if (event.key === "Escape") {
+                            event.stopPropagation();
+                            finish(false);
+                          }
+                        }}
+                        className="w-[160px] border-2 border-border bg-bg-dark px-6 text-sm text-text"
+                      />
+                      <span className="text-xs text-text-muted">
+                        Enter saves · Esc cancels
+                      </span>
+                    </div>
+                  );
+                }
+                return (
+                  <button
+                    key={company.key}
+                    type="button"
+                    data-testid="company-tab"
+                    data-company-name={company.name}
+                    title={company.name}
+                    aria-current={
+                      company.key === selectedKey ? "page" : undefined
+                    }
+                    // The save that follows re-sorts the tabs under the pointer and can swallow the click, so another tab is picked on press.
+                    onPointerDown={() => {
+                      if (editing) onSelect(company.key);
+                    }}
+                    onClick={() => onSelect(company.key)}
+                    onDoubleClick={() => {
+                      if (!renamable || path === null) return;
+                      finished.current = false;
+                      setEditing({ key: company.key, draft: company.name });
+                    }}
+                    className={`flex h-40 shrink-0 items-center gap-10 border-2 px-10 text-sm ${company.key === selectedKey ? "border-accent-bright bg-active-bg" : "border-border bg-btn-bg hover:bg-btn-hover"}`}
+                  >
+                    <span className="max-w-[200px] truncate font-bold">
+                      {company.name}
                     </span>
-                  )}
-                </button>
-              ))}
+                    <CountRow counts={counts} />
+                    {needsYou && (
+                      <span
+                        data-testid="company-badge"
+                        className="px-4 text-xs font-bold text-bg-dark"
+                        style={{ background: "var(--color-room-permission)" }}
+                      >
+                        {counts.needsPermission + counts.waitingForYou}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           );
         })}

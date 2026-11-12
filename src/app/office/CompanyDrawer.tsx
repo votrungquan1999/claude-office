@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { Overview } from "@/shared/overview";
 import { CountRow } from "./CompanyStrip";
+import { renameToSend } from "./renameRule";
 
 export interface CompanyDrawerProps {
   overview: Overview;
@@ -235,18 +236,13 @@ export function CompanyDrawer({
                     onSubmit={(event) => {
                       event.preventDefault();
                       closeEditor(company.key);
-                      const name = draft.trim();
-                      // A blank or the folder's own name means "no name"; saving the stored state again sends nothing.
-                      const next =
-                        name === "" || name === company.folderName
-                          ? null
-                          : name;
-                      const stored =
-                        company.name === company.folderName
-                          ? null
-                          : company.name;
-                      if (next !== stored) {
-                        onRename?.(company.machineId, path, next);
+                      const request = renameToSend(draft, company);
+                      if (request) {
+                        onRename?.(
+                          company.machineId,
+                          path,
+                          request.displayName,
+                        );
                       }
                     }}
                     onKeyDown={(event) => {

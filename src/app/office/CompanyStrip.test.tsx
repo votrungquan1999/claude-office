@@ -6,7 +6,7 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildOverview, type MacOverview } from "@/shared/overview";
 import { CompactCompanyButton, CompanyStrip } from "./CompanyStrip";
 
@@ -540,5 +540,223 @@ describe("the compact company button", () => {
     expect(button.textContent).toBe("calm3");
     expect(within(button).getByTestId("company-badge").textContent).toBe("3");
     expect(opened).toEqual(["open"]);
+  });
+});
+
+describe("renaming a company from its tab", () => {
+  afterEach(cleanup);
+
+  /** One Mac with a renamed company (Harbor, folder q), an unnamed one (p) and Other. */
+  const macsOf = (): MacOverview[] => {
+    const named = company("q", [1, 0, 0, 0]);
+    named.company.name = "Harbor";
+    return [
+      {
+        machineId: "m1",
+        machineName: "Air",
+        online: true,
+        switchedOff: [],
+        companies: [
+          named,
+          company("p", [0, 0, 0, 1]),
+          {
+            ...company("Other", [0, 0, 0, 1]),
+            company: {
+              ...company("Other", [0, 0, 0, 1]).company,
+              path: null,
+              other: true,
+            },
+          },
+        ],
+      },
+    ];
+  };
+  const renderStrip = (
+    onRename: (m: string, p: string, n: string | null) => void,
+    renamable = true,
+  ) =>
+    render(
+      <CompanyStrip
+        macs={macsOf()}
+        selectedKey={null}
+        onSelect={() => {}}
+        onOpenDrawer={() => {}}
+        collapsedMacs={new Set()}
+        onToggleMac={() => {}}
+        onRename={onRename}
+        renamable={renamable}
+      />,
+    );
+  const tabNamed = (name: string) =>
+    screen
+      .getAllByTestId("company-tab")
+      .find(
+        (tab) => tab.getAttribute("data-company-name") === name,
+      ) as HTMLElement;
+
+  it("opens a name field filled with the company's name when its tab is double-clicked", () => {
+    // Given a strip with a renamed company
+    renderStrip(vi.fn());
+
+    // When the owner double-clicks its tab
+    fireEvent.doubleClick(tabNamed("Harbor"));
+
+    // Then a name field holds the current name
+    const field = screen.getByLabelText(
+      "Name for folder q",
+    ) as HTMLInputElement;
+    expect(field.value).toBe("Harbor");
+  });
+
+  it("drops an open field when its company disappears, and does not bring it back when the company returns", () => {
+    // Given an open name field on Harbor
+    const strip = (macs: MacOverview[]) => (
+      <CompanyStrip
+        macs={macs}
+        selectedKey={null}
+        onSelect={() => {}}
+        onOpenDrawer={() => {}}
+        collapsedMacs={new Set()}
+        onToggleMac={() => {}}
+        onRename={() => {}}
+        renamable
+      />
+    );
+    const { rerender } = render(strip(macsOf()));
+    fireEvent.doubleClick(tabNamed("Harbor"));
+    expect(screen.getByLabelText("Name for folder q")).toBeTruthy();
+
+    // When Harbor leaves the strip and then comes back
+    const without = macsOf().map((mac) => ({
+      ...mac,
+      companies: mac.companies.filter((entry) => entry.company.path !== "/q"),
+    }));
+    rerender(strip(without));
+    rerender(strip(macsOf()));
+
+    // Then no name field is open
+    expect(screen.queryByLabelText("Name for folder q")).toBeNull();
+  });
+
+  it("saves the typed name once on Enter and closes the field", () => {
+    // Given an open name field
+    const onRename = vi.fn();
+    renderStrip(onRename);
+    fireEvent.doubleClick(tabNamed("Harbor"));
+    const field = screen.getByLabelText("Name for folder q");
+
+    // When the owner types a name and presses Enter
+    fireEvent.change(field, { target: { value: "  Dock  " } });
+    fireEvent.keyDown(field, { key: "Enter" });
+    fireEvent.blur(field);
+
+    // Then one rename is sent with the trimmed name and the field is gone
+    expect(onRename.mock.calls).toEqual([["m1", "/q", "Dock"]]);
+    expect(screen.queryByLabelText("Name for folder q")).toBeNull();
+  });
+
+  it("sends nothing when Escape cancels the field, even though the field then loses focus", () => {
+    // Given an open name field with typed text
+    const onRename = vi.fn();
+    renderStrip(onRename);
+    fireEvent.doubleClick(tabNamed("Harbor"));
+    const field = screen.getByLabelText("Name for folder q");
+    fireEvent.change(field, { target: { value: "Dropped" } });
+
+    // When the owner presses Escape
+    fireEvent.keyDown(field, { key: "Escape" });
+    fireEvent.blur(field);
+
+    // Then nothing is sent and the field is gone
+    expect(onRename).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("Name for folder q")).toBeNull();
+  });
+
+  it("saves once when the owner clicks away from the field", () => {
+    // Given an open name field with typed text
+    const onRename = vi.fn();
+    renderStrip(onRename);
+    fireEvent.doubleClick(tabNamed("Harbor"));
+    const field = screen.getByLabelText("Name for folder q");
+    fireEvent.change(field, { target: { value: "Dock" } });
+
+    // When focus leaves the field
+    fireEvent.blur(field);
+
+    // Then the name is saved once
+    expect(onRename.mock.calls).toEqual([["m1", "/q", "Dock"]]);
+  });
+
+  it("uses the drawer's reset rule: blank or the folder's own name sends null, an unchanged name and a blank on an unnamed company send nothing", () => {
+    // Given a strip with a renamed company (Harbor, folder q) and an unnamed one (p)
+    const onRename = vi.fn();
+    renderStrip(onRename);
+    const save = (tab: string, value: string) => {
+      fireEvent.doubleClick(tabNamed(tab));
+      const field = screen.getByLabelText(/^Name for folder /);
+      fireEvent.change(field, { target: { value } });
+      fireEvent.keyDown(field, { key: "Enter" });
+    };
+
+    // When the owner saves a blank, the folder's own name, and the unchanged name on the renamed company
+    save("Harbor", "   ");
+    save("Harbor", "q");
+    save("Harbor", "Harbor");
+
+    // Then only the first two ask to put the folder name back
+    expect(onRename.mock.calls).toEqual([
+      ["m1", "/q", null],
+      ["m1", "/q", null],
+    ]);
+
+    // When the owner saves a blank or the folder's own name on the unnamed company
+    onRename.mockClear();
+    save("p", "");
+    save("p", "p");
+
+    // Then nothing is sent
+    expect(onRename).not.toHaveBeenCalled();
+  });
+
+  it("never opens a field on Other, or when the strip is not renamable", () => {
+    // Given a renamable strip
+    const first = renderStrip(vi.fn());
+
+    // When the owner double-clicks Other
+    fireEvent.doubleClick(tabNamed("Other"));
+
+    // Then no field opens
+    expect(screen.queryByRole("textbox")).toBeNull();
+    first.unmount();
+
+    // And a strip that is not renamable opens none either
+    renderStrip(vi.fn(), false);
+    fireEvent.doubleClick(tabNamed("Harbor"));
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
+  it("picks another tab on press while a field is open, so the save's re-sort cannot swallow the click", () => {
+    // Given an open name field and a spy on picks
+    const picked: string[] = [];
+    render(
+      <CompanyStrip
+        macs={macsOf()}
+        selectedKey={null}
+        onSelect={(key) => picked.push(key)}
+        onOpenDrawer={() => {}}
+        collapsedMacs={new Set()}
+        onToggleMac={() => {}}
+        onRename={() => {}}
+        renamable
+      />,
+    );
+    fireEvent.doubleClick(tabNamed("Harbor"));
+    picked.length = 0;
+
+    // When the owner presses another tab
+    fireEvent.pointerDown(tabNamed("p"));
+
+    // Then that tab is picked at once
+    expect(picked).toEqual(["m1\0/p"]);
   });
 });

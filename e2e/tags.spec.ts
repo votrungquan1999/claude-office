@@ -111,6 +111,30 @@ test.describe("repo tag filter", () => {
     await expect(pillOf(page)).toHaveText("All repos 3");
   });
 
+  test("double-clicking the viewed tab to rename it keeps the repo filter on", async ({
+    page,
+  }) => {
+    // Given the filter narrowed to api
+    await page.goto("/");
+    await waitForEmployees(page, 3);
+    const panel = await openPanel(page);
+    await panel.getByRole("button", { name: "api 2" }).click();
+    await waitForEmployees(page, 2);
+    await expect(pillOf(page)).toHaveText("#api 2 of 3");
+
+    // When the owner double-clicks the viewed tab, so its name editor opens
+    await page.getByTestId("company-tab").dblclick();
+    await expect(page.getByLabel(/^Name for folder/)).toBeVisible();
+
+    // Then the filter is still on
+    await expect(pillOf(page)).toHaveText("#api 2 of 3");
+    expect(
+      await page.evaluate(
+        () => window.__officeTestHooks?.getCharacters().length,
+      ),
+    ).toBe(2);
+  });
+
   test("the filter takes no height from the office", async ({ page }) => {
     // Given the office height without any tag
     await seedSessions(sessions, [{ sessionId: "a" }, { sessionId: "b" }]);

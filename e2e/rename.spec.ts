@@ -181,6 +181,149 @@ test.describe("renaming a company", () => {
     }
   });
 
+  test("double-clicking a tab and pressing Enter renames the company with one request", async ({
+    context,
+    page,
+  }) => {
+    // Given two companies on one Mac
+    const client = new MongoClient(
+      readFileSync(E2E_MONGO_URI_FILE, "utf8").trim(),
+    );
+    await client.connect();
+    const db = client.db(E2E_DB);
+    await seedFolders(db.collection("folders"), [
+      { machineId: "air", path: "/Users/q/alpha" },
+      { machineId: "air", path: "/Users/q/bravo" },
+    ]);
+    await seedOnlineMachine("air", "Air");
+    const sessions = db.collection("sessions");
+    await seedSessions(
+      sessions,
+      ["alpha", "bravo"].map((name) => ({
+        sessionId: name,
+        machineId: "air",
+        machineName: "Air",
+        cwd: `/Users/q/${name}`,
+        startCwd: `/Users/q/${name}`,
+      })),
+    );
+    await signInAsOwner(context);
+    const requests: string[] = [];
+    page.on("request", (request) => {
+      if (request.url().includes("/api/office/folders/display-name"))
+        requests.push(request.postData() ?? "");
+    });
+
+    try {
+      await page.goto("/");
+      await expect.poll(() => tabNames(page)).toEqual(["alpha", "bravo"]);
+
+      // When the owner double-clicks alpha's tab, types Zulu and presses Enter
+      await page
+        .getByTestId("company-tab")
+        .filter({ hasText: "alpha" })
+        .dblclick();
+      await page.getByLabel("Name for folder alpha").fill("Zulu");
+      await page.keyboard.press("Enter");
+
+      // Then the bar shows Zulu after bravo, the field is gone, and one request went out
+      await expect.poll(() => tabNames(page)).toEqual(["bravo", "Zulu"]);
+      await expect(page.getByLabel("Name for folder alpha")).toHaveCount(0);
+      await expect.poll(() => requests.length).toBe(1);
+      expect(JSON.parse(requests[0])).toEqual({
+        machineId: "air",
+        path: "/Users/q/alpha",
+        displayName: "Zulu",
+      });
+    } finally {
+      await seedFolders(db.collection("folders"), []);
+      await db.collection("machines").deleteMany({});
+      await sessions.deleteMany({});
+      await client.close();
+    }
+  });
+
+  test("Escape keeps the name, clicking another tab saves the typed name and opens that tab, and Other has no editor", async ({
+    context,
+    page,
+  }) => {
+    // Given two companies and a session in a switched-off folder, which sits in Other
+    const client = new MongoClient(
+      readFileSync(E2E_MONGO_URI_FILE, "utf8").trim(),
+    );
+    await client.connect();
+    const db = client.db(E2E_DB);
+    await seedFolders(db.collection("folders"), [
+      { machineId: "air", path: "/Users/q/alpha" },
+      { machineId: "air", path: "/Users/q/bravo" },
+      { machineId: "air", path: "/Users/q/off", companyMode: false },
+    ]);
+    await seedOnlineMachine("air", "Air");
+    const sessions = db.collection("sessions");
+    await seedSessions(
+      sessions,
+      [
+        ["alpha", "/Users/q/alpha"],
+        ["bravo", "/Users/q/bravo"],
+        ["loose", "/Users/q/off"],
+      ].map(([sessionId, cwd]) => ({
+        sessionId,
+        machineId: "air",
+        machineName: "Air",
+        cwd,
+        startCwd: cwd,
+      })),
+    );
+    await signInAsOwner(context);
+    const requests: string[] = [];
+    page.on("request", (request) => {
+      if (request.url().includes("/api/office/folders/display-name"))
+        requests.push(request.postData() ?? "");
+    });
+    const tab = (name: string) =>
+      page.getByTestId("company-tab").filter({ hasText: name });
+
+    try {
+      await page.goto("/");
+      await expect
+        .poll(() => tabNames(page))
+        .toEqual(["alpha", "bravo", "Other"]);
+
+      // When the owner types a name in alpha's field and presses Escape
+      await tab("alpha").dblclick();
+      await page.getByLabel("Name for folder alpha").fill("Dropped");
+      await page.keyboard.press("Escape");
+
+      // Then the name stays and nothing was sent
+      await expect(page.getByLabel("Name for folder alpha")).toHaveCount(0);
+      await expect
+        .poll(() => tabNames(page))
+        .toEqual(["alpha", "bravo", "Other"]);
+      expect(requests).toEqual([]);
+
+      // When the owner types a name in alpha's field and clicks bravo's tab
+      await tab("alpha").dblclick();
+      await page.getByLabel("Name for folder alpha").fill("Zulu");
+      await tab("bravo").click();
+
+      // Then Zulu is saved with one request and bravo is the viewed company
+      await expect
+        .poll(() => tabNames(page))
+        .toEqual(["bravo", "Zulu", "Other"]);
+      await expect.poll(() => requests.length).toBe(1);
+      await expect(tab("bravo")).toHaveAttribute("aria-current", "page");
+
+      // And double-clicking Other opens no editor
+      await tab("Other").dblclick();
+      await expect(page.getByRole("textbox")).toHaveCount(0);
+    } finally {
+      await seedFolders(db.collection("folders"), []);
+      await db.collection("machines").deleteMany({});
+      await sessions.deleteMany({});
+      await client.close();
+    }
+  });
+
   test("a name the server stored gives way to the name another device saved", async ({
     context,
     page,
