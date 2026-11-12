@@ -29,6 +29,7 @@ import {
 import { CompanyDrawer } from "./CompanyDrawer";
 import { CompactCompanyButton, CompanyStrip } from "./CompanyStrip";
 import { ConnectionStatus } from "./ConnectionStatus";
+import { readCollapsedMacs, storeCollapsedMacs } from "./collapsedMacs";
 import { postCompanyMode } from "./companyMode";
 import { DetailsPanel, type OrderClickState } from "./DetailsPanel";
 import { postDismiss } from "./dismiss";
@@ -177,9 +178,9 @@ export function OfficeView() {
     companyKey: null,
     selection: SHOW_ALL,
   });
-  const [collapsedMacs, setCollapsedMacs] = useState<ReadonlySet<string>>(
-    new Set(),
-  );
+  // Read at first render (the view loads client-only) so a reload never flashes the folded Macs open.
+  const [collapsedMacs, setCollapsedMacs] =
+    useState<ReadonlySet<string>>(readCollapsedMacs);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [hireOpen, setHireOpen] = useState(false);
   // Wake orders by session, so selecting another employee and back shows the same pending order and outcome.
@@ -370,12 +371,12 @@ export function OfficeView() {
   };
 
   /** Folds a Mac's group in the company bar, or opens it again. */
-  const toggleMac = (machineId: string) =>
-    setCollapsedMacs((current) => {
-      const next = new Set(current);
-      if (!next.delete(machineId)) next.add(machineId);
-      return next;
-    });
+  const toggleMac = (machineId: string) => {
+    const next = new Set(collapsedMacs);
+    if (!next.delete(machineId)) next.add(machineId);
+    setCollapsedMacs(next);
+    storeCollapsedMacs(next);
+  };
 
   /** Narrows the office to a tag at once. */
   const selectTag = (selection: TagFilterSelection) => {

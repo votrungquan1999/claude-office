@@ -486,4 +486,67 @@ test.describe("folding a Mac", () => {
       await client.close();
     }
   });
+
+  test("a folded Mac is still folded after a reload in the same browser", async ({
+    context,
+    page,
+  }) => {
+    // Given two Macs with live companies, the first company viewed
+    const client = new MongoClient(
+      readFileSync(E2E_MONGO_URI_FILE, "utf8").trim(),
+    );
+    await client.connect();
+    const db = client.db(E2E_DB);
+    await seedFolders(db.collection("folders"), [
+      { machineId: "air", path: "/Users/q/alpha" },
+      { machineId: "air", path: "/Users/q/bravo" },
+      { machineId: "mini", path: "/Users/q/lab" },
+    ]);
+    await seedOnlineMachine("air", "Air");
+    await seedOnlineMachine("mini", "Mini");
+    const sessions = db.collection("sessions");
+    await seedSessions(
+      sessions,
+      [
+        ["air", "Air", "alpha"],
+        ["air", "Air", "bravo"],
+        ["mini", "Mini", "lab"],
+      ].map(([machineId, machineName, name]) => ({
+        machineId,
+        machineName,
+        sessionId: name,
+        cwd: `/Users/q/${name}`,
+        startCwd: `/Users/q/${name}`,
+      })),
+    );
+    await signInAsOwner(context);
+
+    try {
+      await page.goto("/");
+      const tabs = page.getByTestId("company-tab");
+      await expect(tabs).toHaveCount(3);
+
+      // When the owner folds Mini and reloads
+      await page.getByTestId("mac-toggle-mini").click();
+      await expect(tabs).toHaveCount(2);
+      await page.reload();
+
+      // Then Mini is still folded and Air is still open
+      await expect(page.getByTestId("mac-toggle-mini")).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      );
+      await expect(page.getByTestId("mac-toggle-air")).toHaveAttribute(
+        "aria-expanded",
+        "true",
+      );
+      await expect(tabs).toHaveCount(2);
+      await expect(page.locator('[data-company-name="lab"]')).toHaveCount(0);
+    } finally {
+      await seedFolders(db.collection("folders"), []);
+      await db.collection("machines").deleteMany({});
+      await sessions.deleteMany({});
+      await client.close();
+    }
+  });
 });
