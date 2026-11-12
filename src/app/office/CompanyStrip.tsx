@@ -98,8 +98,20 @@ export function CompanyStrip({
           );
           if (tabs.length === 0) return [];
           const folded = collapsedMacs.has(mac.machineId);
-          const shown = folded ? [] : tabs;
-          const hidden = tabs.length - shown.length;
+          // A folded Mac still shows the company being viewed.
+          const shown = folded
+            ? tabs.filter((entry) => entry.company.key === selectedKey)
+            : tabs;
+          const hiddenTabs = tabs.filter((entry) => !shown.includes(entry));
+          const hidden = hiddenTabs.length;
+          // Only companies that need the owner on an online Mac add to the badge.
+          const hiddenNeeds = hiddenTabs
+            .filter((entry) => entry.needsYou)
+            .reduce(
+              (total, { counts }) =>
+                total + counts.needsPermission + counts.waitingForYou,
+              0,
+            );
           return (
             <div
               key={mac.machineId}
@@ -122,6 +134,15 @@ export function CompanyStrip({
                 {hidden > 0 &&
                   ` · ${hidden} ${hidden === 1 ? "company" : "companies"}`}
               </button>
+              {hiddenNeeds > 0 && (
+                <span
+                  data-testid={`mac-badge-${mac.machineId}`}
+                  className="px-4 text-xs font-bold text-bg-dark"
+                  style={{ background: "var(--color-room-permission)" }}
+                >
+                  {hiddenNeeds}
+                </span>
+              )}
               {shown.map(({ company, counts, needsYou }) => (
                 <button
                   key={company.key}

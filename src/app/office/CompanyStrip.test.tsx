@@ -262,6 +262,126 @@ describe("the company strip", () => {
     );
   });
 
+  it("keeps the viewed company's tab on a folded Mac and badges what the hidden companies need from the owner", () => {
+    // Given a folded Mac with the viewed company and two hidden ones, one urgent and one quiet
+    const macs: MacOverview[] = [
+      {
+        machineId: "m1",
+        machineName: "Air",
+        online: true,
+        switchedOff: [],
+        companies: [
+          company("here", [0, 1, 1, 0], { needsYou: true }),
+          company("urgent", [0, 2, 1, 0], { needsYou: true }),
+          company("quiet", [3, 0, 0, 0]),
+        ],
+      },
+    ];
+
+    // When the strip renders with Air folded
+    render(
+      <CompanyStrip
+        macs={macs}
+        selectedKey={macs[0].companies[0].company.key}
+        onSelect={() => {}}
+        onOpenDrawer={() => {}}
+        collapsedMacs={new Set(["m1"])}
+        onToggleMac={() => {}}
+      />,
+    );
+
+    // Then only the viewed tab shows, the label counts the two hidden ones, and the badge sums their needs-you counts
+    expect(
+      screen
+        .getAllByTestId("company-tab")
+        .map((tab) => tab.getAttribute("data-company-name")),
+    ).toEqual(["here"]);
+    expect(screen.getByTestId("mac-toggle-m1").textContent).toContain(
+      "Air · 2 companies",
+    );
+    expect(screen.getByTestId("mac-badge-m1").textContent).toBe("3");
+  });
+
+  it("shows only the caret and the Mac's name on a folded Mac whose one tab is the viewed one", () => {
+    // Given a folded Mac with a single company, which is the viewed one
+    const macs: MacOverview[] = [
+      {
+        machineId: "m1",
+        machineName: "Air",
+        online: true,
+        switchedOff: [],
+        companies: [company("here", [1, 0, 0, 0])],
+      },
+    ];
+
+    // When the strip renders with Air folded
+    render(
+      <CompanyStrip
+        macs={macs}
+        selectedKey={macs[0].companies[0].company.key}
+        onSelect={() => {}}
+        onOpenDrawer={() => {}}
+        collapsedMacs={new Set(["m1"])}
+        onToggleMac={() => {}}
+      />,
+    );
+
+    // Then nothing is hidden, so the label has no company count and there is no badge
+    expect(screen.getByTestId("mac-toggle-m1").textContent).toBe("▶Air");
+    expect(screen.queryByTestId("mac-badge-m1")).toBeNull();
+  });
+
+  it("shows no tab on a folded Mac viewed elsewhere, badges all its needs-you counts, and gives an offline folded Mac no badge", () => {
+    // Given a folded online Mac with two urgent companies, a folded offline Mac, and the viewed company on a third Mac
+    const macs: MacOverview[] = [
+      {
+        machineId: "m1",
+        machineName: "Air",
+        online: true,
+        switchedOff: [],
+        companies: [
+          company("a", [0, 1, 0, 0], { needsYou: true }),
+          company("b", [0, 0, 2, 0], { needsYou: true }),
+        ],
+      },
+      {
+        machineId: "m2",
+        machineName: "Mini",
+        online: false,
+        switchedOff: [],
+        companies: [company("lab", [0, 4, 0, 0], { machineId: "m2" })],
+      },
+      {
+        machineId: "m3",
+        machineName: "Pro",
+        online: true,
+        switchedOff: [],
+        companies: [company("here", [1, 0, 0, 0], { machineId: "m3" })],
+      },
+    ];
+
+    // When the strip renders with Air and Mini folded
+    render(
+      <CompanyStrip
+        macs={macs}
+        selectedKey={macs[2].companies[0].company.key}
+        onSelect={() => {}}
+        onOpenDrawer={() => {}}
+        collapsedMacs={new Set(["m1", "m2"])}
+        onToggleMac={() => {}}
+      />,
+    );
+
+    // Then only the viewed tab shows, Air badges 3, and Mini has no badge
+    expect(
+      screen
+        .getAllByTestId("company-tab")
+        .map((tab) => tab.getAttribute("data-company-name")),
+    ).toEqual(["here"]);
+    expect(screen.getByTestId("mac-badge-m1").textContent).toBe("3");
+    expect(screen.queryByTestId("mac-badge-m2")).toBeNull();
+  });
+
   it("includes the viewed company's tab even when nothing is live in it, and renders an empty strip without a crash", () => {
     // Given a company with nothing live that is the viewed one
     const quiet = company("quiet", [0, 0, 0, 0], { active: false });
