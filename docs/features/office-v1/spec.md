@@ -24,12 +24,13 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 
 ## What it is
 
-- **Office view:** one pixel-art office, 34 by 22 tiles, with four labelled rooms: Working, Needs permission, Waiting for you, Idle.
+- **Office view:** one pixel-art office, 34 by 22 tiles, with four labelled rooms: Working, Needs permission, Waiting for you, Idle. A real phone shows the same four rooms stacked as lists instead (see [Phone](#phone)).
 - **Employees:** each session is a character that sits in the room matching its state and moves when the state changes.
 - **Labels:** an employee's label is `desk name · Mac / project`, or `Mac / company name` when the session started at its company folder, followed by its repo tags as `#name`. It is shown only while the mouse is over the employee or it is selected (tap or click); permission and waiting bubbles are always shown.
-- **Companies:** the folders sessions start in group into companies. A strip above the office has one tab per company and Mac, each with four counts; a drawer lists every Mac and company.
-- **Details:** clicking or tapping an employee opens a pixel card: a state band (with how long the session has been in that state, and the project and tags), the desk name, a terminal-style box for what it is doing or wants to run, the Remote Control button, the recent steps, and the Mac and folder. The card is 360px wide on a desktop and a bottom sheet on a phone.
-- **Went home:** closed sessions leave the office and appear in a "Went home today" list.
+- **Companies:** the folders sessions start in group into companies. A bar above the office has a group per Mac with one tab per company, and an "All companies" button pinned at its right edge; a drawer lists every Mac and company, and is where a company is renamed.
+- **Repo filter:** a floating "All repos" pill at the office's top-left narrows the office to the employees who worked in one repo.
+- **Details:** clicking or tapping an employee opens a pixel card: a state band (with how long the session has been in that state, and the project and tags), the desk name, a terminal-style box for what it is doing or wants to run, the Remote Control button, the recent steps, and the Mac and folder. The card is 360px wide on a desktop and a bottom sheet on a phone, an iPad or a narrow window.
+- **Went home:** closed sessions leave the office and appear in a "Went home today" list, opened from a button as a right drawer on a desktop and as a sheet on smaller screens.
 - **Sign-in:** Google only; one allowed account.
 - **Machines:** each Mac runs a small background agent that reports to the shared database; the hosted app reads it.
 
@@ -43,7 +44,7 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 
 ### Office and rooms
 
-- The layout has four named rooms joined by doorways, 72 seats in all: Working 24, Needs permission 12, Waiting for you 18, Idle 18. Working and Needs permission are on top, Waiting for you and Idle below.
+- The pixel office (desktop, iPad and narrow windows; a real phone shows [stacked rooms](#phone) instead) has four named rooms joined by doorways, 72 seats in all: Working 24, Needs permission 12, Waiting for you 18, Idle 18. Working and Needs permission are on top, Waiting for you and Idle below.
 - Working: a tool is running, or the session is between steps (thinking); both live in the same room, so an employee does not walk between the two. After the turn ended, a background sub-agent that is still running also keeps the desk here (see [Waiting for you or Idle](#waiting-for-you-or-idle)).
 - Needs permission: a dialog waits for the owner. Other waits for the owner (questions, MCP forms) also go here.
 - Waiting for you: the turn ended and the last answer asked the owner something.
@@ -53,11 +54,11 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 - When the session's own status reports it busy again after a dialog, the dialog counts as approved and the employee leaves Needs permission.
 - A context compaction keeps the session's state.
 - An employee takes a free seat in its room; when the room is full it stands on the room's floor, never in a doorway and never in another room.
-- Each room's sign shows its name; when a room holds more employees than seats it reads `Needs permission 14 / 12`. Signs scale with the zoom so they do not cover seats on a phone.
+- Each room's sign shows its name; when a room holds more employees than seats it reads `Needs permission 14 / 12`. Signs scale with the zoom so they do not cover seats at small zooms.
 - The busy look and the permission bubble change at once when the state changes; the walk to another room waits until the new state has held for 2 seconds, so a short flip does not send the employee walking.
 - An idle employee wanders only inside its own room.
 - Each session keeps the same character look wherever the office is loaded.
-- The camera zoom is at least 2 on a 1280x800 desktop, a phone in portrait and a phone on its side. Below about 544 CSS px at 2x pixel density (360 px at 3x) the zoom falls to 1.
+- The camera zoom is at least 2 on a 1280x800 desktop. Below about 544 CSS px at 2x pixel density (360 px at 3x) the zoom falls to 1. A real phone does not draw the canvas, so its screen size no longer affects the zoom.
 
 ### Waiting for you or Idle
 
@@ -78,40 +79,59 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 ### Companies
 
 - A session's company comes from its start folder (the folder it was started in, which does not follow `cd`). Nested known start folders group under the outermost one. The project is the start folder's sub-path below the company folder, and is empty when the session started at the company folder.
-- Companies are worked out in the browser from per-Mac folder records plus the start folders of the sessions it has; a company key is the Mac plus the folder, so the same folder on two Macs is two companies with their own switches.
-- The agent records each start folder once in a `folders` collection (`machineId`, `path`, `companyMode`); records have no expiry, so a Mac left off for a week keeps its switches, and a Mac with no machine record and no session stays hidden until it reports.
-- The strip shows, per Mac, a tab for each company that has a live session or one that went home today (and always the viewed company), with four counts (Working including Thinking, Needs permission, Waiting for you, Idle) and a badge when sessions there need the owner (Needs permission or Waiting for you). An offline Mac is greyed: counts shown, no badge.
-- Counts cover the whole company, never the tag filter and never went-home sessions.
-- A company tab filters the office, the went-home list and the phone card strip to that company; a Mac's sessions never share a company with another Mac's.
+- Companies are worked out in the browser from per-Mac folder records plus the start folders of the sessions it has; a company key is the Mac plus the folder, so the same folder on two Macs is two companies with their own switches and names.
+- The agent records each start folder once in a `folders` collection (`machineId`, `path`, `companyMode`); records have no expiry, so a Mac left off for a week keeps its switches and names, and a Mac with no machine record and no session stays hidden until it reports. A record may also carry the owner's name for the company (`displayName`); the agent never writes it.
+- The bar shows, per Mac, a group: the Mac's name with a fold toggle, then a tab for each company that has a live session or one that went home today (and always the viewed company). On a desktop, an iPad and a narrow window each tab has four counts (Working including Thinking, Needs permission, Waiting for you, Idle) and a badge when sessions there need the owner (Needs permission or Waiting for you). On a real phone a tab shows only the name and that badge. An offline Mac is greyed: counts shown, no badge.
+- Tab names that do not fit are cut with "…" and the full name shows on hover; the drawer shows the full name, wrapped.
+- Counts cover the whole company, never the repo filter and never went-home sessions.
+- A company tab filters the office, the went-home list and the phone's stacked rooms to that company; a Mac's sessions never share a company with another Mac's. Pressing the company already viewed changes nothing, so the repo filter stays.
+- Companies are ordered by the name shown (the owner's name when there is one), "Other" last on its Mac.
 - The office opens on the company last picked in this browser (kept in `localStorage`) while that company is still active; otherwise on the first company by name that has a live session, scanning online Macs in name order; otherwise a live "Other"; otherwise the first company by name on an online Mac, then on any Mac. "Other" is the default only when it is the only company.
 - A refused company-mode request puts the pick back if the owner has not chosen anything since.
-- Two companies on one Mac with the same folder name show `parent/name`.
+- Two companies on one Mac with the same folder name show `parent/name`. A rename never changes another company's label: the suffix rule counts folder names only.
+
+### The company bar
+
+- The "All companies" button sits at the bar's right edge and stays there however many companies there are; only the tabs scroll. On a real phone it is a grid icon button labelled "All companies".
+- A Mac's name in the bar is a fold toggle. Folding shows the Mac as one label, `Mac · N companies` (N counts the tabs hidden; with none hidden only the Mac's name shows), and hides its tabs except the viewed company's, which always stays visible.
+- A folded Mac shows a needs-you badge beside its label that adds up Needs permission and Waiting for you of the hidden companies, only for companies on an online Mac. New work on a folded Mac never unfolds it; the label and badge update on the next poll.
+- Picking a company hidden by a fold (from the drawer) shows that company's tab and hides the one before; the Mac stays folded.
+- Folded Macs are remembered per browser in `localStorage` (`claude-office.collapsed-macs`, a list of machine ids). Missing, unreadable or unavailable storage means every Mac is open; a Mac starts open; ids of unknown Macs are ignored.
 
 ### The drawer
 
-- The strip's "All companies" button opens a drawer (a full-width sheet on a phone) above the office and the details panel; it closes on a pick or Escape.
+- The bar's "All companies" button opens a drawer above the office: a 420 px panel on the right on a desktop, a full-width bottom sheet on a phone, an iPad or a narrow window. It closes on a pick, the × button or Escape. Opening it closes an open details card.
 - It lists every Mac and every company with the same four counts and the same needs-you badge, offline Macs greyed, and "N elsewhere need you" (needs permission plus waiting for you in other companies on online Macs), hidden at zero.
-- A company's row has a company-mode switch (see below). Picking a row selects that company.
+- A company's row has a pencil (see [Renaming a company](#renaming-a-company)) and a company-mode switch (see below). Picking a row selects that company.
+- Only one right drawer is open at a time: opening All companies closes Went home and the other way round. On a desktop the companies drawer floats over the office; the status line ("Updated N min ago", "Connection lost") moves to its left so the drawer never covers it.
+
+### Renaming a company
+
+- Each company row backed by a folder has a pencil in the drawer (on a desktop and on a phone) that opens a Name field with Save, Cancel and, once the company has a name of its own, "Use folder name". The field shows the company's shown name, and the row says `folder <name>` under a renamed company.
+- On a desktop with a mouse, double-clicking a tab opens the same field inside the tab: Enter saves, Escape cancels, clicking away saves. Touch screens have no double-tap rename; they use the drawer pencil.
+- Names are trimmed and at most 100 characters. A blank name, the folder's own name and "Use folder name" all put the folder name back. Saving a name that changes nothing, or a blank on a company that was never renamed, sends nothing.
+- "Other" has no pencil and no name; switched-off folders have no pencil but show their custom name and the folder line. Companies of an offline Mac can be renamed.
+- Only one editor is open in the drawer at a time; opening another pencil drops the first draft. Pencil, Save, Cancel and "Use folder name" never close the drawer, and Escape anywhere in the editor cancels the edit only.
+- A name shows at once on the device that set it, then on every device on its next poll, in the bar, the drawer, employee labels and went-home rows; tabs re-sort by the new name. The server keeps the name per Mac and folder: `POST /api/office/folders/display-name` is owner-only (401 for anyone else, 400 for a bad body or a name over 100 characters), stores a non-blank name, removes the stored name for a blank or null one, and creates the folder record (company mode on) when a switch-off made a company folder with no record yet.
+- If the server refuses (or the request fails), the old name comes back and "Could not rename. Try again." appears in the company's drawer row, or under the bar when the rename came from a tab or the drawer was closed before the refusal. The message stays until the next rename, until the owner switches company, or until the drawer opens. A refusal of an older request never undoes a newer rename, and a name a device sent gives way to a different name another device saved later.
 
 ### Company mode and Other
 
 - The owner switches company mode off on a company in the drawer; its direct child folders (at any depth, by path segment) then become companies for every viewer on its next poll, and its own sessions go to Other. Switching it back on restores the grouping. A switch only matters while the folder is a company; the stored flag is kept.
 - The switch is one owner-only request, `POST /api/office/folders/company-mode` (401 for anyone else, 400 for a bad body), which upserts the folder record; a failed request reverts the switch and shows an alert line in the drawer, and a confirmed one stays pending until a poll agrees.
-- Each Mac has one "Other" company, listed last on that Mac. It appears when a session sits in it or the Mac has a switched-off folder, and it shows only in the strip while a session is in it or went home from it today. In Other a session's project is its start-folder name.
+- Each Mac has one "Other" company, listed last on that Mac. It appears when a session sits in it or the Mac has a switched-off folder, and it shows only in the bar while a session is in it or went home from it today. In Other a session's project is its start-folder name.
 - Switched-off folders stay in the drawer as dimmed rows "in Other" with their switch.
 
-### Sideways phone
-
-- On a short screen (`(orientation: landscape) and (max-height: 500px)`) the company strip folds into one compact button that opens the drawer, so the office keeps its size. Its badge counts sessions needing the owner across all companies on online Macs. A window taller than 500 px (an iPad, or a 700x800 window) keeps the full strip.
-- On the same short screens the details sheet scrolls as a whole, so the recent steps keep their natural height, and the "Recent steps" heading is hidden.
-
-### Repo tags and the tag filter
+### Repo tags and the repo filter
 
 - Each employee shows the repos it worked in as tags. A tag is the repo's main checkout: a worktree counts as its main repo (read with `git --git-common-dir`), and the repo that is or wraps the start folder never counts, including a nested separate repo inside a bigger one. Subagent work adds tags. A deleted folder keeps its tag, and a write into a folder that does not exist yet is looked up in its nearest existing ancestor.
 - The agent resolves tags with git (3 s timeout, 4 at a time, up to 2000 folders cached, a "not a repo" answer remembered for 30 s); a timeout or spawn failure is never cached as a miss. Only `{name, key, parent}` leaves the Mac: the folder name, a 12-character sha256 prefix of the main repo's path, and its parent folder's name.
 - Same-named tags in one company are told apart as `parent/name` (for example `personal/api`); when the parent is missing or does not tell them apart, `name~` plus the start of the key is used. One rule serves the chips, employee labels and the details card.
-- Inside a company a filter on the strip's line (inside the drawer on a sideways phone) offers All, each tag with its count (most sessions first, then name) and No tag. A session shows under every tag it has. The filter narrows the office employees only, not the went-home list or the company counts.
+- Inside a company a floating pill at the office's top-left reads `All repos N` (N is the company's employees). Pressing it opens a chip panel: a popover on a desktop, a bottom sheet with a Close button on a phone, an iPad or a narrow window. The panel offers All, each tag with its count (most sessions first, then name; for example `api 2`) and No tag (only when some employee has no tag). The pill is absent when the company has no tags. A session shows under every tag it has. Picking a chip closes the panel.
+- While filtered the pill reads `#api 2 of 3` (or `No tag 1 of 3`) and has a × button ("Show all repos") that clears the filter. The panel also closes on Escape, on a press outside it, and when a drawer or the details card opens.
+- The filter narrows the office employees (the stacked rooms on a phone) only, not the went-home list or the company counts.
 - It is hidden when the company has no tags. A tag that vanished, or an empty No tag, falls back to All, and a company switch resets it to All.
+- On a desktop, iPad and narrow window the pill stays pressable while a details card is open; the desktop card opens below the pill's spot whether or not the pill is shown. On a phone the pill sits in a row above the stacked rooms and stays there while they scroll.
 
 ### Every session, every Mac
 
@@ -161,13 +181,16 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 - **Terminal box:** Working shows the running step and its time, or "working…"; Thinking "thinking…"; Waiting for you "waiting for your reply"; Idle the last finished step, or no box. Needs permission shows "Wants to run" and, only when exactly one step is running, its text. The folder line and the current to-do stay; the box is hidden for an offline Mac.
 - **Remote Control button:** "Approve in Remote Control" on a needs-permission session whose Mac is online, "Open Remote Control" otherwise (also on a Mac-offline card), absent for a went-home or not-running desk and for a waiting or starting hire. Details of the link are under Remote Control.
 - **Footer:** the Mac name and the folder with the home folder as `~` and long paths cut in the middle (full path on hover).
-- The sheet is a bottom sheet on a phone (at most 80% of the height); on a desktop only the steps list scrolls, and on a short screen the whole sheet scrolls.
+- The sheet is a bottom sheet on a phone, an iPad and a narrow window (at most 80% of the height); on a desktop only the steps list scrolls. On a short screen (height at most 500 px, such as a phone held sideways) the whole sheet scrolls, so the recent steps keep their natural height, and the "Recent steps" heading is hidden.
 
 ### Went home
 
-- A closed session leaves the office and appears in "Went home today", newest first, with desk name, Mac, folder and time; the list follows the selected company.
+- A closed session leaves the office and appears in "Went home today", newest first, with its desk name in full (wrapped), where it was, and the time it went home (local HH:MM); the list follows the selected company, not the repo filter. "Where" reads `Mac / company/project`: the project is left off when the session started at the company folder, a session in Other reads `Mac / Other/<folder>`, and a renamed company shows its new name.
+- The list opens from a button showing how many employees of the viewed company went home today. It reads "Went home today N" on a desktop, an iPad and a narrow window, where it floats at the office's bottom-left (above the desktop details card, and stepping aside while an iPad or narrow-window details sheet is open); on a real phone it reads "Went home N" and sits in the phone's bottom bar. The button is shown at 0, and the list then says "Nobody has gone home today".
+- On a desktop the list is a 400 px right drawer beside the office; the office gets narrower and its canvas re-fits (unless the owner zoomed by hand). On a phone, an iPad and a narrow window it is a bottom sheet over the office. Its header reads "Went home today" and, on a desktop, `<company> · N employees · newest first` ("1 employee"); on a sheet `<company> · newest first`.
 - "Today" is the browser's local day.
-- Clicking an entry opens details with steps but no Remote Control link, and a Wake button.
+- Clicking a row opens details with steps but no Remote Control link, and a Wake button. On a desktop the drawer stays open beside the card; on a sheet the details sheet opens over the list and closing it shows the list again.
+- Opening Went home does not close an open details card. The floating Hire button is hidden while the drawer is open.
 - A resumed session returns to the office.
 - **Waking:** Wake appears in the details card of a went-home employee (only today's list leads to one) and of a kept employee that is not running; it is absent for a running, waiting or starting employee, and disabled for an offline Mac, for an agent older than 0.3.0 (the card says to update it) and while its order is pending. One click sends one order. The card warns "will wait at the Mac for you to trust this folder" when the start folder's `cliTrusted` is false, and shows the order's outcome while that employee is selected ("Waking…", "Not woken: open elsewhere", other failure reasons, "Not sent"); selecting another employee and back shows the same outcome.
 - The office route accepts a row that reads went home or not running; the agent is the real gate. It refuses, ending the order failed and opening nothing, when any registry entry with that session id, of any kind (a hidden `claude -p` run included), has a live process (`openElsewhere`); when a launch for that session is still waiting or starting (`openElsewhere`); when the registry or the process table cannot be read (`cannotCheckOpen`, "the Mac could not check whether it is open elsewhere. Try again."); when the start folder is gone (`folderMissing`) or the transcript is gone (`conversationNotFound`). The agent resumes in the start folder it stored for that conversation, never the folder an order carries, and a conversation it has no stored row for ends `conversationNotFound`; a session id that is not a UUID ends `invalidOrder` ("Not woken: the Mac refused the order as not valid."). The agent runs one poll at a time, reads everything it needs before the window opens and adds the session to an in-memory waking set before its first await (the tracker marks it launching as soon as the window has opened), so two wake orders for one session never open two windows. The route also refuses a wake (409 "a wake for this employee is already on its way") while a wake order for that session is claimed or pending within the 30 s pickup window. Checking and opening are not one atomic step, so a window opened by hand in the same instant can slip through. A row may still read went home while a refusal says the conversation is open elsewhere.
@@ -176,7 +199,7 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 
 ### Hiring
 
-- The Hire button ("+ Hire") floats over the office canvas's bottom-right corner on every layout: desktop, phone upright and phone sideways. It is hidden while the company drawer is open and, on a phone, while a details sheet is open, since both cover that corner; on desktop the details panel sits top-left, so the button stays. Its dialog opens on the viewed company's Mac and folder and asks for a Mac, one of that Mac's known folders and a first message. The message is sent verbatim, leading spaces and indentation included; a blank one is refused, and one over 100,000 characters is refused with a 400 ("message too long") that the dialog turns into a plain sentence.
+- The Hire button ("+ Hire") floats over the office canvas's bottom-right corner on a desktop, an iPad and a narrow window. It is hidden while either right drawer (All companies or Went home) is open and, on an iPad or narrow window, while a details sheet is open, since those cover that corner; on desktop the details panel sits top-left, so the button stays. On a real phone Hire is in the bottom bar instead (see [Phone](#phone)). Its dialog opens on the viewed company's Mac and folder and asks for a Mac, one of that Mac's known folders and a first message. The message is sent verbatim, leading spaces and indentation included; a blank one is refused, and one over 100,000 characters is refused with a 400 ("message too long") that the dialog turns into a plain sentence.
 - Only folders the Mac has already shown the office, and that still exist there, are listed; the agent checks existence at start and every heartbeat.
 - A Mac that is offline or has no record counts as offline; one whose agent is older than 0.3.0 or reports no version is greyed with "update this Mac's agent". Neither can be picked, and the server refuses them with a 409.
 - Submitting writes one order to the `commands` collection. The agent polls every second, claims its own Mac's fresh orders by the database clock, erases the message from the order, and opens a Terminal window running `claude --remote-control --session-id <id>` in the folder with the message as its first prompt.
@@ -187,14 +210,13 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 - The hire dialog warns "will wait at the Mac for you to trust this folder" when the chosen folder has `cliTrusted === false`. Trust refreshes every 60 seconds, so the dialog may still warn for up to a minute after the owner trusted the folder at the Mac.
 - The form scrolls inside the dialog on a short screen (a phone turned sideways, the keyboard up), so the Hire button stays reachable. The dialog's fields and button are locked from the click until the order resolves, and it sends one order however often the button is pressed; the × button and Escape still close it, and the order then runs without its outcome being shown. It shows the reason when the order fails (folder missing, Claude Code not found, the window could not open, the agent restarted before the window opened). The Terminal opener gets 30 seconds; past that the order fails as "the window could not open" and the agent goes on to the next order. Wake and Dismiss word an interrupted order for what they do ("Not woken: ... before the window opened", "Not dismissed: the Mac's agent restarted first"). "Not sent" appears only when the office reports the order unclaimed after 30 seconds by the database clock (or no longer known), after which nothing runs later. After 35 seconds without an answer from the office it says the office lost contact and that the Mac may still run the hire. An order still claimed 2 minutes after it was given stops the polling and tells the owner to check the Mac. It closes itself when the window opened.
 - The hire, wake and dismiss routes also refuse (400) a hire into a folder the Mac does not list or that no longer exists ("The Mac does not know that folder any more. Pick another folder."), a wake of a row that is waiting, starting or running, and a dismiss of a row that is not kept.
-- Switched-off company folders still appear in the hire list; only folders gone from disk are dropped.
+- Switched-off company folders still appear in the hire list; only folders gone from disk are dropped. Renaming a company that had no folder record creates one, so that folder joins the hire list until the Mac reports it gone.
 - The Mac looks for Claude Code on the agent's PATH, then `/opt/homebrew/bin`, `/usr/local/bin` and `~/.local/bin`; otherwise the order fails "Claude Code was not found on the Mac."
 - After not sent, failed, lost contact or check the Mac, the dialog button reads "Try again".
 - The card's update notes read "Update this Mac's agent to wake employees." and "Update this Mac's agent to dismiss employees."
 - An order the agent claimed but never finished when it restarts is marked failed `interrupted`; nothing opens late.
 - When a hired employee's Terminal window closes (its process ends, or its end hook fires) the desk stays: idle, marked not running since the closing time, with no running steps, no Remote Control link and no went-home time; it counts as Idle and never enters Went home. The agent restores such desks, with their names, when it restarts; a restart that cannot read the registry leaves a desk as running until the registry can be read, and a live registry entry of another process (the conversation resumed elsewhere) brings a Not running desk back to running, with no old Remote Control link. The details card says "Not running" and shows no Remote Control line or terminal box; the desk itself gains no text.
 - The details card of a waiting or starting hire says "Waiting at the Mac" (with what to do there: trust the folder, then click the window before typing) or "Starting" (with "Starting on the Mac."), shows no Remote Control line, link or terminal box, and outranks "Mac offline"; "Went home" and "Not running" outrank it. The desk itself gains no text.
-- On a sideways phone, where the strip folds into one button, the Hire button still floats at the bottom-right; the went-home list is capped so it never reaches the button on a narrow screen.
 
 ### Dismissing
 
@@ -229,13 +251,34 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 
 - The office page polls for changes about every 3 seconds only while the tab is visible, checks at once when the tab returns, and backs off on failures.
 - It shows "Updated N min ago" and a "Connection lost" banner when polling fails; on a 401 it stops and sends the owner to sign-in.
-- The changes API returns what changed since the browser's cursor, with a 5-second overlap, plus every folder record and the server's clock; the browser merges sessions by (machine, session).
+- The changes API returns what changed since the browser's cursor, with a 5-second overlap, plus every folder record (with the owner's name for the company, when set) and the server's clock; the browser merges sessions by (machine, session).
 
 ### Phone
 
-- The office fits the screen, can be panned and pinch-zoomed, shows a select-only strip of employee cards, and the went-home list is a sheet. The company strip, drawer and details sheet follow the rules above, including the sideways layout.
-- Tapping an employee or card opens the details card as a bottom sheet.
+- A real phone is a touch screen whose short side is at most 500 CSS px, in either orientation (a coarse pointer with a width or a height of at most 500 px). An iPad and any window driven by a mouse never count, however narrow. Turning the phone keeps the same view and the same open sheets; there is no special sideways mode, and a sideways phone shows the same bar and rooms with more columns.
+- Instead of the pixel office and the card strip, the phone shows the viewed company's employees in four full-width rooms stacked in the order Needs permission, Waiting for you, Working, Idle. The rooms follow the company tab and the repo filter and scroll on their own.
+- Each room has a header with the room's colour, its name and its head count, then a grid of tiles (as many columns as fit). A tile shows a small desk, the employee's character (the same look as on the canvas), and its task name cut at two lines (the desk name, else the folder name); Needs permission tiles carry a `!` bubble and Waiting for you tiles a `…` bubble. A tile of an offline Mac is greyed. An empty room shows its header and "Nobody here right now".
+- Tiles sit in the room that matches the session's state at once (no walking delay), so the room counts match the bar's counts; went-home employees are not shown. Inside a room the employee who has been in its state longest comes first, ties by session.
+- Tapping a tile opens the details card as a bottom sheet and marks the tile; tapping another tile moves the sheet and the mark; closing the sheet puts focus back on the tile.
+- Tapping a room header with employees folds or opens the room; its count stays. An empty room has nothing to fold. Folds are kept when the company changes but not across a reload. A folded Needs permission or Waiting for you room opens again when an employee newly arrives in it, so a new request is never hidden; people brought in by switching company or repo filter count as arrivals too.
+- A row above the rooms holds the repo pill on the left and the status line ("Updated N min ago", "Connection lost") on the right, in the layout's flow, so neither covers a room header.
+- A bottom bar stays below the rooms with "Went home N" (opens the went-home sheet) and "+ Hire" (opens the hire dialog). It is hidden while any sheet is open (All companies, Went home, the details card, the repo chips) and keeps clear of the phone's home indicator.
+- The company bar on a phone shows each company's name and needs-you badge only, tap targets at least 44 px, and "All companies" as a grid icon.
+- The company bar, drawer, details sheet and rename rules above apply as written. The phone has no double-tap rename; the drawer pencil renames.
 - On the phone layout (any small or touch-sized viewport, including a narrow desktop window) the Remote Control link has no `target`, so iOS opens the Claude app on the session when the app is installed; without the app the link navigates the office tab to claude.ai. Whether iOS hands it to the app is checked by one manual tap, not by a test.
+
+### iPad and narrow windows
+
+- An iPad, a touch tablet up to 1024 px wide and any mouse window up to 768 px wide (for example 700x800) keep the pixel office, panning and pinch-zoom, the select-only strip of employee cards at the bottom, and tabs with four counts and the "All companies" text.
+- A short but wide mouse window (for example 800x400) gets the desktop layout: no card strip, and the details card, drawers and repo panel sit beside the office.
+- On the iPad, tablet and narrow-window screens the details card, the companies drawer and the repo chip panel are bottom sheets, Went home is the bottom-left button opening a sheet, and Hire floats at the bottom-right. The phone's bottom bar and stacked rooms never appear.
+- An iPad in Split View at phone width counts as a real phone and gets the stacked rooms.
+
+### Escape
+
+- Escape closes the open overlay that was opened last: with Went home open, a details card opened from it or after it closes first and a second Escape closes the list; a card that was already open when the list opened stays open when Escape closes the list.
+- In a rename editor (in a tab or anywhere inside the drawer's editor), Escape cancels the edit only. Otherwise it closes the companies drawer.
+- The repo chip panel, the hire dialog and the original-request popup close on Escape.
 
 ### Connecting a Mac
 
@@ -263,7 +306,7 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 - The text of a shell command never leaves the Mac: the hook keeps only an allowlist of `tool_input` keys, and the agent's schema drops anything else again.
 - Tool output, error text and notification text are never stored.
 - The end of the assistant's last answer reaches only the local agent and is never stored or published. The original request (pasted parts included, up to 2,000 characters) is stored on the session row. The only other things that leave the Mac are the optional Haiku calls, which only happen when the owner set a key: the first 1,000 characters of every session's first message go to Anthropic to write the task name, and the last 1,000 characters of each finished answer go to Anthropic to decide Waiting for you or Idle. Nothing from the answer is stored.
-- Free text that is stored: the first message (60 characters), the original request (up to 2,000 characters, kept on the session row and removed with it when the row expires), the Haiku task name, Bash and Agent descriptions, search patterns, web queries and domains, file names, the session's name and folder paths.
+- Free text that is stored: the first message (60 characters), the original request (up to 2,000 characters, kept on the session row and removed with it when the row expires), the Haiku task name, Bash and Agent descriptions, search patterns, web queries and domains, file names, the session's name, folder paths and the company names the owner types (up to 100 characters, on the folder record).
 - The folder of each step (`file_dir`) stays on the Mac; only each repo tag's name, key and parent folder name are stored and sent.
 - The agent's config, address and desk-name cache files are created readable only by the user.
 - The first message of a hire passes through the database: the agent erases it from the order when it claims the order, and an order no Mac claims is deleted with its message after about 10 minutes. On the Mac it lives in a file readable only by the user, which the window's script deletes as soon as it has read it (and which is deleted too if the window could not open, on dismiss, or at the next agent start).
@@ -272,8 +315,8 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 
 - **Hook:** `hooks/claude-office-hook.mjs` reduces each event and posts it to the loopback agent found through `~/.claude-office/agent.json`.
 - **Agent:** TypeScript run with `node --import tsx` under `agent/`; tracks sessions, steps, desk names, start folders, repo tags, the time in each state and the heartbeat, and writes to MongoDB only when something changes.
-- **Database:** the `claude-office` database; sessions carry their last 5 steps, full steps live in their own collection, folder records in `folders`, hire orders in `commands`; every write stamps `changedAt` with the server's clock.
-- **Web app:** Next.js with better-auth (Google); the office page loads once, then polls the changes API. Companies, projects and the strip, drawer and tag filter are computed in the browser.
+- **Database:** the `claude-office` database; sessions carry their last 5 steps, full steps live in their own collection, folder records (including the owner's company names) in `folders`, hire orders in `commands`; every write stamps `changedAt` with the server's clock.
+- **Web app:** Next.js with better-auth (Google); the office page loads once, then polls the changes API. Companies, projects and the bar, drawer, repo filter and the phone's stacked rooms are computed in the browser.
 - **Renderer:** pixel-agents v1.5.0 (commit b1bafd0, MIT) copied into `src/office/` with its licence and credits; characters credit JIK-A-4 MetroCity (CC0).
 - **Shared code:** `src/shared/` holds the schemas, step text, desk-name, asks, company, overview and tag rules used by both sides.
 
@@ -323,7 +366,19 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 - **Tag key is an unsalted hash:** working folders already reach the web, so salting hides nothing new.
 - **Same-named repo tags show `parent/name`:** chosen over a cryptic key prefix; the parent folder's name reveals nothing new.
 - **A bad Haiku key is not cached:** fixing a mistyped key and restarting names sessions that failed before.
-- **Sideways phone sheet scrolls as a whole:** the steps would otherwise shrink to nothing behind "More steps".
+- **Short-screen details sheet scrolls as a whole:** the steps would otherwise shrink to nothing behind "More steps".
+- **Repo filter is a floating pill, not part of the bar:** the bar holds companies only; a filter button on the bar and a repo shelf under it (which costs office height) were rejected.
+- **"All companies" is pinned at the bar's edge:** it must not scroll away when there are many companies.
+- **Mac groups fold like browser tab groups:** the viewed company stays visible and a badge counts waiting work in the hidden ones, so folding never hides where the owner is or work waiting on them; the fold is remembered per browser.
+- **Rename lives on the folder record:** stored per Mac and folder next to company mode so every device sees it, shown at once like a company-mode switch, and the agent never writes it. The pencil sits in the drawer because it is easy to find on a phone.
+- **A phone shows stacked rooms, not the pixel office:** the canvas is too small to read there; one room at a time and a list with a map toggle were rejected. Desktop keeps the pixel office.
+- **Real phone means touch plus a short side of 500 px or less:** over "everything under 768 px", which would catch iPads and narrow desktop windows. These keep the pixel office.
+- **No sideways phone mode:** a sideways phone shows the same stacked rooms with more columns, so there is one layout to keep right.
+- **Phone bottom bar:** "Went home N" and "+ Hire" are always reachable without scrolling.
+- **Stacked rooms place employees by state at once:** the canvas's 2-second walk delay exists only to time the walk, and the room counts must match the bar's.
+- **A new request reopens a folded room:** Needs permission and Waiting for you open again on an arrival, so a fold never hides a new request.
+- **Went home is a button and a right drawer that pushes the office:** a corner panel was rejected; the drawer shows task names in full and covers nothing.
+- **One right drawer at a time:** All companies and Went home close each other.
 - **Version 0.3.1, no release:** a larger version number would overstate how finished the app is.
 - **Mutation survivors:** survivors get tests unless they change no visible behavior.
 - **Hook install stays in this repo;** moving it to AI-rules is later work.
@@ -335,7 +390,7 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 - Which hook fires after a manual "No" on a permission dialog is not verified, and whether already-open sessions pick up newly installed hooks is not verified; both are manual checks.
 - The assumption that `/clear` keeps the process id is unchecked; the rule built on it is harmless if wrong.
 - A registry check that lands between a busy flip and the follow-up Stop can drop a remembered question; the result is a missed badge, which is preferred over a false one.
-- Phones narrower than about 544 CSS px at 2x (360 px at 3x) see the office at zoom 1.
+- A window narrower than about 544 CSS px at 2x (360 px at 3x) sees the pixel office at zoom 1; real phones no longer draw it.
 - Folder records ride on every changes answer, so many throwaway folders make the answer grow.
 - The tag key is a hash of a guessable path; it hides nothing the start folders do not already show.
 - A task-name request that failed for good (not a bad key) keeps the first-message name ("Pasted text" for a paste-only one) and is not asked again.
@@ -345,6 +400,11 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 - A hire whose response was lost can be sent twice, giving a duplicate employee.
 - In a narrow desktop window the Remote Control link uses the phone layout's same-tab link and navigates the office tab.
 - A wake followed by a dismiss within milliseconds can leave the desk in either state.
+- On a desktop the floating Hire button is hidden while the Went home drawer is open, so hiring needs the drawer closed first.
+- On an offline Mac the phone's room headers still count the employees waiting on the owner, while the company bar shows no needs-you badge for them, because an offline Mac is not counted as waiting on the owner.
+- On a phone, changing the company or the repo filter can bring employees into a folded Needs permission or Waiting for you room; they count as arrivals and the room opens again, even though no new request started.
+- With the on-screen keyboard up, a phone's bottom sheet (the rename field, the hire dialog) may be partly covered; the page relies on the browser scrolling the field into view, and only a real phone can confirm it.
+- In this repo Tailwind's spacing unit is 1 px (`--spacing: 1px` in `src/app/globals.css`): `h-11` is 11 px, not 44 px, so touch targets are written as `min-h-[44px]`. A class written for a 4 px unit renders at a quarter of its size.
 
 ## Not built yet
 
@@ -352,13 +412,17 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 - Messaging sessions, auto-wake, waking departures older than today, stop buttons, controlled updates, teams, push notifications, one-line summaries, per-session cost.
 - A session inspector.
 - Desk clusters by project inside a room; seats fill in order today.
+- Stacked rooms on an iPad or a narrow window (they keep the pixel office), remembering a phone's folded rooms across reloads, renaming a company by double-tap on a touch screen, and a name for "Other".
 - An uninstall command.
 
 ## Open items
 
 - Each Mac's agent must be updated to 0.3.0 before it can take orders; until then the office greys out hiring for it.
+- The company-layout work (bar, rename, Went home, phone rooms) is web-app only: the one change under `agent/` since the previous version is the optional `displayName` field in the `FolderDocument` type in `agent/folders.ts`, which has no runtime effect, so the Macs need neither a pull nor an agent restart for it; deploy the web app.
 - Follow `SETUP.md` on the owner's Mac and confirm a live session shows at the deployed office from the Mac and a phone; then pull the new version on each Mac and restart its agent (`launchctl kickstart -k gui/$(id -u)/dev.quanvo.claude-office.agent`); the hooks follow the checkout through the `~/.claude/claude-office` link.
 - Turn on private vulnerability reporting in the GitHub repo settings.
+- Check on a real phone: the stacked rooms in both orientations, the bottom bar against the home indicator, and the keyboard over the rename field and the hire dialog.
+- The README images (`npm run capture`, including the phone screenshot) were not re-taken for the new bar and phone rooms, and `package.json`, the README and this file still say 0.3.1; bump the version when the owner decides to ship.
 - Check the first GitHub Actions run after the push; the workflow was not run on GitHub.
 - Check the host plan's function-call allowance against about 1,200 polls per hour per visible tab.
 - Note for later: the claude-usage tool's repo-name backfill is out of scope here.
@@ -366,9 +430,9 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 ## Key files
 
 - `src/proxy.ts`, `src/lib/auth.ts`, `src/lib/require-owner.ts`: sign-in gate; `src/lib/require-online-mac.ts`: refuses orders for a Mac that cannot take them.
-- `src/office/` (`sceneSync.ts`, `rooms.ts`, `offline.ts`, `wentHome.ts`, `remoteControl.ts`, `engine/`, `components/`, `hooks/useIsSidewaysPhone.ts`): office rendering and scene sync.
-- `src/app/office/`: office page (`OfficeView.tsx`), `CompanyStrip.tsx`, `CompanyDrawer.tsx`, `TagFilter.tsx`, `HireDialog.tsx`, `WakeControl.tsx`, `DismissControl.tsx`, `useOrderStatus.ts`, `RoomSigns.tsx`, `DetailsPanel.tsx`, `StepsList.tsx`, `elapsed.ts`, went-home list, polling hook, connection status.
-- `src/app/api/office/changes`, `src/app/api/office/steps`, `src/app/api/office/folders/company-mode`, `src/app/api/office/hire`, `src/app/api/office/wake`, `src/app/api/office/dismiss`, `src/app/api/office/commands/[id]`, `src/app/api/connect/`: office and connect APIs.
+- `src/office/` (`sceneSync.ts`, `rooms.ts`, `offline.ts`, `wentHome.ts`, `remoteControl.ts`, `constants.ts` for the phone and mobile media queries, `engine/`, `components/` with `StackedRooms.tsx` and `CharacterMugShot.tsx`, `hooks/useIsPhone.ts`, `useIsMobile.ts`, `useHasMouse.ts`, `useMediaQuery.ts`): office rendering, scene sync and the phone's stacked rooms.
+- `src/app/office/`: office page (`OfficeView.tsx`), `CompanyStrip.tsx`, `CompanyDrawer.tsx`, `TagFilter.tsx`, `HireDialog.tsx`, `WakeControl.tsx`, `DismissControl.tsx`, `useOrderStatus.ts`, `RoomSigns.tsx`, `DetailsPanel.tsx`, `StepsList.tsx`, `elapsed.ts`, `WentHomeButton.tsx`, `WentHomeDrawer.tsx`, `PhoneBottomBar.tsx`, `officeStore.ts` (pending switches and names), `collapsedMacs.ts`, `displayName.ts`, `renameRule.ts` (one rule shared by the drawer and tab editors), polling hook, connection status.
+- `src/app/api/office/changes`, `src/app/api/office/steps`, `src/app/api/office/folders/company-mode`, `src/app/api/office/folders/display-name`, `src/app/api/office/hire`, `src/app/api/office/wake`, `src/app/api/office/dismiss`, `src/app/api/office/commands/[id]`, `src/app/api/connect/`: office and connect APIs.
 - `src/shared/`: commands, session, session-state, hook-event, step-text, desk-name, asks, folders, companies, overview, tag-labels, tag-filter and connect schemas and rules.
 - `hooks/claude-office-hook.mjs`: the hook.
 - `agent/`: `session-state.ts`, `tracker.ts`, `steps.ts`, `writer.ts`, `reconcile.ts`, `transcript.ts`, `folders.ts`, `trust.ts`, `repo-resolver.ts`, `task-namer.ts`, `commands.ts`, `terminal-launch.ts`, `kept.ts`, `config.ts`, `heartbeat.ts`, `write-watchdog.ts`, `kanban-watch.ts`, `start-agent.ts`, `main.ts`.
@@ -386,4 +450,8 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 - Seven quality gates ran after groups of behaviors; each found fixes that were folded into the owning commit and re-checked.
 - Adversarial pass over a catalog of 57 risks: 48 survive, 0 break, 9 silent misbehaviors and 1 side finding; all were fixed except two accepted as they are (a busy-to-idle race between Stops, and zoom 1 on very narrow phones).
 - Mutation pass: 30 mutants over the state logic, company tree, repo tags, paste rule, tag labels and the desk namer; 23 killed, 7 survived; six have killing tests and one (a freed paste head after a cached failure) is accepted as unobservable memory hygiene.
+- The company-layout run (bar, rename, Went home, phone rooms; called 0.4.0 in its notes) was 20 behaviors, one commit each on `main` after commit cb1a19d. At its end: 581 unit tests in 103 files (re-run at the final commit), 108 Playwright specs in 21 files (recorded at the tested tip, which has the same tree as the final commit), lint and type-check clean. Playwright is not part of CI.
+- Six quality gates ran after groups of those behaviors; their fixes were folded into the owning commits, and every one of the 20 commits type-checks and passes the unit tests on its own.
+- Conformance check: all 20 behaviors valid, with caveats that were fixed. Adversarial pass over 68 risks: 57 hold; seven were fixed (a pending name that never settled, an iPad Went home button over the details sheet, the Escape order for a card opened last, Escape on Save or Cancel closing the drawer, a truncated drawer name, a double-click rename resetting the repo filter, and the companies drawer covering "Connection lost"); four were accepted (see Accepted limits).
+- Mutation pass: 30 mutants, 25 killed, 5 survived (four false greens and the stacked room order, which only a Playwright spec pinned); all got killing tests.
 - The 0.1.0 record: 17 behaviors, 177 unit tests and 21 Playwright specs at the end, a mutation pass of 28 mutants with 24 killed and 4 survivors that got tests.
