@@ -246,6 +246,7 @@ export function OfficeView() {
   const userZoomed = useRef(false);
   const isMobile = useIsMobile();
   const isPhone = useIsPhone();
+  const [tagSheetOpen, setTagSheetOpen] = useState(false);
   const hasMouse = useHasMouse();
   const dataRef = useRef<OfficeData>({
     sessions: new Map(),
@@ -725,14 +726,23 @@ export function OfficeView() {
         >
           {isPhone ? (
             <div className="flex h-full flex-col">
-              {/* Its own row, so the status never covers a room header. */}
-              <div className="flex shrink-0 justify-end px-10 pt-4">
-                <ConnectionStatus
-                  lastUpdatedAt={lastUpdatedAt}
-                  connectionLost={connectionLost}
-                  now={now.getTime()}
-                  inFlow
+              {/* Its own row above the scrolling rooms, so neither the pill nor the status covers a room header. */}
+              <div className="flex shrink-0 items-start justify-between gap-8 px-10 pt-4">
+                <TagFilter
+                  view={tagFilterView}
+                  onSelect={selectTag}
+                  sheet
+                  onOpenChange={setTagSheetOpen}
+                  covered={rightPanel !== null || selectedSession !== null}
                 />
+                <div className="ml-auto shrink-0">
+                  <ConnectionStatus
+                    lastUpdatedAt={lastUpdatedAt}
+                    connectionLost={connectionLost}
+                    now={now.getTime()}
+                    inFlow
+                  />
+                </div>
               </div>
               <div className="min-h-0 flex-1">
                 {loaded && (
@@ -908,14 +918,18 @@ export function OfficeView() {
           />
         )}
       </div>
-      {isPhone && !drawerOpen && !wentHomeOpen && !selectedSession && (
-        <PhoneBottomBar
-          wentHomeCount={departures.length}
-          onWentHome={openWentHome}
-          wentHomeRef={phoneWentHomeRef}
-          onHire={() => setHireOpen(true)}
-        />
-      )}
+      {isPhone &&
+        !drawerOpen &&
+        !wentHomeOpen &&
+        !selectedSession &&
+        !tagSheetOpen && (
+          <PhoneBottomBar
+            wentHomeCount={departures.length}
+            onWentHome={openWentHome}
+            wentHomeRef={phoneWentHomeRef}
+            onHire={() => setHireOpen(true)}
+          />
+        )}
       {isMobile && !isPhone && (
         <MobileAgentBar
           cards={cards}

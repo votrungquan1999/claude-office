@@ -3,6 +3,7 @@ import { expect, type Page, test } from "@playwright/test";
 import { type Collection, MongoClient } from "mongodb";
 import { E2E_DB, E2E_MONGO_URI_FILE } from "./constants";
 import {
+  bottomOf,
   clickEmployee,
   employeeLabelled,
   keepOneCompany,
@@ -309,5 +310,145 @@ test.describe("repo tag filter", () => {
     await expect(
       page.getByRole("dialog", { name: "All companies" }),
     ).toBeVisible();
+  });
+});
+
+// The "phone" project's device profile applies: 393 x 852, dpr 3, touch.
+test.describe("repo tag filter on a phone", () => {
+  let client: MongoClient;
+  let sessions: Collection;
+
+  test.beforeEach(async ({ context }) => {
+    client = new MongoClient(readFileSync(E2E_MONGO_URI_FILE, "utf8").trim());
+    await client.connect();
+    sessions = client.db(E2E_DB).collection("sessions");
+    // Enough working employees that the rooms scroll.
+    await seedSessions(sessions, [
+      {
+        sessionId: "a",
+        tags: [API, WEB],
+        state: "working",
+        deskName: "Task a",
+      },
+      {
+        sessionId: "b",
+        tags: [API],
+        state: "needsPermission",
+        deskName: "Task b",
+      },
+      { sessionId: "c", deskName: "Task c" },
+      ...Array.from({ length: 10 }, (_, n) => ({
+        sessionId: `k${n}`,
+        tags: [WEB],
+        state: "working",
+        deskName: `Task k${n}`,
+      })),
+    ]);
+    await signInAsOwner(context);
+  });
+
+  test.afterEach(async () => {
+    await sessions.deleteMany({});
+    await client.close();
+  });
+
+  const tiles = (page: Page) =>
+    page
+      .getByTestId("stacked-rooms")
+      .getByRole("button", { name: /^Task .+, (?!\d)/ });
+
+  for (const [label, size] of [
+    ["upright", { width: 393, height: 852 }],
+    ["sideways", { width: 852, height: 393 }],
+  ] as const) {
+    test(`${label}: the pill sits above the rooms and stays while they scroll, opens a bottom sheet that hides the bottom bar, and a pick narrows the rooms and closes the sheet`, async ({
+      page,
+    }) => {
+      // Given a phone with thirteen employees in scrolling rooms
+      await page.setViewportSize(size);
+      await page.goto("/");
+      const rooms = page.getByTestId("stacked-rooms");
+      await expect(tiles(page)).toHaveCount(13);
+      const pill = page
+        .getByTestId("tag-filter")
+        .locator("button[aria-expanded]");
+      await expect(pill).toHaveText("All repos 13");
+
+      // Then the pill is above the rooms, not over a room header
+      const pillBox = await pill.boundingBox();
+      const roomsBox = await rooms.boundingBox();
+      expect((pillBox?.y ?? 0) + (pillBox?.height ?? 0)).toBeLessThanOrEqual(
+        roomsBox?.y ?? 0,
+      );
+      expect(pillBox?.height).toBeGreaterThanOrEqual(44);
+
+      // And it is still in view after the rooms scroll to the end
+      await rooms.evaluate((el) => el.scrollTo(0, el.scrollHeight));
+      await expect(pill).toBeInViewport();
+      await rooms.evaluate((el) => el.scrollTo(0, 0));
+
+      // When the owner taps the pill
+      await pill.tap();
+
+      // Then the chips open as a sheet at the screen's bottom and the bottom bar steps aside
+      const sheet = page.getByRole("dialog", { name: "Filter by repo" });
+      await expect(sheet).toBeVisible();
+      expect(await bottomOf(sheet)).toBeCloseTo(size.height, 0);
+      await expect(page.getByTestId("phone-bottom-bar")).toHaveCount(0);
+
+      // And every chip is a full-size tap target
+      const chipHeights = await sheet
+        .getByRole("button", { name: /\d$/ })
+        .evaluateAll((chips) =>
+          chips.map((chip) => chip.getBoundingClientRect().height),
+        );
+      expect(chipHeights).toHaveLength(4);
+      for (const height of chipHeights)
+        expect(height).toBeGreaterThanOrEqual(44);
+
+      // When the owner picks the api tag
+      await sheet.getByRole("button", { name: "api 2" }).tap();
+
+      // Then two employees are left, the sheet is closed and the bar is back
+      await expect(tiles(page)).toHaveCount(2);
+      await expect(sheet).toHaveCount(0);
+      await expect(page.getByTestId("phone-bottom-bar")).toBeVisible();
+      await expect(pill).toHaveText("#api 2 of 13");
+
+      // When the owner taps ×
+      await page.getByRole("button", { name: "Show all repos" }).tap();
+
+      // Then everyone is back
+      await expect(tiles(page)).toHaveCount(13);
+    });
+  }
+
+  test("a tap on the scrim closes the sheet without picking", async ({
+    page,
+  }) => {
+    // Given the sheet open
+    await page.goto("/");
+    await expect(tiles(page)).toHaveCount(13);
+    await page.getByTestId("tag-filter").locator("button[aria-expanded]").tap();
+    const sheet = page.getByRole("dialog", { name: "Filter by repo" });
+    await expect(sheet).toBeVisible();
+
+    // When the owner taps the dimmed area over a room tile above the sheet
+    const sheetTop = (await sheet.boundingBox())?.y ?? 0;
+    const tile = (await tiles(page).first().boundingBox()) ?? {
+      x: 0,
+      y: 0,
+      width: 0,
+      height: 0,
+    };
+    expect(tile.y + tile.height).toBeLessThan(sheetTop);
+    await page.getByTestId("tag-filter-scrim").tap({
+      position: { x: tile.x + tile.width / 2, y: tile.y + tile.height / 2 },
+    });
+
+    // Then it closes, nothing was picked and the tile underneath did not open its details
+    await expect(sheet).toHaveCount(0);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(tiles(page)).toHaveCount(13);
   });
 });

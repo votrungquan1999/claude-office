@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionDto } from "@/shared/session";
 import {
   buildTagFilter,
@@ -235,6 +235,81 @@ describe("the repo tag filter", () => {
 
     // Then the sheet is gone
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("as a sheet, is a modal dialog and puts focus on Close when it opens", () => {
+    // Given the filter as a bottom sheet
+    render(
+      <TagFilter
+        view={buildTagFilter([session("s1", [tag("api")])], SHOW_ALL)}
+        onSelect={() => {}}
+        sheet
+      />,
+    );
+
+    // When the owner opens it
+    const sheetDialog = openPanel();
+
+    // Then it is modal and Close has focus
+    expect(sheetDialog.getAttribute("aria-modal")).toBe("true");
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Close" }),
+    );
+  });
+
+  it("as a sheet, puts focus back on the pill after Close and after a press on the scrim", () => {
+    // Given the sheet open
+    render(
+      <TagFilter
+        view={buildTagFilter([session("s1", [tag("api")])], SHOW_ALL)}
+        onSelect={() => {}}
+        sheet
+      />,
+    );
+    openPanel();
+
+    // When the owner presses Close
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+    // Then the pill has focus
+    const pill = screen.getByRole("button", { name: "All repos 1" });
+    expect(document.activeElement).toBe(pill);
+
+    // When the owner reopens it and presses the scrim
+    openPanel();
+    fireEvent.click(screen.getByTestId("tag-filter-scrim"));
+
+    // Then the pill has focus again
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(pill);
+  });
+
+  it("reports the sheet closed when the chips go away while it is open", () => {
+    // Given the sheet open
+    const onOpenChange = vi.fn();
+    const { rerender } = render(
+      <TagFilter
+        view={buildTagFilter([session("s1", [tag("api")])], SHOW_ALL)}
+        onSelect={() => {}}
+        onOpenChange={onOpenChange}
+        sheet
+      />,
+    );
+    openPanel();
+    expect(onOpenChange).toHaveBeenLastCalledWith(true);
+
+    // When no session has a tag any more
+    rerender(
+      <TagFilter
+        view={buildTagFilter([session("s1", [])], SHOW_ALL)}
+        onSelect={() => {}}
+        onOpenChange={onOpenChange}
+        sheet
+      />,
+    );
+
+    // Then the parent is told it is closed, so the bottom bar can return
+    expect(onOpenChange).toHaveBeenLastCalledWith(false);
   });
 
   it("gives two same-named repos with different keys two chips, told apart by their key", () => {
