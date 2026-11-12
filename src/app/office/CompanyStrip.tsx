@@ -25,6 +25,8 @@ export interface CompanyStripProps {
   ) => void;
   /** Whether a double-click on a tab opens the name editor; true only with a mouse. */
   renamable?: boolean;
+  /** A real phone: tabs show the name and the needs-you badge only, and All companies is an icon. */
+  phone?: boolean;
 }
 
 interface CountSpec {
@@ -92,6 +94,7 @@ export function CompanyStrip({
   onToggleMac,
   onRename,
   renamable = false,
+  phone = false,
 }: CompanyStripProps) {
   const [editing, setEditing] = useState<{ key: string; draft: string } | null>(
     null,
@@ -150,7 +153,7 @@ export function CompanyStrip({
                 data-testid={`mac-toggle-${mac.machineId}`}
                 aria-expanded={!folded}
                 onClick={() => onToggleMac(mac.machineId)}
-                className="flex h-40 items-center gap-6 px-8 text-xs text-text-muted"
+                className={`flex items-center gap-6 px-8 text-xs text-text-muted ${phone ? "min-h-[44px]" : "h-40"}`}
               >
                 <span aria-hidden="true" className="text-[9px]">
                   {folded ? "▶" : "▼"}
@@ -238,12 +241,14 @@ export function CompanyStrip({
                       finished.current = false;
                       setEditing({ key: company.key, draft: company.name });
                     }}
-                    className={`flex h-40 shrink-0 items-center gap-10 border-2 px-10 text-sm ${company.key === selectedKey ? "border-accent-bright bg-active-bg" : "border-border bg-btn-bg hover:bg-btn-hover"}`}
+                    className={`flex shrink-0 items-center gap-10 border-2 px-10 text-sm ${phone ? "min-h-[44px]" : "h-40"} ${company.key === selectedKey ? "border-accent-bright bg-active-bg" : "border-border bg-btn-bg hover:bg-btn-hover"}`}
                   >
-                    <span className="max-w-[200px] truncate font-bold">
+                    <span
+                      className={`truncate font-bold ${phone ? "max-w-[140px]" : "max-w-[200px]"}`}
+                    >
                       {company.name}
                     </span>
-                    <CountRow counts={counts} />
+                    {!phone && <CountRow counts={counts} />}
                     {needsYou && (
                       <span
                         data-testid="company-badge"
@@ -267,9 +272,27 @@ export function CompanyStrip({
           data-testid="open-drawer"
           aria-haspopup="dialog"
           onClick={onOpenDrawer}
-          className="h-40 shrink-0 border-2 border-border bg-btn-bg px-10 text-sm hover:bg-btn-hover"
+          aria-label={phone ? "All companies" : undefined}
+          className={`shrink-0 border-2 border-border bg-btn-bg text-sm hover:bg-btn-hover ${phone ? "grid min-h-[44px] min-w-[44px] place-items-center" : "h-40 px-10"}`}
         >
-          All companies
+          {phone ? (
+            <svg
+              aria-hidden="true"
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <rect x="1" y="1" width="5" height="5" />
+              <rect x="10" y="1" width="5" height="5" />
+              <rect x="1" y="10" width="5" height="5" />
+              <rect x="10" y="10" width="5" height="5" />
+            </svg>
+          ) : (
+            "All companies"
+          )}
         </button>
       </div>
     </nav>

@@ -718,6 +718,7 @@ export function OfficeView() {
           void renameCompany(machineId, path, name)
         }
         renamable={hasMouse}
+        phone={isPhone}
       />
       <div className="flex min-h-0 w-full flex-1">
         <div

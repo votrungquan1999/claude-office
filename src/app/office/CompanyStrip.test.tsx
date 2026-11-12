@@ -717,4 +717,96 @@ describe("renaming a company from its tab", () => {
     // Then that tab is picked at once
     expect(picked).toEqual(["m1\0/p"]);
   });
+
+  it("on a phone a tab shows the name and the needs-you badge only, no counts", () => {
+    // Given a company with four counts that needs the owner
+    const macs: MacOverview[] = [
+      {
+        machineId: "m1",
+        machineName: "Air",
+        online: true,
+        switchedOff: [],
+        companies: [company("personal", [3, 1, 2, 5], { needsYou: true })],
+      },
+    ];
+
+    // When the strip renders for a phone
+    render(
+      <CompanyStrip
+        macs={macs}
+        selectedKey={null}
+        onSelect={() => {}}
+        onOpenDrawer={() => {}}
+        collapsedMacs={new Set()}
+        onToggleMac={() => {}}
+        phone
+      />,
+    );
+
+    // Then the tab holds the name and a badge of 3, with no labelled counts
+    const tab = screen.getByTestId("company-tab");
+    expect(tab.textContent).toBe("personal3");
+    expect(within(tab).queryAllByRole("img")).toHaveLength(0);
+  });
+
+  it("on a phone the Mac fold toggle is at least 44 px tall, and on desktop it keeps its 40 px", () => {
+    // Given a Mac with one company
+    const macs: MacOverview[] = [
+      {
+        machineId: "m1",
+        machineName: "Air",
+        online: true,
+        switchedOff: [],
+        companies: [company("personal", [1, 0, 0, 0])],
+      },
+    ];
+    const props = {
+      macs,
+      selectedKey: null,
+      onSelect: () => {},
+      onOpenDrawer: () => {},
+      collapsedMacs: new Set<string>(),
+      onToggleMac: () => {},
+    };
+
+    // When the strip renders for a phone
+    const { unmount } = render(<CompanyStrip {...props} phone />);
+
+    // Then the toggle's height floor is 44 px
+    expect(screen.getByTestId("mac-toggle-m1").className).toContain(
+      "min-h-[44px]",
+    );
+    unmount();
+
+    // And on desktop it stays 40 px
+    render(<CompanyStrip {...props} />);
+    expect(screen.getByTestId("mac-toggle-m1").className).toContain("h-40");
+  });
+
+  it("on a phone All companies is an icon button named All companies with no visible text, and on desktop it keeps its text", () => {
+    // Given a phone strip and a desktop strip
+    const props = {
+      macs: [],
+      selectedKey: null,
+      onSelect: () => {},
+      onOpenDrawer: () => {},
+      collapsedMacs: new Set<string>(),
+      onToggleMac: () => {},
+    };
+    const { unmount } = render(<CompanyStrip {...props} phone />);
+
+    // Then the phone button is named by label, shows an icon and no text, and still announces a dialog
+    const icon = screen.getByRole("button", { name: "All companies" });
+    expect(icon.getAttribute("aria-haspopup")).toBe("dialog");
+    expect(icon.getAttribute("data-testid")).toBe("open-drawer");
+    expect(icon.textContent).toBe("");
+    expect(icon.querySelector("svg")).not.toBeNull();
+    unmount();
+
+    // And on desktop the button reads All companies as text with no icon
+    render(<CompanyStrip {...props} />);
+    const text = screen.getByRole("button", { name: "All companies" });
+    expect(text.textContent).toBe("All companies");
+    expect(text.querySelector("svg")).toBeNull();
+  });
 });

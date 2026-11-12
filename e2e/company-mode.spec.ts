@@ -375,67 +375,72 @@ const macTabs = (page: Page, machineId: string) =>
       tabs.map((tab) => (tab as HTMLElement).dataset.companyName),
     );
 
-test("sessions in a switched-off folder move to Other on that Mac only, and Other leaves when the folder is switched back on", async ({
-  context,
-  page,
-}) => {
-  // Given both Macs hold a company ws with a live session, and Air also has a session started at ws itself
-  const { cleanup } = await seed(
-    [
-      ["air", "/Users/q/ws"],
-      ["air", "/Users/q/ws/app"],
-      ["mini", "/Users/q/ws"],
-      ["mini", "/Users/q/ws/app"],
-    ],
-    [
-      ["air", "at-ws", "/Users/q/ws", "idle"],
-      ["air", "in-app", "/Users/q/ws/app", "working"],
-      ["mini", "m-in-app", "/Users/q/ws/app", "working"],
-    ],
-  );
-  await signInAsOwner(context);
+// Reads tab counts, which a phone does not show.
+test.describe("on a desktop, Other", () => {
+  test.use({ viewport: { width: 1600, height: 1200 }, hasTouch: false });
 
-  try {
-    await page.goto("/");
-    await expect.poll(() => macTabs(page, "air")).toEqual(["ws"]);
-    await expect.poll(() => macTabs(page, "mini")).toEqual(["ws"]);
+  test("sessions in a switched-off folder move to Other on that Mac only, and Other leaves when the folder is switched back on", async ({
+    context,
+    page,
+  }) => {
+    // Given both Macs hold a company ws with a live session, and Air also has a session started at ws itself
+    const { cleanup } = await seed(
+      [
+        ["air", "/Users/q/ws"],
+        ["air", "/Users/q/ws/app"],
+        ["mini", "/Users/q/ws"],
+        ["mini", "/Users/q/ws/app"],
+      ],
+      [
+        ["air", "at-ws", "/Users/q/ws", "idle"],
+        ["air", "in-app", "/Users/q/ws/app", "working"],
+        ["mini", "m-in-app", "/Users/q/ws/app", "working"],
+      ],
+    );
+    await signInAsOwner(context);
 
-    // When the owner switches ws off on Air
-    await page.getByTestId("open-drawer").click();
-    await page
-      .getByTestId("drawer-mac-air")
-      .getByTestId("drawer-company-ws")
-      .getByRole("switch")
-      .click();
+    try {
+      await page.goto("/");
+      await expect.poll(() => macTabs(page, "air")).toEqual(["ws"]);
+      await expect.poll(() => macTabs(page, "mini")).toEqual(["ws"]);
 
-    // Then Air's session at ws is in Other, which sorts last; Mini is untouched
-    await expect.poll(() => macTabs(page, "air")).toEqual(["app", "Other"]);
-    expect(await macTabs(page, "mini")).toEqual(["ws"]);
-    const other = page
-      .getByTestId("mac-group-air")
-      .locator('[data-company-name="Other"]');
-    await expect(other.getByLabel("1 idle")).toHaveText("1");
-
-    // And Other has no switch in the drawer
-    await expect(
-      page
+      // When the owner switches ws off on Air
+      await page.getByTestId("open-drawer").click();
+      await page
         .getByTestId("drawer-mac-air")
-        .getByTestId("drawer-company-Other")
-        .getByRole("switch"),
-    ).toHaveCount(0);
+        .getByTestId("drawer-company-ws")
+        .getByRole("switch")
+        .click();
 
-    // When the owner switches ws back on
-    await page
-      .getByTestId("drawer-mac-air")
-      .getByTestId("drawer-off-ws")
-      .getByRole("switch")
-      .click();
+      // Then Air's session at ws is in Other, which sorts last; Mini is untouched
+      await expect.poll(() => macTabs(page, "air")).toEqual(["app", "Other"]);
+      expect(await macTabs(page, "mini")).toEqual(["ws"]);
+      const other = page
+        .getByTestId("mac-group-air")
+        .locator('[data-company-name="Other"]');
+      await expect(other.getByLabel("1 idle")).toHaveText("1");
 
-    // Then Other is gone
-    await expect.poll(() => macTabs(page, "air")).toEqual(["ws"]);
-  } finally {
-    await cleanup();
-  }
+      // And Other has no switch in the drawer
+      await expect(
+        page
+          .getByTestId("drawer-mac-air")
+          .getByTestId("drawer-company-Other")
+          .getByRole("switch"),
+      ).toHaveCount(0);
+
+      // When the owner switches ws back on
+      await page
+        .getByTestId("drawer-mac-air")
+        .getByTestId("drawer-off-ws")
+        .getByRole("switch")
+        .click();
+
+      // Then Other is gone
+      await expect.poll(() => macTabs(page, "air")).toEqual(["ws"]);
+    } finally {
+      await cleanup();
+    }
+  });
 });
 
 test("a session that went home today in a switched-off folder keeps Other in the strip, and the went-home list works inside it", async ({

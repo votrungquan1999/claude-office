@@ -396,6 +396,61 @@ test.describe("the stacked rooms on a phone", () => {
     await expect(wentHome).toBeFocused();
   });
 
+  for (const [label, size] of [
+    ["upright", { width: 393, height: 852 }],
+    ["sideways", { width: 852, height: 393 }],
+  ] as const) {
+    test(`${label}: a company tab shows its name and needs-you badge only, at least 44 px tall, and All companies is a grid icon that opens the dialog`, async ({
+      page,
+    }) => {
+      // Given a company with a long name and employees in several rooms
+      await page.setViewportSize(size);
+      await seed(sessions, [
+        ["p1", "needsPermission", "Fix login"],
+        ["w1", "waitingForYou", "Review PR"],
+        ["k1", "working", "Build export"],
+      ]);
+      const longFolder = `/Users/q/${"x".repeat(80)}`;
+      await sessions.updateMany({}, { $set: { cwd: longFolder } });
+      await withE2eDb(async (db) => {
+        await db
+          .collection("folders")
+          .updateMany({ machineId: "m1" }, { $set: { path: longFolder } });
+      });
+
+      // When the owner opens the office on a phone
+      await page.goto("/");
+      const tab = page.getByTestId("company-tab");
+      await expect(tab).toBeVisible();
+
+      // Then the tab holds only the (truncated) name and the badge 2, with no counts
+      await expect(tab.getByTestId("company-badge")).toHaveText("2");
+      await expect(tab.getByRole("img")).toHaveCount(0);
+      await expect(page.locator('[aria-label$=" working"]')).toHaveCount(0);
+      const box = await tab.boundingBox();
+      expect(box?.height).toBeGreaterThanOrEqual(44);
+      const nameIsCut = await tab
+        .locator("span.truncate")
+        .evaluate((el) => el.scrollWidth > el.clientWidth);
+      expect(nameIsCut).toBe(true);
+
+      // And All companies is an icon button, with no visible text, at least 44 px each way
+      const icon = page.getByRole("button", { name: "All companies" });
+      await expect(icon).toHaveText("");
+      const iconBox = await icon.boundingBox();
+      expect(iconBox?.height).toBeGreaterThanOrEqual(44);
+      expect(iconBox?.width).toBeGreaterThanOrEqual(44);
+
+      // When the owner taps the icon
+      await icon.tap();
+
+      // Then the companies dialog opens
+      await expect(
+        page.getByRole("dialog", { name: "All companies" }),
+      ).toBeVisible();
+    });
+  }
+
   test.describe("sideways", () => {
     test.use({ viewport: { width: 852, height: 393 } });
 
