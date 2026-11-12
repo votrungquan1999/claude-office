@@ -111,6 +111,76 @@ test.describe("renaming a company", () => {
     }
   });
 
+  test("Use folder name puts a renamed company back on this device and on a phone, and the folder line goes", async ({
+    browser,
+    context,
+    page,
+  }) => {
+    // Given alpha already named Zulu, shown on this device and on a phone
+    const client = new MongoClient(
+      readFileSync(E2E_MONGO_URI_FILE, "utf8").trim(),
+    );
+    await client.connect();
+    const db = client.db(E2E_DB);
+    await seedFolders(db.collection("folders"), [
+      { machineId: "air", path: "/Users/q/alpha", displayName: "Zulu" },
+      { machineId: "air", path: "/Users/q/bravo" },
+    ]);
+    await seedOnlineMachine("air", "Air");
+    const sessions = db.collection("sessions");
+    await seedSessions(
+      sessions,
+      ["alpha", "bravo"].map((name) => ({
+        sessionId: name,
+        machineId: "air",
+        machineName: "Air",
+        cwd: `/Users/q/${name}`,
+        startCwd: `/Users/q/${name}`,
+      })),
+    );
+    await signInAsOwner(context);
+    const phoneContext = await browser.newContext({
+      baseURL: E2E_BASE_URL,
+      viewport: { width: 390, height: 844 },
+      hasTouch: true,
+    });
+    await signInAsOwner(phoneContext);
+    const phone = await phoneContext.newPage();
+
+    try {
+      await page.goto("/");
+      await expect.poll(() => tabNames(page)).toEqual(["bravo", "Zulu"]);
+      await phone.goto("/");
+      await expect.poll(() => tabNames(phone)).toEqual(["bravo", "Zulu"]);
+      await page.getByTestId("open-drawer").click();
+      const drawer = page.getByRole("dialog", { name: "All companies" });
+      await expect(drawer.getByText("folder alpha")).toBeVisible();
+
+      // When the owner presses Use folder name in Zulu's editor
+      await drawer.getByRole("button", { name: "Rename Zulu" }).click();
+      await drawer.getByRole("button", { name: "Use folder name" }).click();
+
+      // Then this device shows alpha again, without the folder line
+      await expect(drawer.getByTestId("drawer-company-alpha")).toBeVisible();
+      await expect(drawer.getByText("folder alpha")).toHaveCount(0);
+      await expect.poll(() => tabNames(page)).toEqual(["alpha", "bravo"]);
+
+      // And the phone shows alpha again once its next poll arrives
+      await expect
+        .poll(() => tabNames(phone), { timeout: 15_000 })
+        .toEqual(["alpha", "bravo"]);
+      await phone.getByTestId("open-drawer").click();
+      await expect(phone.getByTestId("drawer-company-alpha")).toBeVisible();
+      await expect(phone.getByText("folder alpha")).toHaveCount(0);
+    } finally {
+      await seedFolders(db.collection("folders"), []);
+      await db.collection("machines").deleteMany({});
+      await sessions.deleteMany({});
+      await phoneContext.close();
+      await client.close();
+    }
+  });
+
   test("a name the server stored gives way to the name another device saved", async ({
     context,
     page,

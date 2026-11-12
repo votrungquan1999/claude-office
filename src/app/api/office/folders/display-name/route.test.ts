@@ -194,4 +194,41 @@ describe("naming a company", () => {
     expect(record?.displayName).toBe("Billing");
     expect(record?.companyMode).toBe(true);
   });
+
+  it.each([
+    ["null", null],
+    ["an empty name", ""],
+    ["a blank name", "   "],
+  ])(
+    "removes the name for %s and keeps the record",
+    async (_label, displayName) => {
+      // Given a named folder
+      await POST(
+        post(
+          {
+            machineId: "mac-a",
+            path: "/home/q/harbor-labs",
+            displayName: "Harbor",
+          },
+          ownerHeaders,
+        ),
+      );
+
+      // When the owner puts the folder name back
+      const response = await POST(
+        post(
+          { machineId: "mac-a", path: "/home/q/harbor-labs", displayName },
+          ownerHeaders,
+        ),
+      );
+
+      // Then the name is gone and the record keeps its company mode and first-seen time
+      expect(response.status).toBe(200);
+      const record = await recordOf("mac-a", "/home/q/harbor-labs");
+      expect(record).not.toBeNull();
+      expect(record).not.toHaveProperty("displayName");
+      expect(record?.companyMode).toBe(true);
+      expect(record?.firstSeenAt).toEqual(new Date("2026-11-01T00:00:00Z"));
+    },
+  );
 });

@@ -236,9 +236,17 @@ export function CompanyDrawer({
                       event.preventDefault();
                       closeEditor(company.key);
                       const name = draft.trim();
-                      // An unchanged name sends nothing; a blank one puts the folder name back.
-                      if (name !== company.name) {
-                        onRename?.(company.machineId, path, name || null);
+                      // A blank or the folder's own name means "no name"; saving the stored state again sends nothing.
+                      const next =
+                        name === "" || name === company.folderName
+                          ? null
+                          : name;
+                      const stored =
+                        company.name === company.folderName
+                          ? null
+                          : company.name;
+                      if (next !== stored) {
+                        onRename?.(company.machineId, path, next);
                       }
                     }}
                     onKeyDown={(event) => {
@@ -275,6 +283,18 @@ export function CompanyDrawer({
                       >
                         Cancel
                       </button>
+                      {company.folderName !== company.name && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            closeEditor(company.key);
+                            onRename?.(company.machineId, path, null);
+                          }}
+                          className="min-h-[44px] shrink-0 px-8 text-xs text-accent-bright underline hover:bg-btn-hover"
+                        >
+                          Use folder name
+                        </button>
+                      )}
                     </div>
                   </form>
                 )}

@@ -388,6 +388,106 @@ describe("the company drawer", () => {
     ).toBeNull();
   });
 
+  describe("putting the folder name back", () => {
+    /** One renamed company (q shown as Harbor) and one never renamed (p). */
+    function renamedOverview() {
+      return buildOverview({
+        folders: [
+          { machineId: "m1", path: "/p", companyMode: true },
+          {
+            machineId: "m1",
+            path: "/q",
+            companyMode: true,
+            displayName: "Harbor",
+          },
+        ],
+        sessions: [],
+        machines: [{ machineId: "m1", machineName: "Studio", lastSeenAt: T }],
+        offlineMachineIds: new Set(),
+        departures: [],
+      });
+    }
+    const renderDrawer = (onRename: () => void) =>
+      render(
+        <CompanyDrawer
+          overview={renamedOverview()}
+          selectedKey={null}
+          sheet={false}
+          onSelect={() => {}}
+          onClose={() => {}}
+          onSetCompanyMode={() => {}}
+          onRename={onRename}
+        />,
+      );
+
+    it("asks once for the folder name back from Use folder name, closes the editor and returns focus to the pencil", () => {
+      // Given a renamed company with its editor open
+      const onRename = vi.fn();
+      renderDrawer(onRename);
+      fireEvent.click(screen.getByRole("button", { name: "Rename Harbor" }));
+
+      // When the owner presses Use folder name
+      fireEvent.click(screen.getByRole("button", { name: "Use folder name" }));
+
+      // Then the drawer asks once to clear the name, and the editor is closed with focus on the pencil
+      expect(onRename.mock.calls).toEqual([["m1", "/q", null]]);
+      expect(screen.queryByLabelText("Name for folder q")).toBeNull();
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: "Rename Harbor" }),
+      );
+    });
+
+    it("sends null when the saved text is the folder's own name", () => {
+      // Given a renamed company with its editor open
+      const onRename = vi.fn();
+      renderDrawer(onRename);
+      fireEvent.click(screen.getByRole("button", { name: "Rename Harbor" }));
+
+      // When the owner types the folder's own name and saves
+      fireEvent.change(screen.getByLabelText("Name for folder q"), {
+        target: { value: "q" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+      // Then the drawer asks to clear the name rather than store the folder name
+      expect(onRename.mock.calls).toEqual([["m1", "/q", null]]);
+    });
+
+    it("sends null when a renamed company is saved with a blank name", () => {
+      // Given a renamed company with its editor open
+      const onRename = vi.fn();
+      renderDrawer(onRename);
+      fireEvent.click(screen.getByRole("button", { name: "Rename Harbor" }));
+
+      // When the owner clears the field and saves
+      fireEvent.change(screen.getByLabelText("Name for folder q"), {
+        target: { value: "  " },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+      // Then the drawer asks to clear the name
+      expect(onRename.mock.calls).toEqual([["m1", "/q", null]]);
+    });
+
+    it("offers no Use folder name and sends nothing when saving the folder name of a company that was never renamed", () => {
+      // Given a never-renamed company with its editor open
+      const onRename = vi.fn();
+      renderDrawer(onRename);
+      fireEvent.click(screen.getByRole("button", { name: "Rename p" }));
+
+      // Then there is nothing to put back
+      expect(
+        screen.queryByRole("button", { name: "Use folder name" }),
+      ).toBeNull();
+
+      // When the owner saves the unchanged folder name
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+      // Then no request is made
+      expect(onRename).not.toHaveBeenCalled();
+    });
+  });
+
   it("opens a Name field filled with the company's name from its pencil, and Save asks once to rename it", () => {
     // Given an open drawer
     const onRename = vi.fn();
@@ -423,7 +523,7 @@ describe("the company drawer", () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it("sends nothing for an unchanged name or a Cancel, sends null for a blank name, and returns focus to the pencil", () => {
+  it("sends nothing for an unchanged name, a Cancel or a blank name on a company never renamed, and returns focus to the pencil", () => {
     // Given an open drawer
     const onRename = vi.fn();
     render(
@@ -466,8 +566,8 @@ describe("the company drawer", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
-    // Then the drawer asks once to put the folder name back
-    expect(onRename.mock.calls).toEqual([["m1", "/q", null]]);
+    // Then nothing is sent, since there is no name to clear
+    expect(onRename).not.toHaveBeenCalled();
   });
 
   it("cancels only the editor on Escape in the field, keeps one editor open at a time, and puts no pencil on Other or a switched-off row", () => {
@@ -532,13 +632,27 @@ describe("the company drawer", () => {
     expect(screen.getByRole("dialog")).toBeTruthy();
   });
 
-  it("cancels only the editor on Escape pressed on Save or Cancel, and the drawer stays", () => {
-    // Given an open drawer
+  it("cancels only the editor on Escape pressed on Save, Cancel or Use folder name, and the drawer stays", () => {
+    // Given a renamed company, so the editor has all three buttons
+    const overview = buildOverview({
+      folders: [
+        {
+          machineId: "m1",
+          path: "/q",
+          companyMode: true,
+          displayName: "Harbor",
+        },
+      ],
+      sessions: [live("m1", "w", "/q", "idle")],
+      machines: [{ machineId: "m1", machineName: "Studio", lastSeenAt: T }],
+      offlineMachineIds: new Set(),
+      departures: [],
+    });
     const onClose = vi.fn();
     const onRename = vi.fn();
     render(
       <CompanyDrawer
-        overview={fixture()}
+        overview={overview}
         selectedKey={null}
         sheet={false}
         onSelect={() => {}}
@@ -548,9 +662,9 @@ describe("the company drawer", () => {
       />,
     );
 
-    for (const name of ["Save", "Cancel"]) {
+    for (const name of ["Save", "Cancel", "Use folder name"]) {
       // When the editor is open and Escape is pressed on that button
-      fireEvent.click(screen.getByRole("button", { name: "Rename q" }));
+      fireEvent.click(screen.getByRole("button", { name: "Rename Harbor" }));
       fireEvent.keyDown(screen.getByRole("button", { name }), {
         key: "Escape",
       });
