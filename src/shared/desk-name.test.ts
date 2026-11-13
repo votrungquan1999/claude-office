@@ -81,6 +81,10 @@ describe("desk name", () => {
       ),
     ).toBeUndefined();
     expect(firstRealMessage("<a>x</a>  <b>y</b>")).toBeUndefined();
+    // a browser instruction block cut before its close tag is still injected text, never a name or a request
+    const cutBrowser = `<browser_instruction># Claude in Chrome browser automation\n\n${"b".repeat(1900)}`;
+    expect(firstRealMessage(cutBrowser)).toBeUndefined();
+    expect(requestOf(cutBrowser)).toBeUndefined();
     // the rest is judged by the same rules as any message
     expect(firstRealMessage("<a>x</a> /clear")).toBeUndefined();
   });

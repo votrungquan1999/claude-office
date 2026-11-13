@@ -18,6 +18,9 @@ const HARD_EXIT_MS = 1500;
 // A paste block as Claude Code writes it: the close tag repeats the open tag's attributes; an unclosed one runs to the end.
 const PASTE_BLOCK =
   /<pasted_content\b([^>]*)>([\s\S]*?)(?:<\/pasted_content\1>|$)/g;
+// A leading closed "<tag …>…</tag>" block Claude Code injects ahead of the typed words; pastes are handled by PASTE_BLOCK.
+const LEADING_BLOCK =
+  /^\s*<(?!pasted_content\b)([A-Za-z][\w:.-]*)(?:\s[^>]*)?>[\s\S]*?<\/\1>\s*/;
 
 const STRING_FIELDS = [
   "hook_event_name",
@@ -31,6 +34,17 @@ const STRING_FIELDS = [
   "agent_type",
   "session_title",
 ];
+
+/**
+ * Drops the closed injected blocks at the start of a prompt, such as Claude in Chrome's long browser instructions.
+ * @param {string} prompt - The raw prompt.
+ * @returns {string} The prompt from the first text that is not a closed injected block.
+ */
+function stripLeadingBlocks(prompt) {
+  let text = prompt;
+  while (LEADING_BLOCK.test(text)) text = text.replace(LEADING_BLOCK, "");
+  return text;
+}
 
 /**
  * Replaces each paste block with a fixed placeholder so the typed words survive the length cut.
@@ -134,10 +148,12 @@ export function reduceEvent(data, hookTs, env) {
   if (typeof data.is_interrupt === "boolean")
     event.is_interrupt = data.is_interrupt;
   if (typeof data.prompt === "string") {
-    const { prompt, pasteHead } = stripPastes(data.prompt);
+    // Injected blocks go before the cuts, or a long one leaves no room for the typed words.
+    const typed = stripLeadingBlocks(data.prompt);
+    const { prompt, pasteHead } = stripPastes(typed);
     event.prompt = prompt.slice(0, PROMPT_MAX);
     // The request keeps pasted text; 4,000 leaves room for paste tags ahead of the 2,000-character cut.
-    event.full_prompt = data.prompt.slice(0, FULL_PROMPT_MAX);
+    event.full_prompt = typed.slice(0, FULL_PROMPT_MAX);
     if (pasteHead) event.paste_head = pasteHead;
   }
   // Stop only: the end of the turn's last answer says whether it asked the owner something.

@@ -14,7 +14,7 @@ const SLASH_COMMAND = /^\/[\w:-]+(\s|$)/;
 const LEADING_BLOCK = /^<([A-Za-z][\w:.-]*)(?:\s[^>]*)?>[\s\S]*?<\/\1>\s*/;
 // An injected block that never closes (cut off); other "<tag>" text is something the owner typed.
 const SYSTEM_TAG =
-  /^<(command-[\w-]+|local-command-[\w-]+|system-reminder|ide[_-][\w-]+|bash-(input|stdout|stderr)|task-notification)[\s>]/;
+  /^<(command-[\w-]+|local-command-[\w-]+|system-reminder|ide[_-][\w-]+|bash-(input|stdout|stderr)|task-notification|browser_instruction)[\s>]/;
 const INTERRUPT = /^\[Request interrupted by user/;
 
 /** How much of the first message is kept as the session's original request. */

@@ -44,10 +44,36 @@ describe("the task namer", () => {
     });
   }
 
-  it("cleans a reply to one line without quotes, cut to 60 characters, and rejects an empty one", () => {
+  it("cleans a reply to one line without quotes, and rejects an empty one or one longer than 60 characters instead of cutting it", () => {
     expect(cleanName('"Fix the\n  login" bug')).toBe("Fix the login bug");
-    expect(Array.from(cleanName("😀".repeat(80)))).toHaveLength(60);
     expect(cleanName(" “” ")).toBe("");
+    // 60 characters, counted in code points, still fit the desk; one more is a sentence, not a title
+    expect(cleanName("😀".repeat(60))).toBe("😀".repeat(60));
+    expect(cleanName("😀".repeat(61))).toBe("");
+    expect(
+      cleanName(
+        "I can't tell what the coding session is about from the browser instructions",
+      ),
+    ).toBe("");
+  });
+
+  it("stores a reply too long for the desk as a final failure, not as a cut name", async () => {
+    // Given a server that answers with a sentence
+    const sentence = await namer(
+      200,
+      "The user's first message is only a browser automation instruction",
+      [],
+    );
+
+    // When it asks for a session
+    await sentence.ask("long", "<browser_instruction># Claude in Chrome");
+
+    // Then the session has no name and is saved as a final failure
+    const saved = JSON.parse(
+      readFileSync(join(home, ".claude-office", "task-names.json"), "utf8"),
+    );
+    expect(saved).toEqual({ long: null });
+    expect(sentence.nameOf("long")).toBeUndefined();
   });
 
   it("drops punctuation at the end of a title but keeps it inside", () => {
@@ -62,6 +88,87 @@ describe("the task namer", () => {
     expect(cleanName("Don't drop the cart")).toBe("Don't drop the cart");
     expect(cleanName("'Fix login'")).toBe("Fix login");
     expect(cleanName("`“Fix login”`")).toBe("Fix login");
+  });
+
+  it("tells the model to reply NONE when the message does not say what the task is, and stores that reply as a final failure, in any case", async () => {
+    // Given a server that answers NONE in a few spellings and records the system prompt it receives
+    home = mkdtempSync(join(tmpdir(), "office-namer-"));
+    const systems: string[] = [];
+    let reply = "";
+    server = createServer((request, response) => {
+      let body = "";
+      request.on("data", (chunk) => {
+        body += chunk;
+      });
+      request.on("end", () => {
+        systems.push(JSON.parse(body).system);
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(
+          JSON.stringify({ content: [{ type: "text", text: reply }] }),
+        );
+      });
+    });
+    await new Promise<void>((resolve) =>
+      server?.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+    const asker = new TaskNamer({
+      home,
+      apiKey: KEY,
+      baseUrl: `http://127.0.0.1:${port}`,
+      retryMs: 5,
+      log: () => {},
+    });
+
+    // When it asks for sessions whose message names no task
+    for (const [sessionId, text] of [
+      ["upper", "NONE"],
+      ["lower", "none"],
+      ["quoted", '"None."'],
+    ]) {
+      reply = text;
+      await asker.ask(sessionId, "<browser_instruction># Claude in Chrome");
+    }
+
+    // Then the prompt asks for NONE, and each session is a final failure with no name, saved as null
+    expect(systems).toHaveLength(3);
+    expect(systems[0]).toContain("NONE");
+    const saved = JSON.parse(
+      readFileSync(join(home, ".claude-office", "task-names.json"), "utf8"),
+    );
+    expect(saved).toEqual({ upper: null, lower: null, quoted: null });
+    expect(asker.nameOf("upper")).toBeUndefined();
+    expect(asker.hasAnswer("quoted")).toBe(true);
+  });
+
+  it("forgets cached names that were cut short so those sessions are asked again, and keeps whole names and final failures", async () => {
+    // Given a cache holding a cut sentence, a whole name and a final failure
+    home = mkdtempSync(join(tmpdir(), "office-namer-"));
+    mkdirSync(join(home, ".claude-office"), { recursive: true });
+    writeFileSync(
+      join(home, ".claude-office", "task-names.json"),
+      JSON.stringify({
+        cut: "I can't tell what the coding session is about from the brow…",
+        whole: "Fix login redirect",
+        failed: null,
+      }),
+    );
+
+    // When a namer loads it
+    const loaded = new TaskNamer({
+      home,
+      apiKey: KEY,
+      baseUrl: "http://127.0.0.1:1",
+      log: () => {},
+    });
+
+    // Then the cut one has no answer, and the others are kept as they were
+    expect(loaded.hasAnswer("cut")).toBe(false);
+    expect(loaded.nameOf("cut")).toBeUndefined();
+    expect(loaded.nameOf("whole")).toBe("Fix login redirect");
+    expect(loaded.hasAnswer("failed")).toBe(true);
+    expect(loaded.nameOf("failed")).toBeUndefined();
   });
 
   it("asks once for a session whose key was refused or whose paste got a final failure, however often it is asked again", async () => {

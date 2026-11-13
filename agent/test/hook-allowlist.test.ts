@@ -154,6 +154,30 @@ describe("the hook's field allowlist", () => {
     expect(parsed.paste_head).toBe("P".repeat(1000));
   });
 
+  it("drops a long leading browser instruction block from the prompt before the cuts, so the typed words reach the agent", () => {
+    // Given a Claude in Chrome first message: a 4,150-character instruction block, then what the owner typed
+    const browser = `<browser_instruction># Claude in Chrome browser automation\n\n${"b".repeat(4080)}</browser_instruction>`;
+    const typed = "i want a convenient way to write things down";
+    for (const separator of ["\n", "\n\n", ""]) {
+      // When the hook reduces it and the agent parses the result
+      const parsed = hookEventSchema.parse(
+        reduceEvent(
+          {
+            hook_event_name: "UserPromptSubmit",
+            session_id: "s1",
+            prompt: `${browser}${separator}${typed}`,
+          },
+          1000,
+          {},
+        ),
+      );
+
+      // Then both the prompt and the request text are only the typed words
+      expect(parsed.prompt, JSON.stringify(separator)).toBe(typed);
+      expect(parsed.full_prompt, JSON.stringify(separator)).toBe(typed);
+    }
+  });
+
   it("keeps a paste with an inner paste tag of another id as one paste and takes the head from the first non-blank one", () => {
     // Given a blank paste, then a paste holding an inner tag, then typed words
     const prompt = `<pasted_content id="d1"> </pasted_content id="d1"><pasted_content id="d2">head <pasted_content id="in">x</pasted_content id="in"> tail</pasted_content id="d2"> fix it`;

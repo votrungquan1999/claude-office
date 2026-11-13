@@ -87,7 +87,7 @@ By default a desk shows the first message cut to 60 characters (or "Pasted text"
 
 - **What is sent:** at most the first 1,000 characters of each session's first message (pasted text included) go to Anthropic (model `claude-haiku-5-5`), once per session (one retry if Anthropic is briefly unavailable). The same key also lets the agent ask Haiku, each time a turn ends, whether the last answer asks you to answer, choose or approve something (so the desk shows Waiting for you): at most the last 1,000 characters of that answer are sent, with no retry; if the call fails the built-in rule decides. Nothing else leaves the Mac, and the key is never logged or stored in the database.
 - **When it is read:** the agent reads the file only when it starts, so restart it after adding the key: `launchctl kickstart -k gui/$(id -u)/dev.quanvo.claude-office.agent`. Sessions that are already running get their name right after the restart.
-- **A failed request:** a session whose request failed for good (for example a wrong key) keeps the first-message name and is not asked again, even after the key is fixed.
+- **A failed request:** a session whose request failed for good (for example Anthropic rejected it) keeps the first-message name and is not asked again. A wrong or revoked key is not a failure for good: after you fix the key and restart the agent, those sessions are asked again. The same holds when Haiku replies `NONE` (the message does not say what the task is) or with something longer than a desk name.
 - **Without a key** (or with a blank one) nothing is sent and the desk keeps the first-message name. Running `npm run setup -- --reconnect` keeps the key.
 - Answers are cached in `~/.claude-office/task-names.json`, so a restart does not ask again.
 

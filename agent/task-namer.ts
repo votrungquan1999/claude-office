@@ -9,7 +9,7 @@ const REQUEST_TIMEOUT_MS = 10_000;
 const DEFAULT_RETRY_MS = 30_000;
 const MAX_CACHED = 500;
 const SYSTEM_PROMPT =
-  "Write a short task title for a coding session from the first message the user opened it with: at most 6 words, a title and not a sentence, in the language of the message, plain text, no quotes, no punctuation at the end. Reply with the title only.";
+  "Write a short task title for a coding session from the first message the user opened it with: at most 6 words, a title and not a sentence, in the language of the message, plain text, no quotes, no punctuation at the end. Reply with the title only. If the message does not say what the task is, reply with exactly NONE.";
 
 /** Answers and final failures (null) kept per session id, oldest first. */
 const cacheSchema = z.record(z.string(), z.string().nullable());
@@ -184,7 +184,10 @@ export class TaskNamer {
       (block) => block.type === "text",
     )?.text;
     const name = cleanName(text ?? "");
-    return name ? { kind: "name", name } : { kind: "final" };
+    // NONE is the model saying the message names no task.
+    return name && name.toUpperCase() !== "NONE"
+      ? { kind: "name", name }
+      : { kind: "final" };
   }
 
   /** Stores an answer or a final failure and keeps only the newest entries. */
@@ -204,7 +207,7 @@ export class TaskNamer {
     );
   }
 
-  /** Reads the old cache file, then the current one; a missing or corrupt file counts as empty. */
+  /** Reads the old cache file, then the current one, dropping cut names; a missing or corrupt file counts as empty. */
   private loadCache(): void {
     for (const file of [this.legacyCacheFile, this.cacheFile]) {
       try {
@@ -212,6 +215,8 @@ export class TaskNamer {
           JSON.parse(readFileSync(file, "utf8")),
         );
         for (const [sessionId, name] of Object.entries(parsed)) {
+          // A name that had to be cut was a sentence, not a title, so the session is asked again.
+          if (name?.endsWith("…")) continue;
           this.cache.set(sessionId, name);
         }
       } catch {
@@ -224,7 +229,7 @@ export class TaskNamer {
 /**
  * Turns the model's reply into a desk name.
  * @param text - The reply text.
- * @returns One line without quotes, cut to the desk length; empty when nothing usable is left.
+ * @returns One line without quotes; empty when nothing usable is left or it is longer than the desk shows.
  */
 export function cleanName(text: string): string {
   const oneLine = text
@@ -236,5 +241,6 @@ export function cleanName(text: string): string {
     // A title has no sentence punctuation at its end.
     .replace(/[.,;:!?…。！？\s]+$/u, "");
 
-  return oneLine ? cutName(oneLine) : "";
+  // A title of at most 6 words fits the desk; a longer reply is a sentence, such as the model saying it cannot tell.
+  return oneLine && cutName(oneLine) === oneLine ? oneLine : "";
 }
