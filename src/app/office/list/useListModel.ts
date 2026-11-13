@@ -1,3 +1,4 @@
+import { searchableSessions } from "@/office/wentHome";
 import { placeOf } from "@/shared/list-order";
 import { selectNeedsYou } from "@/shared/needs-you";
 import { type SessionDto, sessionKey } from "@/shared/session";
@@ -17,6 +18,8 @@ interface ListModelInput {
   /** The employee whose card is open, if any. */
   selectedKey: string | null;
   offlineIds: ReadonlySet<string>;
+  /** The current time, which decides what went home today. */
+  now: Date;
   /** Whether the first answer is in. */
   loaded: boolean;
 }
@@ -33,6 +36,7 @@ export function useListModel({
   matches,
   selectedKey,
   offlineIds,
+  now,
   loaded,
 }: ListModelInput) {
   const rows = companyRows(
@@ -40,13 +44,14 @@ export function useListModel({
     (session) => overview.tree.companyOf(session)?.companyKey,
     companyKey,
   );
+  const companyOrder = overview.macs.flatMap((mac) =>
+    mac.companies.map((entry) => entry.company.key),
+  );
   const needsYou = selectNeedsYou({
     sessions: sessions.values(),
     companyOf: (session) => overview.tree.companyOf(session),
     viewedCompany: companyKey,
-    companyOrder: overview.macs.flatMap((mac) =>
-      mac.companies.map((entry) => entry.company.key),
-    ),
+    companyOrder,
     offlineMachineIds: offlineIds,
     includeOtherCompanies: true,
   });
@@ -65,5 +70,13 @@ export function useListModel({
     selectedPlace: selectedKey ? placeOf(rows, selectedKey) : null,
     needsYou,
     listFold,
+    // Everything a phone search reads; the repo filter does not narrow it
+    searchPool: {
+      viewedCompanyKey: companyKey,
+      own: rows,
+      sessions: searchableSessions([...sessions.values()], now),
+      companyOf: overview.tree.companyOf,
+      companyOrder,
+    },
   };
 }

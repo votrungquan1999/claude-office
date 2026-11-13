@@ -693,16 +693,18 @@ export function OfficeView() {
       ),
     );
   };
-  const { everyone, selectedPlace, needsYou, listFold } = useListModel({
-    sessions,
-    overview,
-    companyKey,
-    matches: tagFilterView.matches,
-    selectedKey,
-    offlineIds,
-    // Sessions come with the first answer, not with the assets
-    loaded: loaded && lastUpdatedAt !== null,
-  });
+  const { everyone, selectedPlace, needsYou, listFold, searchPool } =
+    useListModel({
+      sessions,
+      overview,
+      companyKey,
+      matches: tagFilterView.matches,
+      selectedKey,
+      offlineIds,
+      now,
+      // Sessions come with the first answer, not with the assets
+      loaded: loaded && lastUpdatedAt !== null,
+    });
   useTabTitle(needsYou.total);
   const palette = useSearchPalette(!isPhone);
   const { phoneView } = useDeviceSettings();
@@ -856,6 +858,8 @@ export function OfficeView() {
                     {...sharedList}
                     onSelect={openDetails}
                     searchRef={phoneSearchRef}
+                    companyName={viewedCompany?.name ?? ""}
+                    search={{ ...searchPool, departures }}
                   />
                 )}
                 {phoneView === "rooms" && loaded && (

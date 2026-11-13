@@ -4,10 +4,12 @@ import { CharacterMugShot } from "@/office/components/CharacterMugShot";
 import { remoteControlOf } from "@/office/remoteControl";
 import { lookOf } from "@/office/sceneSync";
 import { employeeName } from "@/shared/employee-name";
+import type { EmployeeMatch } from "@/shared/employee-search";
 import { type SessionDto, sessionKey } from "@/shared/session";
 import { formatElapsed } from "../elapsed";
 import { type BandKey, bandOf, contextLineOf } from "../rowText";
 import { useNow } from "../useNow";
+import { MatchWhy } from "./MatchWhy";
 
 export interface ListRowProps {
   session: SessionDto;
@@ -33,6 +35,8 @@ export interface ListRowProps {
   onRequestRename: (key: string) => void;
   /** On a phone: touch-sized buttons, a grip that only shows, and no new dot, repo tags or rename button. */
   phone?: boolean;
+  /** Why a search found this employee; its line shows under the row's own and the grip hides. */
+  why?: EmployeeMatch;
 }
 
 /** The colours of a row's state bar and word. */
@@ -86,6 +90,7 @@ export function ListRow({
   onMoveToIdle,
   onRequestRename,
   phone = false,
+  why,
 }: ListRowProps) {
   // The clock lives in the row, so only the rows re-render every second.
   const nowMs = useNow() + serverOffsetMs;
@@ -140,7 +145,7 @@ export function ListRow({
       aria-current={selected ? "true" : undefined}
       className={`flex items-stretch gap-8 border-b border-bg-thumb px-8 py-8 ${phone ? "min-h-56" : ""} ${offline ? "opacity-60" : ""} ${rowLook}`}
     >
-      {(draggable || phone) && (
+      {(draggable || phone) && !why && (
         <span
           role="img"
           data-testid="row-grip"
@@ -222,6 +227,7 @@ export function ListRow({
           <span className={style.text}>{band.text}</span>
           {rest && <span className="text-text-muted"> · {rest}</span>}
         </span>
+        {why && <MatchWhy match={why} />}
       </button>
       {session.state === "review" && (
         <button
