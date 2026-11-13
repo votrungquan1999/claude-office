@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CharacterMugShot } from "@/office/components/CharacterMugShot";
 import { remoteControlUrl } from "@/office/remoteControl";
 import { lookOf } from "@/office/sceneSync";
@@ -11,6 +11,10 @@ import { useNow } from "../useNow";
 
 export interface ListRowProps {
   session: SessionDto;
+  /** Whether this is the employee whose card is open. */
+  selected: boolean;
+  /** Changes each time the owner picks this employee in the office, so its row scrolls into view; null otherwise. */
+  revealToken: number | null;
   /** Whether the session's Mac is offline. */
   offline: boolean;
   /** How each repo tag of the viewed company is written, by tag key. */
@@ -65,6 +69,8 @@ const SHOWN_TAGS = 1;
  */
 export function ListRow({
   session,
+  selected,
+  revealToken,
   offline,
   tagLabels,
   serverOffsetMs,
@@ -75,6 +81,12 @@ export function ListRow({
   // The clock lives in the row, so only the rows re-render every second.
   const nowMs = useNow() + serverOffsetMs;
   const [renaming, setRenaming] = useState(false);
+  const rowRef = useRef<HTMLLIElement>(null);
+  // Keeps the row in sight after a pick in the office; a pick in the list must not move it under the pointer.
+  useEffect(() => {
+    if (revealToken !== null)
+      rowRef.current?.scrollIntoView({ block: "nearest" });
+  }, [revealToken]);
   const key = sessionKey(session);
   const name = employeeName(session);
   const band = bandOf(session, offline);
@@ -99,9 +111,11 @@ export function ListRow({
   const tags = session.tags ?? [];
   return (
     <li
+      ref={rowRef}
       data-testid="list-row"
       data-key={key}
-      className={`flex items-stretch gap-8 border-b border-bg-thumb px-8 py-8 ${offline ? "opacity-60" : ""}`}
+      aria-current={selected ? "true" : undefined}
+      className={`flex items-stretch gap-8 border-b border-bg-thumb px-8 py-8 ${offline ? "opacity-60" : ""} ${selected ? "bg-btn-hover shadow-[inset_4px_0_0_var(--color-accent-bright)]" : ""}`}
     >
       <span aria-hidden="true" className={`w-4 shrink-0 ${style.bar}`} />
       <span

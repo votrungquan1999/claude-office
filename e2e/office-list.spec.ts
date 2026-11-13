@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 import {
+  clickEmployee,
+  employeeLabelled,
   keepOneCompany,
   type SeedSession,
   seedSessions,
@@ -430,5 +432,163 @@ test.describe("Went home today in the list", () => {
     expect(
       await page.evaluate(() => window.__officeTestHooks?.getSelectedAgentId()),
     ).toBeNull();
+  });
+});
+
+test.describe("selecting from the list and from the office", () => {
+  test.use({
+    viewport: { width: 1600, height: 1200 },
+    hasTouch: false,
+    timezoneId: "Asia/Ho_Chi_Minh",
+  });
+
+  test("a row click selects its employee in the office and opens its card, an office click highlights the row, closing the card clears both, and a went-home row opens its card with no one selected", async ({
+    context,
+    page,
+  }) => {
+    // Given two live employees and one departure today
+    const started = new Date("2026-11-07T01:00:00.000Z");
+    await seed([
+      { sessionId: "a", deskName: "Alpha task", startedAt: started },
+      {
+        sessionId: "b",
+        deskName: "Bravo task",
+        startedAt: new Date("2026-11-07T02:00:00.000Z"),
+      },
+      {
+        sessionId: "gone",
+        deskName: "Gone task",
+        cwd: "/Users/q/personal/gone",
+        state: "wentHome",
+        hadPrompt: true,
+        startedAt: started,
+        endedAt: new Date("2026-11-08T01:05:00.000Z"),
+      },
+    ]);
+    await signInAsOwner(context);
+    await page.clock.install({ time: new Date("2026-11-08T03:00:00.000Z") });
+    await page.goto("/");
+    await waitForEmployees(page, 2);
+    const alpha = await employeeLabelled(page, "Alpha task");
+    const bravo = await employeeLabelled(page, "Bravo task");
+    const row = (name: string) =>
+      page.getByTestId("list-row").filter({ hasText: name });
+    const panel = page.getByTestId("details-panel");
+    const selected = () =>
+      page.evaluate(() => window.__officeTestHooks?.getSelectedAgentId());
+
+    // When the owner clicks Bravo's row, twice
+    await row("Bravo task").getByTestId("list-row-name").click();
+    await row("Bravo task").getByTestId("list-row-name").click();
+
+    // Then Bravo is selected in the office, its card shows, and its row is highlighted
+    await expect.poll(selected).toBe(bravo);
+    await expect(panel).toContainText("Bravo task");
+    await expect(row("Bravo task")).toHaveAttribute("aria-current", "true");
+    await expect(row("Alpha task")).not.toHaveAttribute("aria-current");
+    // And the selected row looks different from the other one
+    const background = (name: string) =>
+      row(name).evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(await background("Bravo task")).not.toBe(
+      await background("Alpha task"),
+    );
+
+    // When the owner clicks Alpha in the office
+    await clickEmployee(page, alpha);
+
+    // Then Alpha's row is highlighted instead
+    await expect(row("Alpha task")).toHaveAttribute("aria-current", "true");
+    await expect(row("Bravo task")).not.toHaveAttribute("aria-current");
+    await expect(panel).toContainText("Alpha task");
+
+    // When the owner closes the card
+    await panel.getByRole("button", { name: "Close" }).click();
+
+    // Then no one is selected and no row is highlighted
+    await expect(panel).toHaveCount(0);
+    expect(await selected()).toBeNull();
+    await expect(
+      page.locator('[data-testid="list-row"][aria-current]'),
+    ).toHaveCount(0);
+
+    // When the owner selects Alpha's row and then opens the departure from Went home today
+    await row("Alpha task").getByTestId("list-row-name").click();
+    await expect.poll(selected).toBe(alpha);
+    await page
+      .getByTestId("list-panel")
+      .getByRole("button", { name: /^Went home today/ })
+      .click();
+    await page.getByTestId("went-home-list").getByRole("listitem").click();
+
+    // Then the departure's card shows and nobody is selected in the office or highlighted in the list
+    await expect(panel).toContainText("Gone task");
+    expect(await selected()).toBeNull();
+    await expect(
+      page.locator('[data-testid="list-row"][aria-current]'),
+    ).toHaveCount(0);
+  });
+
+  test("an employee picked in the office scrolls its row into view in a long list", async ({
+    context,
+    page,
+  }) => {
+    // Given thirty employees, the last one far below the top of the list and working at a desk the canvas shows
+    const base = Date.now();
+    await seed(
+      Array.from({ length: 30 }, (_, i) => ({
+        sessionId: `t${String(i).padStart(2, "0")}`,
+        deskName: `Task ${String(i).padStart(2, "0")}`,
+        startedAt: new Date(base - i * MIN),
+        ...(i === 29
+  test("clicking an employee in the office while Everyone is folded opens its card and leaves Everyone folded", async ({
+    context,
+    page,
+  }) => {
+    // Given two employees and Everyone folded
+    await seed([
+      { sessionId: "a", deskName: "Alpha task" },
+      { sessionId: "b", deskName: "Bravo task" },
+    ]);
+    await signInAsOwner(context);
+    await page.goto("/");
+    await waitForEmployees(page, 2);
+    const alpha = await employeeLabelled(page, "Alpha task");
+    const everyone = page.getByRole("button", { name: /Everyone/ });
+    await everyone.click();
+    await expect(everyone).toHaveAttribute("aria-expanded", "false");
+
+    // When the owner clicks an employee in the office
+    await clickEmployee(page, alpha);
+
+    // Then its card shows and Everyone is still folded
+    await expect(page.getByTestId("details-panel")).toContainText("Alpha task");
+    await expect(everyone).toHaveAttribute("aria-expanded", "false");
+  });
+
+          ? {
+              state: "working",
+              runningSteps: [{ text: "Edit a.ts", startedAt: new Date() }],
+            }
+          : {}),
+      })),
+    );
+    await signInAsOwner(context);
+    await page.goto("/");
+    await waitForEmployees(page, 30);
+    const last = page.getByTestId("list-row").filter({ hasText: "Task 29" });
+    const inView = async () => {
+      const box = await last.boundingBox();
+      const list = await page.getByTestId("list-everyone").boundingBox();
+      if (!box || !list) return false;
+      return box.y >= list.y && box.y + box.height <= list.y + list.height;
+    };
+    expect(await inView()).toBe(false);
+
+    // When the owner clicks that employee in the office
+    await clickEmployee(page, await employeeLabelled(page, "Task 29"));
+
+    // Then its row is highlighted and scrolled into view
+    await expect(last).toHaveAttribute("aria-current", "true");
+    await expect.poll(inView).toBe(true);
   });
 });

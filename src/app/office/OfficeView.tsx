@@ -262,6 +262,10 @@ export function OfficeView() {
   // How far the server's clock is ahead of this browser's, from the latest answer.
   const [serverOffsetMs, setServerOffsetMs] = useState(0);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  // The employee last picked in the office; the list scrolls its row into view.
+  const [reveal, setReveal] = useState<{ key: string; token: number } | null>(
+    null,
+  );
   // A details card opened while the went-home drawer was open sits above it.
   const [cardOverWentHome, setCardOverWentHome] = useState(false);
   const [zoom, setZoom] = useState(1);
@@ -800,6 +804,25 @@ export function OfficeView() {
     setSelectedKey(key);
     setCardOverWentHome(wentHomeOpen && key !== null);
   };
+  /**
+   * Opens an employee's card and lights it up in the office; the office click already set its own outline.
+   * @param key - The session to open, or null for none.
+   * @param source - Where the pick came from; a list pick also moves the camera to the employee.
+   */
+  const selectEmployee = (key: string | null, source: "list" | "office") => {
+    setReveal((last) =>
+      source === "office" && key !== null
+        ? { key, token: (last?.token ?? 0) + 1 }
+        : null,
+    );
+    if (source === "list") {
+      const id = key === null ? undefined : sceneSync.agentIdOf(key);
+      // A session with no one in the office (it went home) must not leave the earlier employee outlined.
+      if (id === undefined) officeState.selectedAgentId = null;
+      else officeState.selectAndFollow(id);
+    }
+    openDetails(key);
+  };
   const closeDetails = () => {
     setSelectedKey(null);
     officeState.selectedAgentId = null;
@@ -871,7 +894,7 @@ export function OfficeView() {
               <OfficeCanvas
                 officeState={officeState}
                 onClick={(id) =>
-                  openDetails(sceneSync.sessionKeyOf(id) ?? null)
+                  selectEmployee(sceneSync.sessionKeyOf(id) ?? null, "office")
                 }
                 zoom={zoom}
                 onZoomChange={(next) => {
@@ -1026,12 +1049,14 @@ export function OfficeView() {
           <ListPanel
             companyName={viewedCompany?.name ?? ""}
             employees={everyone}
+            selectedKey={selectedKey}
+            reveal={reveal}
             departures={wentHomeRows}
-            onSelectDeparture={openDetails}
+            onSelectDeparture={(key) => selectEmployee(key, "list")}
             offlineMachineIds={offlineIds}
             tagLabels={tagFilterView.labels}
             serverOffsetMs={serverOffsetMs}
-            onSelect={openDetails}
+            onSelect={(key) => selectEmployee(key, "list")}
             onMoveToIdle={(key) => void moveToIdle(key)}
             onRename={renameEmployee}
           />

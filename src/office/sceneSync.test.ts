@@ -778,6 +778,30 @@ describe("scene sync", () => {
     });
   });
 
+  describe("finding an employee by its session key", () => {
+    it("gives the renderer id of a session's employee, and nothing for a session that is not in the office", () => {
+      // Given two employees
+      const office = loadOffice();
+      const sync = createSceneSync(office);
+      sync.apply(
+        [
+          session("m1", "Mac", "a", "/a", "2026-11-08T10:00:00.000Z"),
+          session("m1", "Mac", "b", "/b", "2026-11-08T10:00:00.000Z"),
+        ],
+        { firstLoad: true },
+      );
+
+      // Then each key finds the id that finds the key back, and an unknown key finds none
+      for (const key of ["m1/a", "m1/b"]) {
+        const id = sync.agentIdOf(key);
+        expect(id).toBeDefined();
+        expect(sync.sessionKeyOf(id as number)).toBe(key);
+      }
+      expect(sync.agentIdOf("m1/a")).not.toBe(sync.agentIdOf("m1/b"));
+      expect(sync.agentIdOf("m1/missing")).toBeUndefined();
+    });
+  });
+
   describe("went-home sessions", () => {
     it("removes the employee and frees its seat when a session goes home, never adds one for an ended session, and brings it back on resume", () => {
       // Given two live employees

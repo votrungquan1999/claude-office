@@ -23,6 +23,10 @@ interface ListPanelProps {
   companyName: string;
   /** The company's live employees in the owner's order. */
   employees: SessionDto[];
+  /** The employee whose card is open, if any. */
+  selectedKey: string | null;
+  /** The employee last picked in the office, with a number that changes on every pick; null when the list made the last pick. */
+  reveal: { key: string; token: number } | null;
   /** Today's departures of the viewed company, newest first. */
   departures: DepartureRow[];
   /** Opens a departure's card. */
@@ -46,6 +50,8 @@ interface ListPanelProps {
 export function ListPanel({
   companyName,
   employees,
+  selectedKey,
+  reveal,
   departures,
   onSelectDeparture,
   offlineMachineIds,
@@ -77,6 +83,10 @@ export function ListPanel({
             <ListRow
               key={sessionKey(session)}
               session={session}
+              selected={sessionKey(session) === selectedKey}
+              revealToken={
+                reveal?.key === sessionKey(session) ? reveal.token : null
+              }
               offline={offlineMachineIds.has(session.machineId)}
               tagLabels={tagLabels}
               serverOffsetMs={serverOffsetMs}

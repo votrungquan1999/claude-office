@@ -33,6 +33,8 @@ export interface SceneSync {
   tick(): void;
   /** The "machineId/sessionId" key of the session behind a renderer id. */
   sessionKeyOf(id: number): string | undefined;
+  /** The renderer id of the employee behind a "machineId/sessionId" key; undefined when that session has no employee. */
+  agentIdOf(key: string): number | undefined;
   /** The renderer ids of every employee, in arrival order. */
   agentIds(): number[];
   /** How many employees each room holds, by the room they were last sent to. */
@@ -295,6 +297,7 @@ export function createSceneSync(
     },
     sessionKeyOf: (id) =>
       [...employees.entries()].find(([, employee]) => employee.id === id)?.[0],
+    agentIdOf: (key) => employees.get(key)?.id,
     agentIds: () => [...employees.values()].map((employee) => employee.id),
     roomCounts() {
       const counts: Record<string, number> = {};
