@@ -5,6 +5,7 @@ import {
   employeeLabelled,
   keepOneCompany,
   type SeedSession,
+  seedOnlineMachine,
   seedSessions,
   signInAsOwner,
   waitForEmployees,
@@ -1127,5 +1128,244 @@ test.describe("selecting from the list and from the office", () => {
     // Then its row is highlighted and scrolled into view
     await expect(last).toHaveAttribute("aria-current", "true");
     await expect.poll(inView).toBe(true);
+  });
+});
+
+test.describe("Move to top and Move to bottom on the card", () => {
+  test.use({ viewport: { width: 1280, height: 800 }, hasTouch: false });
+
+  const names = (page: Page) => page.getByTestId("list-row-name");
+
+  test("the card shows the row's place, and Move to top sends one request and the place follows", async ({
+    context,
+    page,
+  }) => {
+    // Given four placed conversations and the card of the third open
+    await seed(
+      ["A", "B", "C", "D"].map((name, i) => ({
+        sessionId: name.toLowerCase(),
+        deskName: `Task ${name}`,
+        rank: "bdfh"[i],
+        state: "idle",
+      })),
+    );
+    await signInAsOwner(context);
+    const requests: string[] = [];
+    page.on("request", (request) => {
+      if (request.url().includes("/api/office/sessions/rank"))
+        requests.push(request.postData() ?? "");
+    });
+    await page.goto("/");
+    await waitForEmployees(page, 4);
+    await page.getByTestId("list-row").filter({ hasText: "Task C" }).click();
+    const place = page.getByTestId("list-place");
+    await expect(place).toContainText("now 3rd of 4");
+
+    // When the owner presses Move to top
+    await place.getByRole("button", { name: "Move to top" }).click();
+
+    // Then the row is first, the card says 1st of 4 and one request was sent
+    await expect(names(page)).toHaveText([
+      "Task C",
+      "Task A",
+      "Task B",
+      "Task D",
+    ]);
+    await expect(place).toContainText("now 1st of 4");
+    await expect(
+      place.getByRole("button", { name: "Move to top" }),
+    ).toHaveAttribute("aria-disabled", "true");
+    expect(requests).toHaveLength(1);
+  });
+
+  test("Move to bottom puts the row last with one request", async ({
+    context,
+    page,
+  }) => {
+    // Given four placed conversations and the card of the second open
+    await seed(
+      ["A", "B", "C", "D"].map((name, i) => ({
+        sessionId: name.toLowerCase(),
+        deskName: `Task ${name}`,
+        rank: "bdfh"[i],
+        state: "idle",
+      })),
+    );
+    await signInAsOwner(context);
+    const requests: string[] = [];
+    page.on("request", (request) => {
+      if (request.url().includes("/api/office/sessions/rank"))
+        requests.push(request.postData() ?? "");
+    });
+    await page.goto("/");
+    await waitForEmployees(page, 4);
+    await page.getByTestId("list-row").filter({ hasText: "Task B" }).click();
+    const place = page.getByTestId("list-place");
+    await expect(place).toContainText("now 2nd of 4");
+
+    // When the owner presses Move to bottom
+    await place.getByRole("button", { name: "Move to bottom" }).click();
+
+    // Then the row is last, the card says 4th of 4 and one request was sent
+    await expect(names(page)).toHaveText([
+      "Task A",
+      "Task C",
+      "Task D",
+      "Task B",
+    ]);
+    await expect(place).toContainText("now 4th of 4");
+    expect(requests).toHaveLength(1);
+  });
+
+  test("the place counts the whole company while a repo filter hides rows", async ({
+    context,
+    page,
+  }) => {
+    // Given four placed conversations, only the first and the third tagged web
+    const web = { name: "web", key: "bbbbbbbbbbbb" };
+    await seed(
+      ["A", "B", "C", "D"].map((name, i) => ({
+        sessionId: name.toLowerCase(),
+        deskName: `Task ${name}`,
+        rank: "bdfh"[i],
+        state: "idle",
+        tags: i % 2 === 0 ? [web] : undefined,
+      })),
+    );
+    await signInAsOwner(context);
+    await page.goto("/");
+    await waitForEmployees(page, 4);
+    await page.getByTestId("list-row").filter({ hasText: "Task C" }).click();
+    await expect(page.getByTestId("list-place")).toContainText("now 3rd of 4");
+
+    // When the owner filters to the web repo
+    await page
+      .getByTestId("tag-filter")
+      .locator("button[aria-expanded]")
+      .click();
+    await page
+      .getByRole("dialog", { name: "Filter by repo" })
+      .getByRole("button", { name: "web 2" })
+      .click();
+    await expect(names(page)).toHaveText(["Task A", "Task C"]);
+
+    // Then the card still says 3rd of 4
+    await expect(page.getByTestId("list-place")).toContainText("now 3rd of 4");
+  });
+
+  test("a refused move puts the place back and shows its alert on the card", async ({
+    context,
+    page,
+  }) => {
+    // Given four placed conversations, the card of the third open and a server that refuses the save
+    await seed(
+      ["A", "B", "C", "D"].map((name, i) => ({
+        sessionId: name.toLowerCase(),
+        deskName: `Task ${name}`,
+        rank: "bdfh"[i],
+        state: "idle",
+      })),
+    );
+    await signInAsOwner(context);
+    await page.route("**/api/office/sessions/rank", (route) =>
+      route.fulfill({ status: 500, body: "{}" }),
+    );
+    await page.goto("/");
+    await waitForEmployees(page, 4);
+    await page.getByTestId("list-row").filter({ hasText: "Task C" }).click();
+    const place = page.getByTestId("list-place");
+
+    // When the owner presses Move to top
+    await place.getByRole("button", { name: "Move to top" }).click();
+
+    // Then the card says so and the place is back
+    await expect(place.getByRole("alert")).toHaveText(
+      "Could not move. Try again.",
+    );
+    await expect(place).toContainText("now 3rd of 4");
+    await expect(names(page)).toHaveText([
+      "Task A",
+      "Task B",
+      "Task C",
+      "Task D",
+    ]);
+  });
+
+  test("a card of an employee that went home has no place", async ({
+    context,
+    page,
+  }) => {
+    // Given one live and one gone-home conversation
+    await seed([
+      { sessionId: "a", deskName: "Live task", rank: "a", state: "idle" },
+      {
+        sessionId: "b",
+        deskName: "Gone task",
+        rank: "b",
+        state: "wentHome",
+        hadPrompt: true,
+        endedAt: new Date(Date.now() - MIN),
+      },
+    ]);
+    await signInAsOwner(context);
+    await page.goto("/");
+    await waitForEmployees(page, 1);
+
+    // When the owner opens the gone one's card from Went home today
+    await page.getByRole("button", { name: /^Went home today/ }).click();
+    await page
+      .getByTestId("went-home-list")
+      .getByRole("listitem")
+      .first()
+      .click();
+
+    // Then its card shows as Went home with no place block
+    const panel = page.getByTestId("details-panel");
+    await expect(panel.getByTestId("state-pill")).toHaveText("Went home");
+    await expect(page.getByTestId("list-place")).toHaveCount(0);
+  });
+});
+
+test.describe("the place on a phone's card", () => {
+  test("shows the place below Open Remote Control with both buttons inside the screen", async ({
+    context,
+    page,
+  }) => {
+    // Given four placed conversations seen on a phone
+    await seedOnlineMachine("m1", "Quan's MacBook Pro");
+    await seed(
+      ["A", "B", "C", "D"].map((name, i) => ({
+        sessionId: name.toLowerCase(),
+        deskName: `Task ${name}`,
+        rank: "bdfh"[i],
+        state: "working",
+        bridgeSessionId: `bridge-${name}`,
+        runningSteps: [{ text: "Edit b.ts", startedAt: new Date() }],
+      })),
+    );
+    await signInAsOwner(context);
+    await page.goto("/");
+    await waitForEmployees(page, 4);
+
+    // When the owner taps Task C's tile in the stacked rooms
+    await page.getByRole("button", { name: "Task C, Working" }).click();
+
+    // Then the card reads "now 3rd of 4", sits below Open Remote Control, and both buttons are inside the screen
+    const place = page.getByTestId("list-place");
+    await expect(place).toContainText("now 3rd of 4");
+    const link = await page.getByTestId("remote-control-link").boundingBox();
+    const block = await place.boundingBox();
+    expect(link).not.toBeNull();
+    expect(block?.y ?? 0).toBeGreaterThan(
+      (link?.y ?? 0) + (link?.height ?? 0) - 1,
+    );
+    const viewport = page.viewportSize();
+    for (const name of ["Move to top", "Move to bottom"]) {
+      const box = await place.getByRole("button", { name }).boundingBox();
+      expect(box).not.toBeNull();
+      expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(
+        viewport?.height ?? 0,
+      );
+    }
   });
 });

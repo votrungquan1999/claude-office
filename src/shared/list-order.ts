@@ -195,3 +195,33 @@ function placeAll(rows: ListOrderRow[]): RankAssignment[] {
     return { machineId: row.machineId, sessionId: row.sessionId, rank };
   });
 }
+
+/** Where a row stands in its company's order. */
+export interface Place {
+  /** Zero-based position. */
+  index: number;
+  total: number;
+}
+
+/**
+ * The place of a row among the company's live rows.
+ * @param ordered - Every live row of the company in the owner's order, also those a filter hides.
+ * @param key - The `sessionKey` of the row.
+ * @returns Its place; null when the row is not in the list.
+ */
+export function placeOf(ordered: ListOrderRow[], key: string): Place | null {
+  const index = ordered.findIndex((row) => sessionKey(row) === key);
+  return index < 0 ? null : { index, total: ordered.length };
+}
+
+/**
+ * A position in words.
+ * @param n - A whole number from 1.
+ * @returns "1st", "2nd", "11th", "22nd".
+ */
+export function ordinal(n: number): string {
+  // 11th, 12th and 13th break the 1st/2nd/3rd pattern
+  const teen = n % 100 >= 11 && n % 100 <= 13;
+  const suffix = teen ? "th" : (["th", "st", "nd", "rd"][n % 10] ?? "th");
+  return `${n}${suffix}`;
+}

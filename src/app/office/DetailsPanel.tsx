@@ -3,6 +3,7 @@ import type { MacBlock } from "@/office/offline";
 import { remoteControlUrl } from "@/office/remoteControl";
 import { employeeName } from "@/shared/employee-name";
 import type { FolderDto } from "@/shared/folders";
+import { ordinal, type Place } from "@/shared/list-order";
 import { type SessionDto, sessionKey } from "@/shared/session";
 import { DismissControl } from "./DismissControl";
 import { formatElapsed } from "./elapsed";
@@ -55,6 +56,14 @@ interface DetailsPanelProps {
   onMoveToIdle?: () => void;
   /** Why the last move to Idle was refused; absent when it was not. */
   moveToIdleError?: string;
+  /** Where the employee stands in the company's list; absent for one that went home. */
+  place?: Place;
+  /** Why the last Move to top or bottom was refused; absent when it was not. */
+  placeError?: string;
+  /** Moves the employee's row to the top of the list. */
+  onMoveToTop?: () => void;
+  /** Moves the employee's row to the bottom of the list. */
+  onMoveToBottom?: () => void;
 }
 
 /** The look of a state band: its colour and the text colour that reads on it. */
@@ -164,6 +173,32 @@ function boxOf(session: SessionDto, nowMs: number) {
 }
 
 /**
+ * One of the two place buttons; at the end of the list it does nothing, so no empty request is sent.
+ * @param props - The label, whether the row is already there, and the click handler.
+ * @returns The button.
+ */
+function PlaceButton({
+  label,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  disabled: boolean;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-disabled={disabled}
+      onClick={disabled ? undefined : onClick}
+      className="flex-1 border-2 border-bg-dark bg-btn-bg px-2 py-2 text-xs font-bold uppercase hover:bg-btn-hover aria-disabled:opacity-40 aria-disabled:hover:bg-btn-bg"
+    >
+      {label}
+    </button>
+  );
+}
+
+/**
  * The details of the selected employee, with its Remote Control link.
  * @param props - The selected session, its project, the server clock offset, offline Macs, sheet layout and the close handler.
  * @returns The panel, or nothing when no employee is selected.
@@ -196,6 +231,10 @@ function Card({
   onRename,
   onMoveToIdle,
   moveToIdleError,
+  place,
+  placeError,
+  onMoveToTop,
+  onMoveToBottom,
 }: DetailsPanelProps & { session: SessionDto }) {
   // The browser's clock moved onto the server's, so a phone clock minutes off still shows right times.
   const nowMs = useNow() + serverOffsetMs;
@@ -362,6 +401,34 @@ function Card({
           </a>
         ) : (
           <p className="shrink-0 text-xs text-text-muted">Remote Control off</p>
+        )}
+        {place && (
+          <div
+            data-testid="list-place"
+            className="flex shrink-0 flex-col gap-1 border-2 border-border bg-bg-dark px-3 py-2 [@media(max-height:500px)]:py-1"
+          >
+            <span className="text-xs text-text-muted uppercase">
+              Place in your list · now {ordinal(place.index + 1)} of{" "}
+              {place.total}
+            </span>
+            <div className="flex gap-2">
+              <PlaceButton
+                label="Move to top"
+                disabled={place.index === 0}
+                onClick={onMoveToTop}
+              />
+              <PlaceButton
+                label="Move to bottom"
+                disabled={place.index === place.total - 1}
+                onClick={onMoveToBottom}
+              />
+            </div>
+            {placeError && (
+              <p role="alert" className="text-xs font-bold">
+                {placeError}
+              </p>
+            )}
+          </div>
         )}
         {ended && (
           <WakeControl

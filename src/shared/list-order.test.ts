@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   moveTo,
+  ordinal,
+  placeOf,
   type RankAssignment,
   rankBetween,
   sortByListOrder,
@@ -227,5 +229,45 @@ describe("moving a row", () => {
         expect(after[edge === "top" ? 0 : 3]).toBe(mover.sessionId);
       }
     }
+  });
+});
+
+describe("the place of a row", () => {
+  it("is its position and the company's total, and none for a row that is not listed", () => {
+    // Given three rows in the owner's order
+    const rows = sortByListOrder([
+      row("a", "2026-11-01T00:00:00.000Z", "b"),
+      row("b", "2026-11-01T00:00:00.000Z", "c"),
+      row("c", "2026-11-01T00:00:00.000Z", "d"),
+    ]);
+
+    // When the place of the second and of a stranger is asked
+    const second = placeOf(rows, "m/b");
+    const stranger = placeOf(rows, "m/zzz");
+
+    // Then the second is index 1 of 3 and the stranger has none
+    expect(second).toEqual({ index: 1, total: 3 });
+    expect(stranger).toBeNull();
+  });
+
+  it("is written as an ordinal, with the teens and 21st, 22nd, 23rd right", () => {
+    // Given numbers around the irregular endings
+    const written = [1, 2, 3, 4, 11, 12, 13, 21, 22, 23, 101, 111].map(ordinal);
+
+    // Then each reads as English does
+    expect(written).toEqual([
+      "1st",
+      "2nd",
+      "3rd",
+      "4th",
+      "11th",
+      "12th",
+      "13th",
+      "21st",
+      "22nd",
+      "23rd",
+      "101st",
+      "111th",
+    ]);
   });
 });

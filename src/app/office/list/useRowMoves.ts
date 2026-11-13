@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { moveTo } from "@/shared/list-order";
+import { moveTo, type RankAssignment } from "@/shared/list-order";
 import { type SessionDto, sessionKey } from "@/shared/session";
 import { type PendingRanks, postRanks, refuseRanks } from "./pendingRanks";
 
@@ -19,7 +19,7 @@ interface RowMovesInput {
 /**
  * Moving a row to a new place: shows it at once, sends the places, and takes them back when refused.
  * @param input - The pending places and the rows being viewed.
- * @returns The move handler and why the last move was refused, if it was.
+ * @returns The move handlers, why the last move was refused, and the refusal of a card move.
  */
 export function useRowMoves({
   getRanks,
@@ -27,7 +27,10 @@ export function useRowMoves({
   serverOffsetMs,
   viewedRows,
 }: RowMovesInput) {
-  const [rankError, setRankError] = useState<string | null>(null);
+  const [refusal, setRefusal] = useState<{
+    message: string;
+    viaCard: boolean;
+  } | null>(null);
   // Numbers each move, so refusing an old move never takes back a newer place.
   const tokenRef = useRef(0);
 
@@ -42,11 +45,30 @@ export function useRowMoves({
       .filter(matches)
       .findIndex((row) => sessionKey(row) === overKey);
     if (targetIndex < 0) return;
-    const places = moveTo(rows, key, targetIndex, matches);
+    await save(moveTo(rows, key, targetIndex, matches), false);
+  };
+
+  /**
+   * Moves a row to the top or the bottom of the company's whole list, whatever a filter hides.
+   * @param key - The row to move.
+   * @param end - Which end.
+   */
+  const moveToEnd = async (key: string, end: "top" | "bottom") => {
+    const { rows } = viewedRows();
+    // The target counts the rows without the moved one, so the last place is rows.length - 1.
+    await save(moveTo(rows, key, end === "top" ? 0 : rows.length - 1), true);
+  };
+
+  /**
+   * Shows the places at once, sends them in one request, and takes them back when refused.
+   * @param places - The places to save; nothing is sent when empty.
+   * @param viaCard - Whether the owner pressed a button on the details card, so a refusal shows there too.
+   */
+  const save = async (places: RankAssignment[], viaCard: boolean) => {
     if (places.length === 0) return;
     const token = ++tokenRef.current;
     const movedAt = new Date(Date.now() + serverOffsetMs).toISOString();
-    setRankError(null);
+    setRefusal(null);
     setRanks(
       new Map([
         ...getRanks(),
@@ -61,8 +83,13 @@ export function useRowMoves({
     );
     if (await postRanks({ items: places })) return;
     setRanks(refuseRanks(getRanks(), token));
-    setRankError("Could not move. Try again.");
+    setRefusal({ message: "Could not move. Try again.", viaCard });
   };
 
-  return { moveRow, rankError };
+  return {
+    moveRow,
+    moveToEnd,
+    rankError: refusal?.message ?? null,
+    placeError: refusal?.viaCard ? refusal.message : undefined,
+  };
 }

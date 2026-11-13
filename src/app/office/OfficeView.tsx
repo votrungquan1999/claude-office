@@ -24,6 +24,7 @@ import { installTestHooks } from "@/office/testHooks";
 import { dayStartOf, todaysDepartures } from "@/office/wentHome";
 import { employeeName } from "@/shared/employee-name";
 import type { FolderDto } from "@/shared/folders";
+import { placeOf } from "@/shared/list-order";
 import { buildOverview, resolveSelection } from "@/shared/overview";
 import {
   type ChangesResponse,
@@ -587,7 +588,7 @@ export function OfficeView() {
     return false;
   };
 
-  const { moveRow, rankError } = useRowMoves({
+  const { moveRow, moveToEnd, rankError, placeError } = useRowMoves({
     getRanks: () => dataRef.current.ranks,
     setRanks: (ranks) => commit({ ...dataRef.current, ranks }, false),
     serverOffsetMs,
@@ -818,6 +819,17 @@ export function OfficeView() {
     (session) => overview.tree.companyOf(session)?.companyKey,
     companyKey,
   ).filter(tagFilterView.matches);
+  // The card's place counts the whole company, so a repo filter never changes it.
+  const selectedPlace = selectedKey
+    ? placeOf(
+        companyRows(
+          sessions.values(),
+          (session) => overview.tree.companyOf(session)?.companyKey,
+          companyKey,
+        ),
+        selectedKey,
+      )
+    : null;
   const departures = todaysDepartures([...sessions.values()], now).filter(
     (session) => overview.tree.companyOf(session)?.companyKey === companyKey,
   );
@@ -1080,6 +1092,14 @@ export function OfficeView() {
               selectedKey && selectedKey === moveRefusedKey
                 ? "Could not move to Idle. Try again."
                 : undefined
+            }
+            place={selectedPlace ?? undefined}
+            placeError={placeError}
+            onMoveToTop={() =>
+              selectedKey && void moveToEnd(selectedKey, "top")
+            }
+            onMoveToBottom={() =>
+              selectedKey && void moveToEnd(selectedKey, "bottom")
             }
             sheet={isMobile}
             onClose={closeDetails}

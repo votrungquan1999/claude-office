@@ -1380,4 +1380,54 @@ describe("the original request", () => {
     fireEvent.click(screen.getByText("Do the thing"));
     expect(screen.getByRole("dialog")).toBeTruthy();
   });
+
+  it("shows the row's place in the list and moves it to the top or the bottom", () => {
+    // Given a card for the 2nd of 17 employees
+    const onMoveToTop = vi.fn();
+    const onMoveToBottom = vi.fn();
+    openWithWake(session({ state: "idle" }), {
+      place: { index: 1, total: 17 },
+      onMoveToTop,
+      onMoveToBottom,
+    });
+
+    // Then the place reads "now 2nd of 17"
+    expect(screen.getByTestId("list-place").textContent).toContain(
+      "now 2nd of 17",
+    );
+
+    // When the owner presses Move to top and Move to bottom
+    fireEvent.click(screen.getByRole("button", { name: "Move to top" }));
+    fireEvent.click(screen.getByRole("button", { name: "Move to bottom" }));
+
+    // Then each handler ran once
+    expect(onMoveToTop).toHaveBeenCalledTimes(1);
+    expect(onMoveToBottom).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends nothing from the button at the end the row already stands at, and has no place block without a place", () => {
+    // Given the first of three employees
+    const onMoveToTop = vi.fn();
+    const onMoveToBottom = vi.fn();
+    const { unmount } = openWithWake(session({ state: "idle" }), {
+      place: { index: 0, total: 3 },
+      onMoveToTop,
+      onMoveToBottom,
+    });
+
+    // When Move to top is pressed
+    const top = screen.getByRole("button", { name: "Move to top" });
+    fireEvent.click(top);
+
+    // Then it is disabled and sent nothing, while Move to bottom still works
+    expect(top.getAttribute("aria-disabled")).toBe("true");
+    expect(onMoveToTop).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Move to bottom" }));
+    expect(onMoveToBottom).toHaveBeenCalledTimes(1);
+    unmount();
+
+    // And a card with no place shows no block
+    openWithWake(session({ state: "wentHome" }));
+    expect(screen.queryByTestId("list-place")).toBeNull();
+  });
 });
