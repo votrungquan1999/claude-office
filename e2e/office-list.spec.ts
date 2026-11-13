@@ -5,6 +5,7 @@ import {
   employeeLabelled,
   keepOneCompany,
   type SeedSession,
+  seedFolders,
   seedOnlineMachine,
   seedSessions,
   signInAsOwner,
@@ -141,7 +142,9 @@ test.describe("the list beside the office on a desktop", () => {
 
     // And only the Review row has an Idle button
     await expect(
-      page.getByRole("button", { name: "Move to Idle" }),
+      page
+        .getByTestId("list-everyone")
+        .getByRole("button", { name: "Move to Idle" }),
     ).toHaveCount(1);
     await expect(
       rows
@@ -1367,5 +1370,225 @@ test.describe("the place on a phone's card", () => {
         viewport?.height ?? 0,
       );
     }
+  });
+});
+
+/** Two more Macs beside the spec's own: one online with its own company, one offline. */
+async function seedOtherCompanies() {
+  await seedOnlineMachine("m2", "Zed Mac");
+  await withE2eDb(async (db) => {
+    await db.collection("machines").updateOne(
+      { machineId: "m3" },
+      {
+        $set: {
+          machineName: "Old Mac",
+          lastSeenAt: new Date(Date.now() - 600_000),
+        },
+      },
+      { upsert: true },
+    );
+    await seedFolders(db.collection("folders"), [
+      { machineId: "m1", path: "/Users/q/personal" },
+      { machineId: "m2", path: "/Users/q/lab" },
+      { machineId: "m3", path: "/Users/q/old" },
+    ]);
+  });
+}
+
+test.afterEach(async () => {
+  await withE2eDb(async (db) => {
+    await db
+      .collection("machines")
+      .deleteMany({ machineId: { $in: ["m2", "m3"] } });
+  });
+});
+
+test.describe("the Needs you section", () => {
+  test.use({ viewport: { width: 1280, height: 800 }, hasTouch: false });
+
+  test("copies everyone who needs the owner above Everyone, four per company then 'and N more', other companies under 'In other companies', leaves out an offline Mac, and a click opens the original in its company", async ({
+    context,
+    page,
+  }) => {
+    // Given six needing employees here, one in another company, one on an offline Mac, and one idle
+    await seedOtherCompanies();
+    const own = ["A", "B", "C", "D", "E", "F"].map((name, i) => ({
+      sessionId: name.toLowerCase(),
+      deskName: `Task ${name}`,
+      rank: "bcdefg"[i],
+      state: i === 5 ? "review" : "waitingForYou",
+      stateSince: new Date(Date.now() - 5 * MIN),
+    }));
+    await seed([
+      ...own,
+      { sessionId: "idle", deskName: "Task Idle", rank: "h", state: "idle" },
+      {
+        sessionId: "lab",
+        machineId: "m2",
+        machineName: "Zed Mac",
+        cwd: "/Users/q/lab/x",
+        deskName: "Lab task",
+        state: "needsPermission",
+        stateSince: new Date(Date.now() - 2 * MIN),
+      },
+      {
+        sessionId: "old",
+        machineId: "m3",
+        machineName: "Old Mac",
+        cwd: "/Users/q/old/x",
+        deskName: "Old task",
+        state: "waitingForYou",
+      },
+    ]);
+    await signInAsOwner(context);
+    await page.goto("/");
+    await waitForEmployees(page, 7);
+    const needs = page.getByTestId("needs-you");
+
+    // Then the section counts seven, shows four own copies, 'and 2 more', and the other company's copy
+    await expect(page.getByTestId("needs-count")).toHaveText("7");
+    await expect(needs.getByTestId("needs-row-name")).toHaveText([
+      "Task A",
+      "Task B",
+      "Task C",
+      "Task D",
+      "Lab task",
+    ]);
+    await expect(needs.getByText("In other companies")).toBeVisible();
+    await expect(needs.getByTestId("needs-row-company")).toHaveText("lab");
+    await expect(needs.getByText("Old task")).toHaveCount(0);
+
+    // And the originals stay in Everyone
+    await expect(page.getByTestId("list-row-name")).toHaveText([
+      "Task A",
+      "Task B",
+      "Task C",
+      "Task D",
+      "Task E",
+      "Task F",
+      "Task Idle",
+    ]);
+
+    // When the owner expands 'and 2 more'
+    await needs.getByRole("button", { name: "and 2 more" }).click();
+
+    // Then the other two copies show in place
+    await expect(needs.getByTestId("needs-row-name")).toHaveText([
+      "Task A",
+      "Task B",
+      "Task C",
+      "Task D",
+      "Task E",
+      "Task F",
+      "Lab task",
+    ]);
+
+    // When a copy of the other company's employee is clicked
+    await needs
+      .getByTestId("needs-row")
+      .filter({ hasText: "Lab task" })
+      .getByRole("button")
+      .first()
+      .click();
+
+    // Then the office shows that company with the employee's card open and its row highlighted
+    await expect(page.getByTestId("list-title")).toContainText("lab");
+    await expect(page.getByTestId("details-panel")).toContainText("Lab task");
+    await expect(
+      page.getByTestId("list-row").filter({ hasText: "Lab task" }),
+    ).toHaveAttribute("aria-current", "true");
+  });
+});
+
+test.describe("a Needs you copy hidden by the repo filter", () => {
+  test.use({ viewport: { width: 1280, height: 800 }, hasTouch: false });
+
+  test("still shows, and clicking it clears the filter and opens the original", async ({
+    context,
+    page,
+  }) => {
+    // Given one waiting employee with the api tag and one with the web tag
+    const api = { name: "api", key: "aaaaaaaaaaaa" };
+    const web = { name: "web", key: "bbbbbbbbbbbb" };
+    await seed([
+      {
+        sessionId: "a",
+        deskName: "Api task",
+        tags: [api],
+        state: "waitingForYou",
+      },
+      {
+        sessionId: "b",
+        deskName: "Web task",
+        tags: [web],
+        state: "waitingForYou",
+      },
+    ]);
+    await signInAsOwner(context);
+    await page.goto("/");
+    await waitForEmployees(page, 2);
+    await page
+      .getByTestId("tag-filter")
+      .locator("button[aria-expanded]")
+      .click();
+    await page
+      .getByRole("dialog", { name: "Filter by repo" })
+      .getByRole("button", { name: "web 1" })
+      .click();
+    await expect(page.getByTestId("list-row-name")).toHaveText(["Web task"]);
+
+    // Then Needs you still lists both
+    const needs = page.getByTestId("needs-you");
+    await expect(needs.getByTestId("needs-row-name")).toHaveCount(2);
+
+    // When the owner clicks the hidden one's copy
+    await needs
+      .getByTestId("needs-row")
+      .filter({ hasText: "Api task" })
+      .getByRole("button")
+      .first()
+      .click();
+
+    // Then the filter is cleared and its card is open
+    await expect(page.getByTestId("list-row-name")).toHaveCount(2);
+    await expect(page.getByTestId("details-panel")).toContainText("Api task");
+  });
+});
+
+test.describe("a Review copy in Needs you", () => {
+  test.use({ viewport: { width: 1280, height: 800 }, hasTouch: false });
+
+  test("has an Idle button that moves the employee to Idle and takes the copy away, with one request", async ({
+    context,
+    page,
+  }) => {
+    // Given a Review employee
+    await seed([
+      {
+        sessionId: "r",
+        deskName: "Audit emails",
+        state: "review",
+        stateSince: new Date(Date.now() - 5 * MIN),
+      },
+    ]);
+    await signInAsOwner(context);
+    const requests: string[] = [];
+    page.on("request", (request) => {
+      if (request.url().includes("/api/office/sessions/review-seen"))
+        requests.push(request.postData() ?? "");
+    });
+    await page.goto("/");
+    await waitForEmployees(page, 1);
+    const needs = page.getByTestId("needs-you");
+
+    // When the owner presses Idle on the copy
+    await needs.getByRole("button", { name: "Move to Idle" }).click();
+
+    // Then the copy and the section are gone, the original reads Idle, and one request was sent
+    await expect(page.getByTestId("needs-you")).toHaveCount(0);
+    await expect(
+      page.getByTestId("list-row").getByTestId("list-row-status"),
+    ).toHaveText(/^Idle/);
+    expect(requests).toHaveLength(1);
   });
 });

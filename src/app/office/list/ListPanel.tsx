@@ -19,6 +19,7 @@ import type { SessionDto } from "@/shared/session";
 import { sessionKey } from "@/shared/session";
 import { RenameEmployeeDialog } from "../RenameEmployeeDialog";
 import { ListRow } from "./ListRow";
+import { NeedsYouSection, type NeedsYouSectionProps } from "./NeedsYouSection";
 
 /** One conversation that went home today. */
 export interface DepartureRow {
@@ -35,6 +36,11 @@ export interface DepartureRow {
 }
 
 interface ListPanelProps {
+  /** What the Needs you section lists, and how its rows open employees. */
+  needsYou: Pick<
+    NeedsYouSectionProps,
+    "needsYou" | "viewedCompanyKey" | "onSelect"
+  >;
   /** The viewed company's shown name. */
   companyName: string;
   /** The company's live employees in the owner's order. */
@@ -74,6 +80,7 @@ interface ListPanelProps {
  * @returns The panel.
  */
 export function ListPanel({
+  needsYou,
   companyName,
   employees,
   seenKeys,
@@ -180,6 +187,12 @@ export function ListPanel({
           {moveError}
         </p>
       )}
+      <NeedsYouSection
+        {...needsYou}
+        selectedKey={selectedKey}
+        serverOffsetMs={serverOffsetMs}
+        onMoveToIdle={onMoveToIdle}
+      />
       <section aria-label="Everyone" className="flex min-h-0 flex-1 flex-col">
         <DndContext
           sensors={sensors}

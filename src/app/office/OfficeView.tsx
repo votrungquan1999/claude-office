@@ -25,6 +25,7 @@ import { dayStartOf, todaysDepartures } from "@/office/wentHome";
 import { employeeName } from "@/shared/employee-name";
 import type { FolderDto } from "@/shared/folders";
 import { placeOf } from "@/shared/list-order";
+import { selectNeedsYou } from "@/shared/needs-you";
 import { buildOverview, resolveSelection } from "@/shared/overview";
 import {
   type ChangesResponse,
@@ -830,6 +831,33 @@ export function OfficeView() {
         selectedKey,
       )
     : null;
+  const needsYou = selectNeedsYou({
+    sessions: sessions.values(),
+    companyOf: (session) => overview.tree.companyOf(session),
+    viewedCompany: companyKey,
+    companyOrder: overview.macs.flatMap((mac) =>
+      mac.companies.map((entry) => entry.company.key),
+    ),
+    offlineMachineIds: offlineIds,
+    includeOtherCompanies: true,
+  });
+  /**
+   * Opens the original of a Needs you copy, switching company first when it lives elsewhere.
+   * @param key - The employee to open.
+   * @param homeKey - The company the copy belongs to.
+   */
+  const selectNeedsYouRow = (key: string, homeKey: string | null) => {
+    if (homeKey && homeKey !== companyRef.current) selectCompany(homeKey);
+    else if (
+      !sessions.has(key) ||
+      !tagFilterView.matches(sessions.get(key) as SessionDto)
+    ) {
+      // A repo filter must never hide the employee the owner just asked for.
+      resetTagPick(companyRef.current);
+      showCompany(dataRef.current, companyRef.current, { sitDown: false });
+    }
+    selectEmployee(key, "list");
+  };
   const departures = todaysDepartures([...sessions.values()], now).filter(
     (session) => overview.tree.companyOf(session)?.companyKey === companyKey,
   );
@@ -1107,6 +1135,11 @@ export function OfficeView() {
         </div>
         {!isPhone && (
           <ListPanel
+            needsYou={{
+              needsYou,
+              viewedCompanyKey: companyKey,
+              onSelect: selectNeedsYouRow,
+            }}
             companyName={viewedCompany?.name ?? ""}
             employees={everyone}
             seenKeys={seen.seenKeys}
