@@ -57,6 +57,7 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 - An employee takes a free seat in its room; when the room is full it stands on the room's floor, never in a doorway and never in another room.
 - Each room's sign shows its name; when a room holds more employees than seats it reads `Needs permission 14 / 12`. Signs scale with the zoom so they do not cover seats at small zooms.
 - The busy look and the permission bubble change at once when the state changes; the walk to another room waits until the new state has held for 2 seconds, so a short flip does not send the employee walking.
+- Every seated employee in the Working room faces a computer screen: the desk in front of an up-facing sitter holds a computer showing its screen side, and the lower row's computers face the down-facing sitters from the other side of their desk. The layout is generated (`npm run layout`), never hand-edited.
 - An idle employee wanders only inside its own room.
 - Each session keeps the same character look wherever the office is loaded.
 - The camera zoom is at least 2 on a 1280x800 desktop. Below about 544 CSS px at 2x pixel density (360 px at 3x) the zoom falls to 1. A real phone does not draw the canvas, so its screen size no longer affects the zoom.

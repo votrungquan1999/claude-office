@@ -118,7 +118,8 @@ for (const { c0, width, top } of ROOMS) {
     place("DESK_FRONT", deskCol, wallRow + 2);
     place("DESK_FRONT", deskCol, wallRow + 7);
     for (let seat = 0; seat < 3; seat++) {
-      place("PC_BACK", deskCol + seat, wallRow + 2);
+      // The upper sitter faces up at the desk, so its screen shows its front.
+      place("PC_FRONT_OFF", deskCol + seat, wallRow + 2);
       place("CUSHIONED_CHAIR_BACK", deskCol + seat, wallRow + 4);
       place("PC_BACK", deskCol + seat, wallRow + 7);
       place("CUSHIONED_CHAIR_FRONT", deskCol + seat, wallRow + 6);

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { loadOffice } from "@/test/load-office";
+import { getCatalogEntry } from "./layout/furnitureCatalog";
 import { getBlockedTiles, getSeatTiles } from "./layout/layoutSerializer";
 import { findPath } from "./layout/tileMap";
 import { ROOM_ORDER } from "./rooms";
+import { Direction } from "./types";
 
 const SEATS_PER_ROOM: Record<string, number> = {
   working: 24,
@@ -85,5 +87,41 @@ describe("the office layout", () => {
     // Then every seat can be reached
     expect(seats.length).toBeGreaterThan(0);
     expect(unreachable).toEqual([]);
+  });
+  it("shows every Working seat a computer screen: the screen on the desk in front of the sitter faces the sitter", () => {
+    // Given the office and the computers on its desks
+    const office = loadOffice();
+    const computers = new Map(
+      (office.getLayout().furniture ?? [])
+        .filter(
+          (item) => getCatalogEntry(item.type)?.category === "electronics",
+        )
+        .map((item) => [`${item.col},${item.row}`, item.type]),
+    );
+    const orientationAt = (col: number, row: number) => {
+      const type = computers.get(`${col},${row}`);
+      return type ? getCatalogEntry(type)?.orientation : undefined;
+    };
+
+    // When we look at the computer in front of each Working seat
+    const workingSeats = [...office.seats.entries()].filter(
+      ([uid]) => office.seatZone(uid) === "working",
+    );
+    const seen = workingSeats.map(([, seat]) =>
+      seat.facingDir === Direction.UP
+        ? orientationAt(seat.seatCol, seat.seatRow - 2)
+        : orientationAt(seat.seatCol, seat.seatRow + 1),
+    );
+
+    // Then a sitter facing up has a front-facing computer and a sitter facing down has a back-facing one, as the two sit on opposite sides of a desk
+    expect(workingSeats).toHaveLength(24);
+    expect(
+      workingSeats.map(([, seat], index) => [seat.facingDir, seen[index]]),
+    ).toEqual(
+      workingSeats.map(([, seat]) => [
+        seat.facingDir,
+        seat.facingDir === Direction.UP ? "front" : "back",
+      ]),
+    );
   });
 });
