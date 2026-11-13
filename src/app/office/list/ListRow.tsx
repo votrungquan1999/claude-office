@@ -35,7 +35,7 @@ export interface ListRowProps {
   onMoveToIdle: (key: string) => void;
   /** Asks for the rename dialog of this employee. */
   onRequestRename: (key: string) => void;
-  /** On a phone: touch-sized buttons, a grip that only shows, and no new dot, repo tags or rename button. */
+  /** On a phone: touch-sized buttons, a grip that only shows, and no repo tags or rename button. */
   phone?: boolean;
   /** Why a search found this employee; its line shows under the row's own and the grip hides. */
   why?: EmployeeMatch;
@@ -200,7 +200,7 @@ export function ListRow({
         className={`flex min-w-0 flex-1 flex-col justify-center gap-4 text-left ${phone ? "min-h-44" : ""}`}
       >
         <span className="flex w-full items-start gap-6">
-          {isNew && !phone && (
+          {isNew && (
             <span
               role="img"
               aria-label="new"

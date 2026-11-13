@@ -3,6 +3,8 @@ import { needsYouCount } from "@/shared/needs-you";
 import type { Overview } from "@/shared/overview";
 import { CountRow } from "./CompanyStrip";
 import { renameToSend } from "./renameRule";
+import { ToggleSwitch } from "./ToggleSwitch";
+import { useEscape } from "./useEscape";
 
 export interface CompanyDrawerProps {
   overview: Overview;
@@ -24,37 +26,6 @@ export interface CompanyDrawerProps {
   /** Asks to name a company, or with null to put its folder name back. */
   onRename?: (machineId: string, path: string, name: string | null) => void;
   onClose: () => void;
-}
-
-interface CompanySwitchProps {
-  label: string;
-  checked: boolean;
-  onToggle: () => void;
-}
-
-/**
- * The company-mode switch of one folder.
- * @param props - Its accessible name, its position and what to do on a press.
- * @returns A switch button with a 44 px tap target.
- */
-function CompanySwitch({ label, checked, onToggle }: CompanySwitchProps) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      onClick={onToggle}
-      className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center hover:bg-btn-hover"
-    >
-      <span
-        aria-hidden="true"
-        className={`flex h-[18px] w-[34px] items-center border-2 border-border px-2 ${checked ? "justify-end bg-accent-bright" : "justify-start bg-bg-dark"}`}
-      >
-        <span className="block h-[10px] w-[10px] bg-text" />
-      </span>
-    </button>
-  );
 }
 
 /**
@@ -90,14 +61,7 @@ export function CompanyDrawer({
   useEffect(() => {
     if (editingGone) setEditingKey(null);
   }, [editingGone]);
-  // Escape closes the drawer wherever focus is, so the listener sits on the document.
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
+  useEscape(onClose);
   // Only online Macs can really be waiting on the owner.
   const elsewhere = overview.macs
     .filter((mac) => mac.online)
@@ -213,7 +177,7 @@ export function CompanyDrawer({
                     </button>
                   )}
                   {path !== null && (
-                    <CompanySwitch
+                    <ToggleSwitch
                       label={`Company mode for ${company.name}`}
                       checked
                       onToggle={() =>
@@ -314,7 +278,7 @@ export function CompanyDrawer({
                 )}
                 <span className="text-xs text-text-muted">in Other</span>
               </div>
-              <CompanySwitch
+              <ToggleSwitch
                 label={`Company mode for ${folder.name}`}
                 checked={false}
                 onToggle={() =>

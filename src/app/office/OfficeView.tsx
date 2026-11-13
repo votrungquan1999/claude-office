@@ -3,10 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { loadOfficeAssets } from "@/office/assetLoader";
 import { OfficeCanvas } from "@/office/components/OfficeCanvas";
-import {
-  StackedRooms,
-  type StackedTile,
-} from "@/office/components/StackedRooms";
+import type { StackedTile } from "@/office/components/StackedRooms";
 import { ToolOverlay } from "@/office/components/ToolOverlay";
 import { OfficeState } from "@/office/engine/officeState";
 import { fitZoom } from "@/office/fitZoom";
@@ -25,6 +22,7 @@ import {
   dayStartOf,
   searchableSessions,
   todaysDepartures,
+  wentHomeRowsOf,
 } from "@/office/wentHome";
 import { employeeName } from "@/shared/employee-name";
 import type { FolderDto } from "@/shared/folders";
@@ -49,7 +47,6 @@ import { postEmployeeName, settleEmployeeNames } from "./employeeName";
 import { HireDialog, type HireMac } from "./HireDialog";
 import { companyRowsOf } from "./list/companyRows";
 import { ListPanel } from "./list/ListPanel";
-import { PhoneList } from "./list/PhoneList";
 import { settleRanks } from "./list/pendingRanks";
 import { SearchPalette } from "./list/SearchPalette";
 import { useListModel } from "./list/useListModel";
@@ -75,16 +72,15 @@ import {
   settleNames,
   settleOverrides,
 } from "./officeStore";
-import { PhoneBottomBar } from "./PhoneBottomBar";
+import { PhoneOffice } from "./PhoneOffice";
 import { RoomSigns } from "./RoomSigns";
 import { settleReviewMoves } from "./reviewSeen";
 import { useDeviceSettings } from "./settings/deviceSettings";
-import { PhoneSettings } from "./settings/PhoneSettings";
+import { SettingsSheet } from "./settings/SettingsSheet";
 import { useSettingsPanel } from "./settings/useSettingsPanel";
 import { TagFilter } from "./TagFilter";
 import { useOfficeChanges } from "./useOfficeChanges";
-import { useTabTitle } from "./useTabTitle";
-import { WentHomeDrawer, type WentHomeRow } from "./WentHomeDrawer";
+import { WentHomeDrawer } from "./WentHomeDrawer";
 import { postWake } from "./wake";
 
 const COMPANY_STORAGE_KEY = "claude-office.company";
@@ -208,7 +204,6 @@ export function OfficeView() {
   const userZoomed = useRef(false);
   const isMobile = useIsMobile();
   const isPhone = useIsPhone();
-  const [tagSheetOpen, setTagSheetOpen] = useState(false);
   const hasMouse = useHasMouse();
   const dataRef = useRef<OfficeData>({
     sessions: new Map(),
@@ -347,8 +342,8 @@ export function OfficeView() {
           sessions,
           poll,
         ),
-        // A place stays in force until an answer shows it or a later change of the row, so a poll already in flight cannot put the row back.
-        ranks: settleRanks(dataRef.current.ranks, sessions),
+        // A place stays in force until an answer to a poll started after the save, so a poll already in flight cannot put the row back.
+        ranks: settleRanks(dataRef.current.ranks, sessions, poll),
         // Judged against the server's clock: the phone's may be minutes off.
         offline: offlineMachineIds(answer.machines, answer.serverNow, [
           ...[...sessions.values()].map((session) => session.machineId),
@@ -489,17 +484,25 @@ export function OfficeView() {
   const { moveRow, moveToEnd, rankError, placeError } = useRowMoves({
     getRanks: () => dataRef.current.ranks,
     setRanks: (ranks) => commit({ ...dataRef.current, ranks }, false),
-    serverOffsetMs,
+    lastStartedPoll: () => lastStartedPoll(),
     viewedRows: () =>
       companyRowsOf(dataRef.current, companyRef.current, tagPickRef.current),
+    companyKey,
   });
 
-  /** Opens the company drawer; a details panel left open would sit under it, so it closes. */
+  /** Closes the details card, so a sheet or drawer never opens over it. */
+  const closeCard = () => {
+    setSelectedKey(null);
+    // A row that mounts later must not scroll to an old pick
+    setReveal(null);
+    officeState.selectedAgentId = null;
+  };
+
+  /** Opens the company drawer. */
   const openDrawer = () => {
     setSwitchError(null);
     setRenameError(null);
-    setSelectedKey(null);
-    officeState.selectedAgentId = null;
+    closeCard();
     setRightPanel("companies");
   };
 
@@ -707,17 +710,14 @@ export function OfficeView() {
       // Sessions come with the first answer, not with the assets
       loaded: loaded && lastUpdatedAt !== null,
     });
-  useTabTitle(needsYou.total);
-  const palette = useSearchPalette(!isPhone);
   const { phoneView } = useDeviceSettings();
-  const settings = useSettingsPanel({
-    enabled: isPhone,
-    beforeOpen: () => {
-      setSelectedKey(null);
-      officeState.selectedAgentId = null;
-    },
+  const palette = useSearchPalette(!isPhone);
+  // Settings opens alone: no card, drawer or sheet stays open behind it
+  const settings = useSettingsPanel(isPhone, () => {
+    closeCard();
+    setCardOverWentHome(false);
+    setRightPanel(null);
   });
-  const phoneSearchRef = useRef<HTMLInputElement>(null);
   /**
    * Opens the original of a Needs you copy, switching company first when it lives elsewhere.
    * @param key - The employee to open.
@@ -735,25 +735,26 @@ export function OfficeView() {
     }
     selectEmployee(key, "list");
   };
+  /**
+   * Shows any company's employee, for a palette pick.
+   * @param key - The employee to show.
+   */
+  const showEmployee = (key: string) => {
+    palette.closePalette();
+    // Any company's employee opens like a Needs you copy
+    const session = sessions.get(key);
+    if (session)
+      selectNeedsYouRow(
+        key,
+        overview.tree.companyOf(session)?.companyKey ?? null,
+      );
+  };
   const departures = todaysDepartures([...sessions.values()], now).filter(
     (session) => overview.tree.companyOf(session)?.companyKey === companyKey,
   );
 
-  const wentHomeRows: WentHomeRow[] = loaded
-    ? departures.map((session) => {
-        const key = sessionKey(session);
-        const placed = overview.tree.companyOf(session);
-        return {
-          key,
-          ...lookOf(key),
-          task: employeeName(session),
-          where: `${session.machineName} / ${placed?.companyName}${placed?.project ? `/${placed.project}` : ""}`,
-          time: new Date(session.endedAt ?? "").toLocaleTimeString("en-GB", {
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-        };
-      })
+  const wentHomeRows = loaded
+    ? wentHomeRowsOf(departures, overview.tree.companyOf)
     : [];
   // A card opened while the went-home drawer is open is the newer overlay, however it was opened.
   const openDetails = (key: string | null) => {
@@ -781,8 +782,7 @@ export function OfficeView() {
     openDetails(key);
   };
   const closeDetails = () => {
-    setSelectedKey(null);
-    officeState.selectedAgentId = null;
+    closeCard();
     setCardOverWentHome(false);
   };
   const openWentHome = () => {
@@ -848,45 +848,42 @@ export function OfficeView() {
           className="relative h-full min-w-0 flex-1 overflow-hidden"
         >
           {isPhone ? (
-            <div className="flex h-full flex-col">
-              {/* Its own row above the scrolling rooms, so neither the pill nor the status covers a room header. */}
-              <div className="flex shrink-0 items-start justify-between gap-8 px-10 pt-4">
-                <TagFilter
-                  view={tagFilterView}
-                  onSelect={selectTag}
-                  sheet
-                  onOpenChange={setTagSheetOpen}
-                  covered={rightPanel !== null || selectedSession !== null}
-                />
-                <div className="ml-auto shrink-0">
-                  <ConnectionStatus
-                    lastUpdatedAt={lastUpdatedAt}
-                    connectionLost={connectionLost}
-                    now={now.getTime()}
-                    inFlow
-                  />
-                </div>
-              </div>
-              <div className="min-h-0 flex-1">
-                {/* The list needs no assets, so it shows with the first answer and its search field is there when Search is pressed. */}
-                {phoneView === "list" && lastUpdatedAt !== null && (
-                  <PhoneList
-                    {...sharedList}
-                    onSelect={openDetails}
-                    searchRef={phoneSearchRef}
-                    companyName={viewedCompany?.name ?? ""}
-                    search={{ ...searchPool, departures }}
-                  />
-                )}
-                {phoneView === "rooms" && loaded && (
-                  <StackedRooms
-                    tiles={tiles}
-                    selectedKey={selectedKey}
-                    onSelect={openDetails}
-                  />
-                )}
-              </div>
-            </div>
+            <PhoneOffice
+              topRow={{
+                tagFilter: {
+                  view: tagFilterView,
+                  onSelect: selectTag,
+                  covered: rightPanel !== null || selectedSession !== null,
+                },
+                status: {
+                  lastUpdatedAt,
+                  connectionLost,
+                  now: now.getTime(),
+                },
+              }}
+              view={phoneView}
+              answered={lastUpdatedAt !== null}
+              loaded={loaded}
+              list={{
+                ...sharedList,
+                onSelect: openDetails,
+                seenKeys: seen.seenKeys,
+                companyName: viewedCompany?.name ?? "",
+                search: { ...searchPool, departures },
+              }}
+              rooms={{ tiles, selectedKey, onSelect: openDetails }}
+              bar={{
+                shown:
+                  !drawerOpen &&
+                  !settings.open &&
+                  !wentHomeOpen &&
+                  !selectedSession,
+                wentHomeCount: departures.length,
+                onWentHome: openWentHome,
+                wentHomeRef: phoneWentHomeRef,
+                onHire: () => setHireOpen(true),
+              }}
+            />
           ) : (
             <>
               <OfficeCanvas
@@ -972,8 +969,8 @@ export function OfficeView() {
               onClose={closeDrawer}
             />
           )}
-          {isPhone && settings.open && (
-            <PhoneSettings onClose={settings.close} />
+          {settings.open && (
+            <SettingsSheet phone={isPhone} onClose={settings.close} />
           )}
           {/* Not on a phone (the bottom bar has its own Hire); hidden while a right panel or a details sheet is open, so it never sits over or beside them. */}
           {!isPhone &&
@@ -1073,40 +1070,10 @@ export function OfficeView() {
           sessions={searchableSessions([...sessions.values()], now)}
           companyNameOf={(s) => overview.tree.companyOf(s)?.companyName ?? ""}
           offlineMachineIds={offlineIds}
-          onShow={(key) => {
-            palette.closePalette();
-            // Any company's employee opens like a Needs you copy
-            const session = sessions.get(key);
-            if (session)
-              selectNeedsYouRow(
-                key,
-                overview.tree.companyOf(session)?.companyKey ?? null,
-              );
-          }}
+          onShow={showEmployee}
           onClose={palette.closePalette}
         />
       )}
-      {isPhone &&
-        !drawerOpen &&
-        !settings.open &&
-        !wentHomeOpen &&
-        !selectedSession &&
-        !tagSheetOpen && (
-          <PhoneBottomBar
-            rooms={
-              phoneView === "rooms"
-                ? {
-                    wentHomeCount: departures.length,
-                    onWentHome: openWentHome,
-                    wentHomeRef: phoneWentHomeRef,
-                  }
-                : undefined
-            }
-            // Inside the click so iOS opens the keyboard
-            onSearch={() => phoneSearchRef.current?.focus()}
-            onHire={() => setHireOpen(true)}
-          />
-        )}
     </div>
   );
 }

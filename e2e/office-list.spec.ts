@@ -1071,18 +1071,6 @@ test.describe("selecting from the list and from the office", () => {
     ).toHaveCount(0);
   });
 
-  test("an employee picked in the office scrolls its row into view in a long list", async ({
-    context,
-    page,
-  }) => {
-    // Given thirty employees, the last one far below the top of the list and working at a desk the canvas shows
-    const base = Date.now();
-    await seed(
-      Array.from({ length: 30 }, (_, i) => ({
-        sessionId: `t${String(i).padStart(2, "0")}`,
-        deskName: `Task ${String(i).padStart(2, "0")}`,
-        startedAt: new Date(base - i * MIN),
-        ...(i === 29
   test("clicking an employee in the office while Everyone is folded opens its card and leaves Everyone folded", async ({
     context,
     page,
@@ -1108,6 +1096,18 @@ test.describe("selecting from the list and from the office", () => {
     await expect(everyone).toHaveAttribute("aria-expanded", "false");
   });
 
+  test("an employee picked in the office scrolls its row into view in a long list", async ({
+    context,
+    page,
+  }) => {
+    // Given thirty employees, the last one far below the top of the list and working at a desk the canvas shows
+    const base = Date.now();
+    await seed(
+      Array.from({ length: 30 }, (_, i) => ({
+        sessionId: `t${String(i).padStart(2, "0")}`,
+        deskName: `Task ${String(i).padStart(2, "0")}`,
+        startedAt: new Date(base - i * MIN),
+        ...(i === 29
           ? {
               state: "working",
               runningSteps: [{ text: "Edit a.ts", startedAt: new Date() }],
@@ -1133,6 +1133,56 @@ test.describe("selecting from the list and from the office", () => {
     // Then its row is highlighted and scrolled into view
     await expect(last).toHaveAttribute("aria-current", "true");
     await expect.poll(inView).toBe(true);
+  });
+
+  test("after the card of an employee picked in the office is closed, folding the whole list and opening it again does not scroll it back to its row", async ({
+    context,
+    page,
+  }) => {
+    // Given thirty employees, the last one picked in the office and its card closed, the list scrolled back to the top
+    const base = Date.now();
+    await seed(
+      Array.from({ length: 30 }, (_, i) => ({
+        sessionId: `t${String(i).padStart(2, "0")}`,
+        deskName: `Task ${String(i).padStart(2, "0")}`,
+        startedAt: new Date(base - i * MIN),
+        ...(i === 29
+          ? {
+              state: "working",
+              runningSteps: [{ text: "Edit a.ts", startedAt: new Date() }],
+            }
+          : {}),
+      })),
+    );
+    await signInAsOwner(context);
+    await page.goto("/");
+    await waitForEmployees(page, 30);
+    const last = page.getByTestId("list-row").filter({ hasText: "Task 29" });
+    const everyone = page.getByTestId("list-everyone");
+    await clickEmployee(page, await employeeLabelled(page, "Task 29"));
+    await expect(last).toHaveAttribute("aria-current", "true");
+    await page
+      .getByTestId("details-panel")
+      .getByRole("button", { name: /close/i })
+      .click();
+    await everyone.evaluate((list) => {
+      list.scrollTop = 0;
+    });
+    const inView = async () => {
+      const box = await last.boundingBox();
+      const list = await everyone.boundingBox();
+      if (!box || !list) return false;
+      return box.y >= list.y && box.y + box.height <= list.y + list.height;
+    };
+    expect(await inView()).toBe(false);
+
+    // When the owner folds the whole list and opens it again
+    await page.getByRole("button", { name: "Fold the list" }).click();
+    await page.getByRole("button", { name: /open the list$/ }).click();
+
+    // Then the list stays at the top
+    await expect(page.getByTestId("list-everyone")).toBeVisible();
+    expect(await inView()).toBe(false);
   });
 });
 
@@ -1663,6 +1713,46 @@ test.describe("Move all Review to Idle", () => {
   });
 });
 
+test.describe("Move all Review to Idle while Needs you is folded", () => {
+  test.use({ viewport: { width: 1280, height: 800 }, hasTouch: false });
+
+  test("the button stays in the folded header and moves the Review employees", async ({
+    context,
+    page,
+  }) => {
+    // Given two Review employees and Needs you folded
+    await seed(
+      ["a", "b"].map((name, i) => ({
+        sessionId: name,
+        deskName: `Task ${name}`,
+        state: "review",
+        stateSince: new Date(Date.now() - 5 * MIN),
+        rank: "bc"[i],
+      })),
+    );
+    await signInAsOwner(context);
+    await page.goto("/");
+    await waitForEmployees(page, 2);
+    await page.getByRole("button", { name: "Needs you", exact: true }).click();
+    await expect(
+      page.getByTestId("needs-row").locator("visible=true"),
+    ).toHaveCount(0);
+    const moveAll = page.getByRole("button", {
+      name: "Move all 2 Review to Idle",
+    });
+    await expect(moveAll).toBeVisible();
+
+    // When the owner presses it
+    await moveAll.click();
+
+    // Then both employees read Idle and the button is gone
+    await expect(
+      page.getByTestId("list-everyone").getByTestId("list-row-status"),
+    ).toHaveText([/^Idle/, /^Idle/]);
+    await expect(moveAll).toHaveCount(0);
+  });
+});
+
 test.describe("a refused Move all", () => {
   test.use({ viewport: { width: 1280, height: 800 }, hasTouch: false });
 
@@ -1725,46 +1815,6 @@ test.describe("folding the list", () => {
         deskName: "Task New",
         state: "waitingForYou",
         stateSince: new Date(),
-test.describe("Move all Review to Idle while Needs you is folded", () => {
-  test.use({ viewport: { width: 1280, height: 800 }, hasTouch: false });
-
-  test("the button stays in the folded header and moves the Review employees", async ({
-    context,
-    page,
-  }) => {
-    // Given two Review employees and Needs you folded
-    await seed(
-      ["a", "b"].map((name, i) => ({
-        sessionId: name,
-        deskName: `Task ${name}`,
-        state: "review",
-        stateSince: new Date(Date.now() - 5 * MIN),
-        rank: "bc"[i],
-      })),
-    );
-    await signInAsOwner(context);
-    await page.goto("/");
-    await waitForEmployees(page, 2);
-    await page.getByRole("button", { name: "Needs you", exact: true }).click();
-    await expect(
-      page.getByTestId("needs-row").locator("visible=true"),
-    ).toHaveCount(0);
-    const moveAll = page.getByRole("button", {
-      name: "Move all 2 Review to Idle",
-    });
-    await expect(moveAll).toBeVisible();
-
-    // When the owner presses it
-    await moveAll.click();
-
-    // Then both employees read Idle and the button is gone
-    await expect(
-      page.getByTestId("list-everyone").getByTestId("list-row-status"),
-    ).toHaveText([/^Idle/, /^Idle/]);
-    await expect(moveAll).toHaveCount(0);
-  });
-});
-
         startedAt: new Date(),
         changedAt: new Date(),
       });

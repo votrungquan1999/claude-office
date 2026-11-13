@@ -33,6 +33,8 @@ interface PhoneListProps {
   /** Today's departures of the viewed company, newest first. */
   departures: DepartureRow[];
   onSelectDeparture: (key: string) => void;
+  /** The conversations this device has opened or already had at its first answer; null while unknown. */
+  seenKeys: ReadonlySet<string> | null;
   /** The Macs that are offline. */
   offlineMachineIds: ReadonlySet<string>;
   /** How each repo tag of the viewed company is written, by tag key. */
@@ -67,6 +69,7 @@ export function PhoneList({
   selectedKey,
   departures,
   onSelectDeparture,
+  seenKeys,
   offlineMachineIds,
   tagLabels,
   serverOffsetMs,
@@ -181,7 +184,10 @@ export function PhoneList({
                         draggable
                         touchGrip
                         session={session}
-                        isNew={false}
+                        isNew={
+                          seenKeys !== null &&
+                          !seenKeys.has(sessionKey(session))
+                        }
                         selected={sessionKey(session) === selectedKey}
                         revealToken={null}
                         offline={offlineMachineIds.has(session.machineId)}

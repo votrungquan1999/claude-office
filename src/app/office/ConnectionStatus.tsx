@@ -1,4 +1,4 @@
-interface ConnectionStatusProps {
+export interface ConnectionStatusProps {
   /** When the last answer arrived; null before the first. */
   lastUpdatedAt: number | null;
   connectionLost: boolean;

@@ -135,6 +135,54 @@ test("the phone shows a search field, Needs you, Everyone in the owner's order w
   await expect(list.getByTestId("went-home-list")).toContainText("Echo gone");
 });
 
+test("a conversation that arrives after the phone's list showed gets a new dot until it is opened there", async ({
+  context,
+  page,
+}) => {
+  // Given one conversation and the phone's list already showing
+  await seed([
+    {
+      sessionId: "old",
+      cwd: PERSONAL,
+      startCwd: PERSONAL,
+      deskName: "Old task",
+      startedAt: new Date(Date.now() - 60 * 60_000),
+    },
+  ]);
+  await signInAsOwner(context);
+  await page.goto("/");
+  const names = page.getByTestId("list-row-name");
+  await expect(names).toHaveText(["Old task"]);
+  const dots = page.getByTestId("list-row-new");
+  await expect(dots).toHaveCount(0);
+
+  // When a new conversation starts
+  await withE2eDb((db) =>
+    db.collection("sessions").insertOne({
+      machineId: "air",
+      machineName: "Air",
+      sessionId: "fresh",
+      deskName: "Fresh task",
+      cwd: PERSONAL,
+      state: "idle",
+      startedAt: new Date(),
+      changedAt: new Date(),
+    }),
+  );
+
+  // Then it joins the top with the only new dot
+  await expect(names).toHaveText(["Fresh task", "Old task"], {
+    timeout: 20_000,
+  });
+  await expect(dots).toHaveCount(1);
+
+  // When the owner opens it
+  await names.first().tap();
+
+  // Then the dot is gone
+  await expect(dots).toHaveCount(0);
+});
+
 test("the bottom bar offers Search and Hire and no Went home button, and Search puts the cursor in the search field", async ({
   context,
   page,
@@ -376,6 +424,34 @@ test.describe("searching on the phone", () => {
     ]);
   }
 
+  test("typing the owner's tab name finds an employee whose name does not hold it, with a Tab name line", async ({
+    context,
+    page,
+  }) => {
+    // Given an employee named differently from its tab
+    await seed([
+      {
+        sessionId: "p1",
+        cwd: PERSONAL,
+        startCwd: PERSONAL,
+        deskName: "Unrelated task",
+        tabName: "real vn30",
+      },
+    ]);
+    await signInAsOwner(context);
+    await page.goto("/");
+    const list = page.getByTestId("phone-list");
+    await expect(list.getByTestId("list-row")).toHaveCount(1);
+
+    // When the owner types the tab's name
+    await typeSearch(page, "vn30");
+
+    // Then the row says it matched the tab name
+    const row = list.getByTestId("list-row");
+    await expect(row).toContainText("Unrelated task");
+    await expect(row).toContainText("Tab name: real vn30");
+  });
+
   test("typing narrows the list to the matches in the owner's order, says why each matched, lists the one that went home last, and hides the grips", async ({
     context,
     page,
@@ -424,34 +500,6 @@ test.describe("searching on the phone", () => {
   test("a search finds an employee the repo filter hides in Everyone", async ({
     context,
     page,
-  test("typing the owner's tab name finds an employee whose name does not hold it, with a Tab name line", async ({
-    context,
-    page,
-  }) => {
-    // Given an employee named differently from its tab
-    await seed([
-      {
-        sessionId: "p1",
-        cwd: PERSONAL,
-        startCwd: PERSONAL,
-        deskName: "Unrelated task",
-        tabName: "real vn30",
-      },
-    ]);
-    await signInAsOwner(context);
-    await page.goto("/");
-    const list = page.getByTestId("phone-list");
-    await expect(list.getByTestId("list-row")).toHaveCount(1);
-
-    // When the owner types the tab's name
-    await typeSearch(page, "vn30");
-
-    // Then the row says it matched the tab name
-    const row = list.getByTestId("list-row");
-    await expect(row).toContainText("Unrelated task");
-    await expect(row).toContainText("Tab name: real vn30");
-  });
-
   }) => {
     // Given an api and a web employee, with the web repo picked
     const api = { name: "api", key: "aaaaaaaaaaaa" };
@@ -1002,7 +1050,127 @@ test.describe("the phone's settings", () => {
     await expect(button).toBeFocused();
   });
 
-  test("a second phone still shows the list, and a Mac has no Settings button", async ({
+  test("the Settings sheet's switch takes the other companies out of Needs you and out of Move all, and keeps them out after a reload", async ({
+    context,
+    page,
+  }) => {
+    // Given a phone whose own company has a Review employee and whose other company has one too
+    await seed([
+      {
+        sessionId: "mine",
+        cwd: PERSONAL,
+        startCwd: PERSONAL,
+        deskName: "Own review",
+        state: "review",
+        stateSince: new Date(),
+        rank: "b",
+      },
+      {
+        sessionId: "theirs",
+        cwd: WORK,
+        startCwd: WORK,
+        deskName: "Their review",
+        state: "review",
+        stateSince: new Date(),
+        rank: "b",
+      },
+    ]);
+    await signInAsOwner(context);
+    await page.goto("/");
+    const needs = page.getByTestId("needs-you");
+    await expect(needs).toContainText("Their review");
+    await expect(
+      needs.getByRole("button", { name: /Move all 2 Review to Idle/ }),
+    ).toBeVisible();
+
+    // When the owner turns the switch off in the Settings sheet
+    await page.getByRole("button", { name: "Settings" }).tap();
+    const sheet = page.getByRole("dialog", { name: "Settings" });
+    const toggle = sheet.getByRole("switch", {
+      name: "Needs you includes other companies",
+    });
+    await expect(toggle).toHaveAttribute("aria-checked", "true");
+    await toggle.tap();
+    await sheet.getByRole("button", { name: "Close" }).tap();
+
+    // Then Needs you lists only the viewed company and Move all counts only it
+    await expect(needs).toContainText("Own review");
+    await expect(needs).not.toContainText("Their review");
+    await expect(
+      needs.getByRole("button", { name: /Move all 1 Review to Idle/ }),
+    ).toBeVisible();
+
+    // And the choice holds after a reload
+    await page.reload();
+    await expect(page.getByTestId("needs-you")).not.toContainText(
+      "Their review",
+    );
+  });
+
+  test("opening Settings closes the Went home sheet, and a scrim over the strip and the rows blocks them", async ({
+    context,
+    page,
+  }) => {
+    // Given a phone on the Rooms view with its Went home sheet open
+    await seed([
+      {
+        sessionId: "a",
+        cwd: PERSONAL,
+        startCwd: PERSONAL,
+        deskName: "Task A",
+        state: "idle",
+        rank: "b",
+      },
+      {
+        sessionId: "gone",
+        cwd: PERSONAL,
+        startCwd: PERSONAL,
+        deskName: "Echo gone",
+        state: "wentHome",
+        hadPrompt: true,
+        endedAt: new Date(),
+      },
+    ]);
+    await signInAsOwner(context);
+    await showRooms(context);
+    await page.goto("/");
+    await page.getByRole("button", { name: /^Went home/ }).tap();
+    await expect(
+      page.getByRole("dialog", { name: "Went home today" }),
+    ).toBeVisible();
+
+    // When the owner opens the settings
+    await page.getByRole("button", { name: "Settings" }).tap();
+
+    // Then only the settings are open
+    await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
+    await expect(
+      page.getByRole("dialog", { name: "Went home today" }),
+    ).toHaveCount(0);
+
+    // And the scrim sits over the whole screen, so the strip's buttons are behind it
+    const scrim = page.getByTestId("settings-scrim");
+    const box = await scrim.boundingBox();
+    const viewport = page.viewportSize();
+    expect(box).toMatchObject({
+      x: 0,
+      y: 0,
+      width: viewport?.width,
+      height: viewport?.height,
+    });
+    const allCompanies = await centerOf(
+      page.getByRole("button", { name: "All companies" }),
+    );
+    expect(
+      await page.evaluate(
+        ({ x, y }) =>
+          document.elementFromPoint(x, y)?.getAttribute("data-testid"),
+        allCompanies,
+      ),
+    ).toBe("settings-scrim");
+  });
+
+  test("a second phone still shows the list, and a Mac opens its own settings", async ({
     browser,
     context,
     page,
@@ -1042,12 +1210,13 @@ test.describe("the phone's settings", () => {
       const macPage = await mac.newPage();
       await macPage.goto("/");
 
-      // Then the phone shows the list and the Mac its list panel with no Settings button
+      // Then the phone shows the list and the Mac its list panel, whose Settings button opens the Mac's dialog
       await expect(phonePage.getByTestId("phone-list")).toBeVisible();
       await expect(macPage.getByTestId("list-panel")).toBeVisible();
+      await macPage.getByRole("button", { name: "Settings" }).click();
       await expect(
-        macPage.getByRole("button", { name: "Settings" }),
-      ).toHaveCount(0);
+        macPage.getByRole("dialog", { name: "Settings" }),
+      ).toContainText("List when the office opens");
     } finally {
       await phone.close();
       await mac.close();

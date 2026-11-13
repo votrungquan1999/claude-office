@@ -4,6 +4,8 @@ import { selectNeedsYou } from "@/shared/needs-you";
 import { type SessionDto, sessionKey } from "@/shared/session";
 import type { overviewOf } from "../officeData";
 import type { SessionMap } from "../officeStore";
+import { useDeviceSettings } from "../settings/deviceSettings";
+import { useTabTitle } from "../useTabTitle";
 import { companyRows } from "./companyRows";
 import { useListFolds } from "./useListFolds";
 
@@ -25,9 +27,9 @@ interface ListModelInput {
 }
 
 /**
- * What the list shows: the viewed company's rows, the open card's place, the Needs you copies and the folds.
+ * What the list shows: the viewed company's rows, the open card's place, the Needs you copies and the folds. It also sets the browser tab's title from the Needs you count.
  * @param input - The sessions, the view and the selection.
- * @returns The rows the filter shows, the selected row's place, Needs you and the fold state.
+ * @returns The rows the filter shows, the selected row's place, Needs you, and the fold state.
  */
 export function useListModel({
   sessions,
@@ -39,6 +41,7 @@ export function useListModel({
   now,
   loaded,
 }: ListModelInput) {
+  const { needsYouOtherCompanies, tabCount } = useDeviceSettings();
   const rows = companyRows(
     sessions.values(),
     (session) => overview.tree.companyOf(session)?.companyKey,
@@ -47,17 +50,27 @@ export function useListModel({
   const companyOrder = overview.macs.flatMap((mac) =>
     mac.companies.map((entry) => entry.company.key),
   );
-  const needsYou = selectNeedsYou({
-    sessions: sessions.values(),
-    companyOf: (session) => overview.tree.companyOf(session),
-    viewedCompany: companyKey,
-    companyOrder,
-    offlineMachineIds: offlineIds,
-    includeOtherCompanies: true,
-  });
+  const needsYouOf = (includeOtherCompanies: boolean) =>
+    selectNeedsYou({
+      sessions: sessions.values(),
+      companyOf: (session) => overview.tree.companyOf(session),
+      viewedCompany: companyKey,
+      companyOrder,
+      offlineMachineIds: offlineIds,
+      includeOtherCompanies,
+    });
+  // The tab counts every company whatever Needs you lists
+  const everywhere = needsYouOf(true);
+  useTabTitle(everywhere.total, tabCount);
+  const needsYou = needsYouOtherCompanies ? everywhere : needsYouOf(false);
   const listFold = useListFolds(
     new Set(
       [...needsYou.own, ...needsYou.others.flatMap((g) => g.rows)].map(
+        sessionKey,
+      ),
+    ),
+    new Set(
+      [...everywhere.own, ...everywhere.others.flatMap((g) => g.rows)].map(
         sessionKey,
       ),
     ),

@@ -1,3 +1,4 @@
+import { ToggleSwitch } from "../ToggleSwitch";
 import { useEscape } from "../useEscape";
 import {
   type DeviceSettings,
@@ -33,7 +34,7 @@ const VIEWS: Array<{
  * @returns A scrim over the screen and the bottom sheet.
  */
 export function PhoneSettings({ onClose }: PhoneSettingsProps) {
-  const { phoneView: view } = useDeviceSettings();
+  const { phoneView: view, needsYouOtherCompanies } = useDeviceSettings();
   useEscape(onClose);
   return (
     <>
@@ -77,6 +78,25 @@ export function PhoneSettings({ onClose }: PhoneSettingsProps) {
             </button>
           ))}
         </fieldset>
+        <div className="flex items-center gap-12">
+          <div className="flex-1">
+            <h3 className="font-bold">Needs you includes other companies</h3>
+            <p className="text-xs text-text-muted">
+              Employees from your other companies who need you show in Needs
+              you, under "In other companies". On by default.
+            </p>
+          </div>
+          <ToggleSwitch
+            size="large"
+            label="Needs you includes other companies"
+            checked={needsYouOtherCompanies}
+            onToggle={() =>
+              storeDeviceSettings({
+                needsYouOtherCompanies: !needsYouOtherCompanies,
+              })
+            }
+          />
+        </div>
         <p className="text-xs text-text-muted">
           Changes this phone only; the Mac keeps the office and the list.
         </p>

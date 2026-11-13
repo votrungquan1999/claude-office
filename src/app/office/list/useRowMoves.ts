@@ -1,14 +1,21 @@
 import { useRef, useState } from "react";
 import { moveTo, type RankAssignment } from "@/shared/list-order";
 import { type SessionDto, sessionKey } from "@/shared/session";
-import { type PendingRanks, postRanks, refuseRanks } from "./pendingRanks";
+import {
+  acceptRanks,
+  type PendingRanks,
+  postRanks,
+  refuseRanks,
+} from "./pendingRanks";
 
 interface RowMovesInput {
   /** The places the owner gave on this device that no answer has settled yet. */
   getRanks: () => PendingRanks;
   setRanks: (ranks: PendingRanks) => void;
-  /** How far the server's clock is ahead of this browser's. */
-  serverOffsetMs: number;
+  /** The number of the last poll started so far. */
+  lastStartedPoll: () => number;
+  /** The company being viewed; a refusal belongs to the company it happened in. */
+  companyKey: string | null;
   /** The viewed company's live rows in list order, and which of them the tag filter shows. */
   viewedRows: () => {
     rows: SessionDto[];
@@ -24,13 +31,16 @@ interface RowMovesInput {
 export function useRowMoves({
   getRanks,
   setRanks,
-  serverOffsetMs,
+  lastStartedPoll,
   viewedRows,
+  companyKey,
 }: RowMovesInput) {
-  const [refusal, setRefusal] = useState<{
+  const [refused, setRefusal] = useState<{
     message: string;
     viaCard: boolean;
+    companyKey: string | null;
   } | null>(null);
+  const refusal = refused?.companyKey === companyKey ? refused : null;
   // Numbers each move, so refusing an old move never takes back a newer place.
   const tokenRef = useRef(0);
 
@@ -67,7 +77,6 @@ export function useRowMoves({
   const save = async (places: RankAssignment[], viaCard: boolean) => {
     if (places.length === 0) return;
     const token = ++tokenRef.current;
-    const movedAt = new Date(Date.now() + serverOffsetMs).toISOString();
     setRefusal(null);
     setRanks(
       new Map([
@@ -76,14 +85,18 @@ export function useRowMoves({
           ({ machineId, sessionId, rank }) =>
             [
               sessionKey({ machineId, sessionId }),
-              { rank, token, movedAt },
+              { rank, token, storedAfterPoll: null },
             ] as const,
         ),
       ]),
     );
-    if (await postRanks({ items: places })) return;
+    if (await postRanks({ items: places })) {
+      // The server holds the places now; an answer to a poll started from here on is the truth, whatever place it shows.
+      setRanks(acceptRanks(getRanks(), token, lastStartedPoll()));
+      return;
+    }
     setRanks(refuseRanks(getRanks(), token));
-    setRefusal({ message: "Could not move. Try again.", viaCard });
+    setRefusal({ message: "Could not move. Try again.", viaCard, companyKey });
   };
 
   return {

@@ -5,15 +5,33 @@ import { z } from "zod";
 export interface DeviceSettings {
   /** What a phone shows: the ordered list, or today's stacked rooms. */
   phoneView: "list" | "rooms";
+  /** Whether the Mac's list starts open beside the office or folded to its strip, at every load. */
+  listStart: "open" | "folded";
+  /** Whether the browser tab's title carries the needs-you count. */
+  tabCount: boolean;
+  /** Whether the Mac's Needs you section also lists employees of the other companies. */
+  needsYouOtherCompanies: boolean;
 }
 
-export const DEFAULT_DEVICE_SETTINGS: DeviceSettings = { phoneView: "list" };
+export const DEFAULT_DEVICE_SETTINGS: DeviceSettings = {
+  phoneView: "list",
+  listStart: "open",
+  tabCount: true,
+  needsYouOtherCompanies: true,
+};
 
 const DEVICE_SETTINGS_STORAGE_KEY = "claude-office.settings";
 
 // A field that is missing or of the wrong type takes its default
 const settingsSchema = z.object({
   phoneView: z.enum(["list", "rooms"]).catch(DEFAULT_DEVICE_SETTINGS.phoneView),
+  listStart: z
+    .enum(["open", "folded"])
+    .catch(DEFAULT_DEVICE_SETTINGS.listStart),
+  tabCount: z.boolean().catch(DEFAULT_DEVICE_SETTINGS.tabCount),
+  needsYouOtherCompanies: z
+    .boolean()
+    .catch(DEFAULT_DEVICE_SETTINGS.needsYouOtherCompanies),
 });
 
 /**
