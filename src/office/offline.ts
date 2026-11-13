@@ -12,16 +12,19 @@ export enum MacBlock {
 /** The first agent version that takes orders from the office. */
 export const MIN_AGENT_VERSION = "0.3.0";
 
+/** The first agent version whose Dismiss ends the conversation and closes its window; older agents only stop keeping the employee. */
+export const DISMISS_MIN_AGENT_VERSION = "0.4.0";
+
 /** Reads "major.minor.patch" into numbers; undefined for anything else. */
 function parseVersion(version: string): number[] | undefined {
   const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
   return match ? match.slice(1).map(Number) : undefined;
 }
 
-/** Whether an agent's reported version is missing, unreadable or older than the first one that takes orders. */
-function isOutdated(version: string | undefined): boolean {
+/** Whether an agent's reported version is missing, unreadable or older than `minimum`. */
+function isOlderThan(version: string | undefined, minimum: string): boolean {
   const have = version === undefined ? undefined : parseVersion(version);
-  const need = parseVersion(MIN_AGENT_VERSION);
+  const need = parseVersion(minimum);
   if (!have || !need) return true;
   for (let part = 0; part < 3; part++) {
     if (have[part] !== need[part]) return have[part] < need[part];
@@ -46,7 +49,9 @@ export function macBlock(
   ) {
     return MacBlock.Offline;
   }
-  return isOutdated(machine.agentVersion) ? MacBlock.Outdated : undefined;
+  return isOlderThan(machine.agentVersion, MIN_AGENT_VERSION)
+    ? MacBlock.Outdated
+    : undefined;
 }
 
 /**
@@ -71,4 +76,13 @@ export function offlineMachineIds(
     if (!known.has(machineId)) offline.add(machineId);
   }
   return offline;
+}
+
+/**
+ * Whether a Mac's agent closes the window on Dismiss.
+ * @param agentVersion - The agent's reported version, if any.
+ * @returns True for an agent at or past the version that closes windows.
+ */
+export function dismissClosesWindow(agentVersion: string | undefined): boolean {
+  return !isOlderThan(agentVersion, DISMISS_MIN_AGENT_VERSION);
 }

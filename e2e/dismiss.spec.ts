@@ -24,7 +24,7 @@ async function seed() {
         machineId: "m-up",
         machineName: "Up Mac",
         lastSeenAt: new Date(now),
-        agentVersion: "0.3.0",
+        agentVersion: "0.4.0",
       },
       {
         machineId: "m-down",
@@ -55,6 +55,12 @@ async function seed() {
     });
     await seedSessions(db.collection("sessions"), [
       kept("m-up", "Up Mac", "/work/up"),
+      {
+        ...kept("m-up", "Up Mac", "/work/up"),
+        sessionId: "s-busy",
+        deskName: "Busy on Up Mac",
+        state: "working",
+      },
       {
         sessionId: "s-plain",
         machineId: "m-up",
@@ -88,7 +94,7 @@ test("Dismiss is offered for a kept employee and not a plain one, sends one orde
   await signInAsOwner(context);
   await page.goto("/");
   await page.locator('[data-company-name="up"]').click();
-  await waitForEmployees(page, 2);
+  await waitForEmployees(page, 3);
   const panel = page.getByTestId("details-panel");
 
   // When the owner selects the plain employee
@@ -106,8 +112,9 @@ test("Dismiss is offered for a kept employee and not a plain one, sends one orde
   // Then Dismiss is offered
   await expect(panel.getByTestId("dismiss-button")).toBeEnabled();
 
-  // When the owner clicks Dismiss
+  // When the owner presses Dismiss and confirms in the pop-up
   await panel.getByTestId("dismiss-button").click();
+  await page.getByTestId("dismiss-confirm").click();
 
   // Then exactly one dismiss order for that Mac and session exists, and the button is disabled while it is pending
   await expect.poll(async () => (await readCommands()).length).toBe(1);
@@ -165,4 +172,61 @@ test("Dismiss is disabled for an offline Mac, and for an out-of-date agent with 
   await expect(panel.getByTestId("dismiss-note")).toContainText(
     "Update this Mac's agent",
   );
+});
+
+test("Dismiss on a working employee opens a pop-up with the strong warning, and Cancel sends nothing", async ({
+  context,
+  page,
+}) => {
+  // Given the office on the online Mac's company
+  await signInAsOwner(context);
+  await page.goto("/");
+  await page.locator('[data-company-name="up"]').click();
+  await waitForEmployees(page, 3);
+  const popup = page.getByRole("dialog", { name: "Dismiss employee" });
+
+  // When the owner presses Dismiss on the working employee
+  await clickEmployee(page, await employeeLabelled(page, "Busy on Up Mac"));
+  await page.getByTestId("dismiss-button").click();
+
+  // Then the pop-up warns that dismissing stops its work
+  await expect(popup).toContainText(
+    "It is working right now; dismissing stops it.",
+  );
+
+  // When the owner cancels
+  await popup.getByRole("button", { name: "Cancel" }).click();
+
+  // Then the pop-up closes and no order exists
+  await expect(popup).toBeHidden();
+  expect(await readCommands()).toHaveLength(0);
+});
+
+test("Dismiss on an idle employee opens a pop-up naming the Mac without the strong warning, and Escape sends nothing", async ({
+  context,
+  page,
+}) => {
+  // Given the office on the online Mac's company
+  await signInAsOwner(context);
+  await page.goto("/");
+  await page.locator('[data-company-name="up"]').click();
+  await waitForEmployees(page, 3);
+  const popup = page.getByRole("dialog", { name: "Dismiss employee" });
+
+  // When the owner presses Dismiss on the idle employee
+  await clickEmployee(page, await employeeLabelled(page, "Kept on Up Mac"));
+  await page.getByTestId("dismiss-button").click();
+
+  // Then the pop-up names the Mac with no strong warning
+  await expect(popup).toContainText(
+    "still open in a Terminal window on Up Mac",
+  );
+  await expect(popup).not.toContainText("dismissing stops it");
+
+  // When the owner presses Escape
+  await page.keyboard.press("Escape");
+
+  // Then the pop-up closes and no order exists
+  await expect(popup).toBeHidden();
+  expect(await readCommands()).toHaveLength(0);
 });

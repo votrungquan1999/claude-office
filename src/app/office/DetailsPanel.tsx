@@ -45,6 +45,8 @@ interface DetailsPanelProps {
   onWake?: () => void;
   /** The dismiss the owner gave this employee, kept by the page so reselecting shows it again. */
   dismiss?: OrderClickState;
+  /** Whether the employee's Mac has an agent that closes the window on Dismiss; true when not given. */
+  dismissClosesWindow?: boolean;
   /** Sends one dismiss order for the employee. */
   onDismiss?: () => void;
   /** Sends the owner's name for the employee; resolves true when the server stored it. */
@@ -223,6 +225,7 @@ function Card({
   onWake,
   dismiss,
   onDismiss,
+  dismissClosesWindow = true,
   onRename,
   onMoveToIdle,
   moveToIdleError,
@@ -411,6 +414,8 @@ function Card({
             block={macBlock}
             dismiss={dismiss}
             onDismiss={onDismiss}
+            session={session}
+            closesWindow={dismissClosesWindow}
           />
         )}
         <StepsList key={sessionKey(session)} session={session} />

@@ -14,7 +14,11 @@ import { fitZoom } from "@/office/fitZoom";
 import { useHasMouse } from "@/office/hooks/useHasMouse";
 import { useIsMobile } from "@/office/hooks/useIsMobile";
 import { useIsPhone } from "@/office/hooks/useIsPhone";
-import { macBlock, offlineMachineIds } from "@/office/offline";
+import {
+  dismissClosesWindow,
+  macBlock,
+  offlineMachineIds,
+} from "@/office/offline";
 import { ROOM_OF_STATE } from "@/office/rooms";
 import { createSceneSync, lookOf } from "@/office/sceneSync";
 import { installTestHooks } from "@/office/testHooks";
@@ -1015,6 +1019,11 @@ export function OfficeView() {
             }
             wake={selectedKey ? wakes.get(selectedKey) : undefined}
             onWake={() => void wakeSelected()}
+            dismissClosesWindow={dismissClosesWindow(
+              machines.find(
+                (machine) => machine.machineId === selectedSession?.machineId,
+              )?.agentVersion,
+            )}
             dismiss={selectedKey ? dismisses.get(selectedKey) : undefined}
             onDismiss={() => void dismissSelected()}
             onRename={(name) =>

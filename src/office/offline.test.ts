@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { macBlock, offlineMachineIds } from "./offline";
+import { dismissClosesWindow, macBlock, offlineMachineIds } from "./offline";
 
 const NOW = "2026-11-08T10:00:00.000Z";
 
@@ -60,5 +60,19 @@ describe("whether a Mac's agent is new enough", () => {
 
     // And an offline Mac reads offline whatever its version
     expect(macBlock(machine("m", 600, "0.3.0"), NOW)).toBe("offline");
+  });
+});
+
+describe("which agents close a window on Dismiss", () => {
+  it("is every agent from the Dismiss minimum version up, and no older, unreadable or unreported one", () => {
+    // Given versions around the minimum
+    // Then only the minimum and later ones count, compared number by number
+    expect(dismissClosesWindow("0.4.0")).toBe(true);
+    expect(dismissClosesWindow("0.10.2")).toBe(true);
+    expect(dismissClosesWindow("1.0.0")).toBe(true);
+    expect(dismissClosesWindow("0.3.9")).toBe(false);
+    expect(dismissClosesWindow("0.3.1")).toBe(false);
+    expect(dismissClosesWindow("beta")).toBe(false);
+    expect(dismissClosesWindow(undefined)).toBe(false);
   });
 });

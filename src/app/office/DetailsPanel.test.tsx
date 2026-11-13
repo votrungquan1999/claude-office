@@ -737,7 +737,7 @@ describe("the details panel", () => {
     });
   });
 
-  it("offers Dismiss for a kept employee in any state, never for a plain one, and one click sends one dismiss", () => {
+  it("offers Dismiss for a kept employee in any state and never for a plain one", () => {
     // Given the panel for each kind of kept employee and for plain ones
     const kept = [
       session({ state: "thinking", kept: "hired" }),
@@ -756,34 +756,11 @@ describe("the details panel", () => {
       expect(screen.queryByTestId("dismiss-button")).toBeNull();
       cleanup();
     }
-    const onDismiss = vi.fn();
     for (const s of kept) {
-      openWithWake(s, { onDismiss });
+      openWithWake(s, { onDismiss: vi.fn() });
       expect(screen.getByTestId("dismiss-button").textContent).toBe("Dismiss");
       cleanup();
     }
-
-    // When the owner clicks Dismiss, and again while the page's dismiss is still in flight
-    const { rerender } = openWithWake(kept[0], { onDismiss });
-    fireEvent.click(screen.getByTestId("dismiss-button"));
-    rerender(
-      <DetailsPanel
-        session={kept[0]}
-        tagLabels={new Map()}
-        offlineMachineIds={new Set()}
-        sheet={false}
-        onClose={vi.fn()}
-        onDismiss={onDismiss}
-        dismiss={{ sending: true }}
-      />,
-    );
-    fireEvent.click(screen.getByTestId("dismiss-button"));
-
-    // Then one dismiss went out and the button reads disabled while it is in flight
-    expect(onDismiss).toHaveBeenCalledTimes(1);
-    expect(
-      (screen.getByTestId("dismiss-button") as HTMLButtonElement).disabled,
-    ).toBe(true);
   });
 
   it("disables Dismiss for an offline Mac and for an out-of-date agent, saying to update it, and keeps it enabled for a Mac that can take orders", () => {
@@ -975,6 +952,206 @@ describe("the details panel", () => {
     expect(screen.getByRole("alert").textContent).toBe(
       "Could not move to Idle. Try again.",
     );
+  });
+});
+
+describe("the Dismiss pop-up", () => {
+  afterEach(cleanup);
+
+  const pressDismiss = () =>
+    fireEvent.click(screen.getByTestId("dismiss-button"));
+  const popup = () =>
+    screen.queryByRole("dialog", { name: "Dismiss employee" });
+
+  it("does not promise a later wake when the employee never had a prompt, since nothing will appear in Went home", () => {
+    // Given the card of a hired employee that was never given a request
+    openWithWake(session({ state: "idle", kept: "hired" }), {
+      onDismiss: vi.fn(),
+    });
+
+    // When the owner presses Dismiss
+    pressDismiss();
+
+    // Then the pop-up says it will not appear in Went home and does not offer a wake
+    const text = popup()?.textContent ?? "";
+    expect(text).toContain("it will not appear in Went home");
+    expect(text).not.toContain("wake it again");
+  });
+
+  it("opens a pop-up that names the Mac and sends nothing, and its confirm button sends exactly one dismiss and closes it", () => {
+    // Given the card of a hired employee that is idle
+    const onDismiss = vi.fn();
+    openWithWake(session({ state: "idle", kept: "hired", hadPrompt: true }), {
+      onDismiss,
+    });
+
+    // When the owner presses Dismiss
+    pressDismiss();
+
+    // Then a modal pop-up explains the window is still open on the Mac, and no order went out
+    expect(popup()?.getAttribute("aria-modal")).toBe("true");
+    expect(popup()?.textContent).toContain(
+      "This conversation is still open in a Terminal window on Quan's MacBook Pro. Dismiss ends it and closes the window; you can wake it again later.",
+    );
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    // When the owner presses the pop-up's Dismiss twice
+    const confirm = screen.getByTestId("dismiss-confirm");
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+
+    // Then one dismiss went out and the pop-up is gone
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+    expect(popup()).toBeNull();
+  });
+
+  it("sends nothing when the owner cancels with Cancel, Escape or the backdrop, starts on Cancel, and gives focus back to the Dismiss button", () => {
+    // Given a hired employee and a sent-nothing counter
+    const onDismiss = vi.fn();
+    openWithWake(session({ state: "idle", kept: "hired" }), { onDismiss });
+
+    // When the pop-up opens
+    pressDismiss();
+
+    // Then focus starts on the safe choice
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Cancel" }),
+    );
+
+    // When the owner cancels with the button, Escape, then the backdrop
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(popup()).toBeNull();
+    pressDismiss();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(popup()).toBeNull();
+    pressDismiss();
+    fireEvent.click(screen.getByTestId("dismiss-backdrop"));
+    expect(popup()).toBeNull();
+
+    // Then focus is back on the Dismiss button and nothing was ever sent
+    expect(document.activeElement).toBe(screen.getByTestId("dismiss-button"));
+    expect(onDismiss).not.toHaveBeenCalled();
+  });
+
+  it("adds a strong warning for an employee that is working, thinking or waiting on your permission, and none for any other state or a window still opening", () => {
+    // Given what the pop-up says for each kind of hired employee
+    const warningFor = (extra: Partial<SessionDto>) => {
+      const { unmount } = openWithWake(session({ kept: "hired", ...extra }), {
+        onDismiss: vi.fn(),
+      });
+      pressDismiss();
+      const text = popup()?.textContent ?? "";
+      unmount();
+      return /dismissing stops it/.test(text) ? text : null;
+    };
+
+    // Then working and thinking say it is working, needs permission says it waits on the owner
+    expect(warningFor({ state: "working" })).toContain(
+      "It is working right now; dismissing stops it.",
+    );
+    expect(warningFor({ state: "thinking" })).toContain(
+      "It is working right now; dismissing stops it.",
+    );
+    expect(warningFor({ state: "needsPermission" })).toContain(
+      "It is waiting for your permission; dismissing stops it.",
+    );
+
+    // And every other state, and a window at the trust question or still starting, get the plain wording only
+    for (const extra of [
+      { state: "idle" },
+      { state: "waitingForYou" },
+      { state: "review" },
+      { state: "needsPermission", waitingAtMac: true },
+      { state: "idle", starting: true },
+    ] as Array<Partial<SessionDto>>) {
+      expect(warningFor(extra)).toBeNull();
+    }
+  });
+
+  it("dismisses a Not running employee at once with one click, since it has no window process to explain", () => {
+    // Given a hired employee whose window already closed
+    const onDismiss = vi.fn();
+    const notRunning = session({
+      state: "idle",
+      kept: "woken",
+      notRunning: true,
+    });
+    const { rerender } = openWithWake(notRunning, { onDismiss });
+
+    // When the owner presses Dismiss, and again while the dismiss is in flight
+    pressDismiss();
+    rerender(
+      <DetailsPanel
+        session={notRunning}
+        tagLabels={new Map()}
+        offlineMachineIds={new Set()}
+        sheet={false}
+        onClose={vi.fn()}
+        onDismiss={onDismiss}
+        dismiss={{ sending: true }}
+      />,
+    );
+    pressDismiss();
+
+    // Then no pop-up appeared, one dismiss went out, and the button reads disabled
+    expect(popup()).toBeNull();
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+    expect(
+      (screen.getByTestId("dismiss-button") as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+
+  it("follows the live card: when the Mac goes offline while the pop-up is open its Dismiss is disabled, and when the employee stops working the strong warning goes", () => {
+    // Given the pop-up open for a working hire
+    const onDismiss = vi.fn();
+    const working = session({ state: "working", kept: "hired" });
+    const panel = (s: SessionDto, macBlock?: MacBlock) => (
+      <DetailsPanel
+        session={s}
+        tagLabels={new Map()}
+        offlineMachineIds={new Set()}
+        sheet={false}
+        onClose={vi.fn()}
+        onDismiss={onDismiss}
+        macBlock={macBlock}
+      />
+    );
+    const { rerender } = render(panel(working));
+    pressDismiss();
+    expect(popup()?.textContent).toContain("dismissing stops it");
+
+    // When it goes idle and its Mac then goes offline
+    rerender(panel({ ...working, state: "idle" }));
+    expect(popup()?.textContent).not.toContain("dismissing stops it");
+    rerender(panel({ ...working, state: "idle" }, MacBlock.Offline));
+
+    // Then the pop-up's Dismiss is disabled and sends nothing
+    const confirm = screen.getByTestId("dismiss-confirm") as HTMLButtonElement;
+    expect(confirm.disabled).toBe(true);
+    fireEvent.click(confirm);
+    expect(onDismiss).not.toHaveBeenCalled();
+  });
+
+  it("says the window stays open and has to be closed at the Mac when the Mac's agent is too old to close it, and still sends the same single dismiss", () => {
+    // Given a hired, working employee on a Mac whose agent cannot close windows
+    const onDismiss = vi.fn();
+    openWithWake(session({ state: "working", kept: "hired" }), {
+      onDismiss,
+      dismissClosesWindow: false,
+    });
+
+    // When the owner opens the pop-up
+    pressDismiss();
+
+    // Then it promises no window closing, and the strong warning still shows
+    const text = popup()?.textContent ?? "";
+    expect(text).toContain("your window stays open; close it at the Mac");
+    expect(text).not.toContain("closes the window");
+    expect(text).toContain("It is working right now; dismissing stops it.");
+
+    // And confirming sends one dismiss
+    fireEvent.click(screen.getByTestId("dismiss-confirm"));
+    expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 });
 
