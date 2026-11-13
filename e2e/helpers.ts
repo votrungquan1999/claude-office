@@ -213,6 +213,10 @@ export interface SeedSession {
   /** A hire whose window is still opening. */
   starting?: true;
   stateSince?: Date;
+  /** The `stateSince` of the Review the owner moved to Idle. */
+  reviewSeenAt?: Date;
+  /** When the owner moved it. */
+  reviewClearedAt?: Date;
 }
 
 /**

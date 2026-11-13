@@ -879,6 +879,103 @@ describe("the details panel", () => {
       );
     });
   });
+
+  it("shows a Review employee's band with its time and last step, a Move to Idle button with its explanation and no finished-result block, and one click moves it once", () => {
+    // Given a Review that began 18 min 5 s ago with two finished steps
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-09T10:00:00Z"));
+    const onMoveToIdle = vi.fn();
+
+    // When the card opens
+    openWithWake(
+      session({
+        state: "review",
+        stateSince: "2026-11-09T09:41:55Z",
+        recentSteps: [
+          {
+            id: "1",
+            text: "Old step",
+            startedAt: "2026-11-09T09:00:00Z",
+            status: "ok",
+          },
+          {
+            id: "2",
+            text: "Wrote the summary",
+            startedAt: "2026-11-09T09:01:00Z",
+            status: "ok",
+          },
+        ],
+      }),
+      { onMoveToIdle },
+    );
+
+    // Then the band reads Review with the time in it, over the last step
+    expect(screen.getByTestId("state-line").textContent).toBe(
+      "Review · 18m 05s",
+    );
+    expect(screen.getByTestId("state-band").getAttribute("data-state")).toBe(
+      "review",
+    );
+    expect(screen.getByTestId("terminal-text").textContent).toBe(
+      "> Wrote the summary",
+    );
+
+    // And Move to Idle comes with its one-line explanation, and nothing says the work is finished
+    expect(screen.getByTestId("move-to-idle-note").textContent).toBe(
+      "Moving to Idle means you have seen the result. It stays in your list, in the same place.",
+    );
+    expect(screen.queryByText(/finished, ready/i)).toBeNull();
+
+    // And one click moves it once
+    fireEvent.click(screen.getByRole("button", { name: "Move to Idle" }));
+    expect(onMoveToIdle).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers Move to Idle for a Review employee whose Mac is offline, and for no other state", () => {
+    // Given a Review employee on an offline Mac
+    open(session({ state: "review" }), ["m1"]);
+
+    // Then the band says the Mac is offline and Move to Idle is still there
+    expect(screen.getByTestId("state-pill").textContent).toBe("Mac offline");
+    expect(screen.getByRole("button", { name: "Move to Idle" })).toBeTruthy();
+    cleanup();
+
+    // And no other state offers it
+    for (const state of [
+      "idle",
+      "waitingForYou",
+      "needsPermission",
+      "working",
+      "wentHome",
+    ] as const) {
+      open(session({ state }));
+      expect(screen.queryByRole("button", { name: "Move to Idle" })).toBeNull();
+      cleanup();
+    }
+  });
+
+  it("says a refused Move to Idle did not go through, in an alert beside the button, and shows no alert otherwise", () => {
+    // Given a Review card with no refusal
+    const { rerender } = openWithWake(session({ state: "review" }));
+    expect(screen.queryByRole("alert")).toBeNull();
+
+    // When the page passes the refusal
+    rerender(
+      <DetailsPanel
+        session={session({ state: "review" })}
+        tagLabels={new Map()}
+        offlineMachineIds={new Set()}
+        sheet={false}
+        onClose={vi.fn()}
+        moveToIdleError="Could not move to Idle. Try again."
+      />,
+    );
+
+    // Then the card says so
+    expect(screen.getByRole("alert").textContent).toBe(
+      "Could not move to Idle. Try again.",
+    );
+  });
 });
 
 describe("the original request", () => {

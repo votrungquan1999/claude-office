@@ -27,6 +27,10 @@ interface SessionRow {
   tags?: Array<{ name: string; key: string; parent?: string }>;
   hadPrompt?: boolean;
   stateSince?: Date;
+  /** The `stateSince` of the Review the owner moved to Idle. */
+  reviewSeenAt?: Date;
+  /** When the owner moved it, by the database clock. */
+  reviewClearedAt?: Date;
   kept?: SessionDto["kept"];
   notRunning?: true;
   waitingAtMac?: true;
@@ -58,13 +62,19 @@ interface MachineRow {
  */
 function toDto(row: SessionRow): SessionDto {
   const live = !row.endedAt;
+  // The mark names the Review it cleared; a later Review has another time and shows again.
+  const cleared =
+    row.state === "review" &&
+    row.reviewSeenAt !== undefined &&
+    row.reviewSeenAt.getTime() === row.stateSince?.getTime();
+  const shownSince = cleared ? row.reviewClearedAt : row.stateSince;
   return {
     machineId: row.machineId,
     machineName: row.machineName,
     sessionId: row.sessionId,
     cwd: row.cwd,
     startCwd: row.startCwd ?? row.cwd,
-    state: row.state === "waiting" ? "idle" : row.state,
+    state: row.state === "waiting" || cleared ? "idle" : row.state,
     startedAt: row.startedAt.toISOString(),
     ...(row.endedAt ? { endedAt: row.endedAt.toISOString() } : {}),
     ...(row.deskName ? { deskName: row.deskName } : {}),
@@ -97,7 +107,7 @@ function toDto(row: SessionRow): SessionDto {
         }
       : {}),
     ...(row.hadPrompt === undefined ? {} : { hadPrompt: row.hadPrompt }),
-    ...(row.stateSince ? { stateSince: row.stateSince.toISOString() } : {}),
+    ...(shownSince ? { stateSince: shownSince.toISOString() } : {}),
     ...(row.kept ? { kept: row.kept } : {}),
     ...(row.notRunning ? { notRunning: true as const } : {}),
     ...(row.waitingAtMac ? { waitingAtMac: true as const } : {}),

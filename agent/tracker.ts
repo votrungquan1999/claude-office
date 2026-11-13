@@ -62,6 +62,10 @@ export interface SeedSession {
   storedStateSince?: number;
   /** The state a previous run stored: a finished one is kept on restart, and it says whether `storedStateSince` still applies. */
   storedState?: SessionState;
+  /** The `stateSince` of the Review the owner moved to Idle, as stored. */
+  storedReviewSeenAt?: number;
+  /** When the owner moved that Review to Idle, as stored. */
+  storedReviewClearedAt?: number;
   firstMessage?: string;
   /** The start of the paste when the first message was only a paste. */
   pasteHead?: string;
@@ -175,7 +179,13 @@ function storedResult(seed: SeedSession): TurnResult | undefined {
   const stored: string | undefined = seed.storedState;
   if (stored === undefined) return undefined;
   if (stored === "waitingForYou") return "asks";
-  if (stored === "review") return "reports";
+  if (stored === "review") {
+    // The owner moved that very Review to Idle; a later Review has another time and is not cleared.
+    const cleared =
+      seed.storedReviewSeenAt !== undefined &&
+      seed.storedReviewSeenAt === seed.storedStateSince;
+    return cleared ? "nothing" : "reports";
+  }
   // "waiting" is the old name of Idle.
   return stored === "idle" || stored === "waiting" ? "nothing" : undefined;
 }
@@ -329,7 +339,22 @@ export class SessionTracker {
       const sameRoom =
         seed.storedState !== undefined &&
         roomOf(seed.storedState) === tracked.publishedRoom;
+      // A Review the owner moved to Idle keeps counting Idle from the move, also after a second restart.
+      const movedAt =
+        storedTurn === "nothing" &&
+        seed.storedReviewClearedAt !== undefined &&
+        (seed.storedState === "review" ||
+          seed.storedStateSince === seed.storedReviewClearedAt)
+          ? seed.storedReviewClearedAt
+          : undefined;
+      // A Review keeps its stored time: Move to Idle names a Review by it.
+      const sameReview =
+        seed.storedState === "review" && tracked.memory.state === "review"
+          ? seed.storedStateSince
+          : undefined;
       tracked.stateSince =
+        movedAt ??
+        sameReview ??
         seed.statusUpdatedAt ??
         (sameRoom ? seed.storedStateSince : undefined) ??
         this.options.now();

@@ -44,6 +44,10 @@ interface DetailsPanelProps {
   dismiss?: OrderClickState;
   /** Sends one dismiss order for the employee. */
   onDismiss?: () => void;
+  /** Moves the employee's Review to Idle. */
+  onMoveToIdle?: () => void;
+  /** Why the last move to Idle was refused; absent when it was not. */
+  moveToIdleError?: string;
 }
 
 function folderName(cwd: string): string {
@@ -163,7 +167,7 @@ function boxOf(session: SessionDto, nowMs: number) {
     since = first?.startedAt;
   } else if (session.state === "thinking") text = "thinking…";
   else if (session.state === "waitingForYou") text = "waiting for your reply";
-  else if (session.state === "idle")
+  else if (session.state === "idle" || session.state === "review")
     text = session.recentSteps?.at(-1)?.text ?? null;
   if (text === null) return null;
   return (
@@ -218,6 +222,8 @@ function Card({
   onWake,
   dismiss,
   onDismiss,
+  onMoveToIdle,
+  moveToIdleError,
 }: DetailsPanelProps & { session: SessionDto }) {
   // The browser's clock moved onto the server's, so a phone clock minutes off still shows right times.
   const nowMs = useNow() + serverOffsetMs;
@@ -320,6 +326,26 @@ function Card({
               ? "The window is asking whether to trust the folder. At the Mac, trust the folder, then click the window before typing."
               : "Starting on the Mac."}
           </p>
+        )}
+        {session.state === "review" && (
+          <div className="flex shrink-0 flex-col gap-1">
+            <button
+              type="button"
+              onClick={onMoveToIdle}
+              className="border-2 border-bg-dark bg-btn-bg px-3 py-3 text-center font-bold uppercase shadow-[3px_3px_0_var(--color-bg-dark)] hover:bg-btn-hover [@media(max-height:500px)]:py-1"
+            >
+              Move to Idle
+            </button>
+            {moveToIdleError && (
+              <p role="alert" className="text-xs font-bold">
+                {moveToIdleError}
+              </p>
+            )}
+            <p data-testid="move-to-idle-note" className="text-xs">
+              Moving to Idle means you have seen the result. It stays in your
+              list, in the same place.
+            </p>
+          </div>
         )}
         {ended || launching ? null : remoteControl ? (
           <a

@@ -56,6 +56,12 @@ import {
 } from "./officeStore";
 import { PhoneBottomBar } from "./PhoneBottomBar";
 import { RoomSigns } from "./RoomSigns";
+import {
+  applyReviewMoves,
+  postReviewSeen,
+  type ReviewMoves,
+  settleReviewMoves,
+} from "./reviewSeen";
 import { TagFilter } from "./TagFilter";
 import { useOfficeChanges } from "./useOfficeChanges";
 import { WentHomeButton } from "./WentHomeButton";
@@ -106,7 +112,18 @@ interface OfficeData {
   overrides: ModeOverrides;
   /** Company names the owner pressed that no answer has confirmed yet. */
   names: NameOverrides;
+  /** Reviews the owner moved to Idle on this device that no answer has confirmed yet. */
+  reviewMoves: ReviewMoves;
   offline: ReadonlySet<string>;
+}
+
+/**
+ * The sessions as this device shows them: the answers' sessions with the owner's pending moves laid over.
+ * @param data - What the browser knows.
+ * @returns The sessions to show.
+ */
+function shownSessions(data: OfficeData): SessionMap {
+  return applyReviewMoves(data.sessions, data.reviewMoves);
 }
 
 /**
@@ -116,7 +133,7 @@ interface OfficeData {
  * @returns The per-Mac overview.
  */
 function overviewOf(data: OfficeData, now: Date) {
-  const sessions = [...data.sessions.values()];
+  const sessions = [...shownSessions(data).values()];
   return buildOverview({
     folders: applyNames(
       applyOverrides(data.folders, data.overrides),
@@ -194,6 +211,8 @@ export function OfficeView() {
   const [overrides, setOverrides] = useState<ModeOverrides>(new Map());
   const [names, setNames] = useState<NameOverrides>(new Map());
   const [switchError, setSwitchError] = useState<string | null>(null);
+  // The session whose last move to Idle was refused.
+  const [moveRefusedKey, setMoveRefusedKey] = useState<string | null>(null);
   // The company whose last rename was refused; its own state so a switch error never wipes it.
   const [renameError, setRenameError] = useState<{
     machineId: string;
@@ -255,6 +274,7 @@ export function OfficeView() {
     folders: [],
     overrides: new Map(),
     names: new Map(),
+    reviewMoves: new Map(),
     offline: new Set(),
   });
   // The poll reads refs only, so the picked company lives in one too.
@@ -287,9 +307,10 @@ export function OfficeView() {
     options: { sitDown: boolean },
   ) => {
     const overview = overviewOf(data, new Date());
-    const sessionList = [...data.sessions.values()];
+    const shown = shownSessions(data);
+    const sessionList = [...shown.values()];
     const filter = tagFilterOf(
-      data.sessions,
+      shown,
       overview.tree.companyOf,
       key,
       tagPickRef.current,
@@ -322,7 +343,8 @@ export function OfficeView() {
    */
   const commit = (data: OfficeData, sitDown: boolean) => {
     dataRef.current = data;
-    setSessions(data.sessions);
+    const shown = shownSessions(data);
+    setSessions(shown);
     setOfflineIds(data.offline);
     setMachines(data.machines);
     setFolders(data.folders);
@@ -339,7 +361,7 @@ export function OfficeView() {
     const changed = picked !== companyRef.current;
     // A pick that stopped applying (tag gone, other company) is dropped so it cannot return later.
     const inForce = tagFilterOf(
-      data.sessions,
+      shown,
       overview.tree.companyOf,
       picked,
       tagPickRef.current,
@@ -372,6 +394,8 @@ export function OfficeView() {
         // A switch stays in force until an answer agrees, so a poll already in flight cannot flip it back.
         overrides: settleOverrides(dataRef.current.overrides, answer.folders),
         names: settleNames(dataRef.current.names, answer.folders, poll),
+        // A move stays in force until an answer shows something other than the Review the owner saw.
+        reviewMoves: settleReviewMoves(dataRef.current.reviewMoves, sessions),
         // Judged against the server's clock: the phone's may be minutes off.
         offline: offlineMachineIds(answer.machines, answer.serverNow, [
           ...[...sessions.values()].map((session) => session.machineId),
@@ -457,6 +481,34 @@ export function OfficeView() {
       path,
       message: "Could not rename. Try again.",
     });
+  };
+
+  /** Shows a Review as Idle at once and sends the move. */
+  const moveToIdle = async (key: string) => {
+    const session = dataRef.current.sessions.get(key);
+    if (session?.state !== "review" || !session.stateSince) return;
+    const { machineId, sessionId, stateSince } = session;
+    setMoveRefusedKey(null);
+    commit(
+      {
+        ...dataRef.current,
+        reviewMoves: new Map(dataRef.current.reviewMoves).set(key, {
+          stateSince,
+          movedAt: new Date(Date.now() + serverOffsetMs).toISOString(),
+        }),
+      },
+      false,
+    );
+    const sent = await postReviewSeen({
+      items: [{ machineId, sessionId, stateSince }],
+    });
+    if (sent) return;
+    // A move the answers already settled has nothing to take back.
+    if (dataRef.current.reviewMoves.get(key)?.stateSince !== stateSince) return;
+    const reverted = new Map(dataRef.current.reviewMoves);
+    reverted.delete(key);
+    commit({ ...dataRef.current, reviewMoves: reverted }, false);
+    setMoveRefusedKey(key);
   };
 
   /** Opens the company drawer; a details panel left open would sit under it, so it closes. */
@@ -600,8 +652,17 @@ export function OfficeView() {
     }),
   );
 
+  // `sessions` already has the pending moves laid over
   const overview = overviewOf(
-    { sessions, machines, folders, overrides, names, offline: offlineIds },
+    {
+      sessions,
+      machines,
+      folders,
+      overrides,
+      names,
+      reviewMoves: new Map(),
+      offline: offlineIds,
+    },
     now,
   );
   const tagFilterView = tagFilterOf(
@@ -904,6 +965,12 @@ export function OfficeView() {
             onWake={() => void wakeSelected()}
             dismiss={selectedKey ? dismisses.get(selectedKey) : undefined}
             onDismiss={() => void dismissSelected()}
+            onMoveToIdle={() => selectedKey && void moveToIdle(selectedKey)}
+            moveToIdleError={
+              selectedKey && selectedKey === moveRefusedKey
+                ? "Could not move to Idle. Try again."
+                : undefined
+            }
             sheet={isMobile}
             onClose={closeDetails}
           />

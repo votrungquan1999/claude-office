@@ -141,7 +141,16 @@ export async function seedRunningSessions(options: SeedOptions): Promise<void> {
   const stored = await sessions
     .find(
       { machineId, sessionId: { $in: alive.map((entry) => entry.sessionId) } },
-      { projection: { sessionId: 1, tags: 1, stateSince: 1, state: 1 } },
+      {
+        projection: {
+          sessionId: 1,
+          tags: 1,
+          stateSince: 1,
+          state: 1,
+          reviewSeenAt: 1,
+          reviewClearedAt: 1,
+        },
+      },
     )
     .toArray();
   await tracker.seed(
@@ -161,6 +170,12 @@ export async function seedRunningSessions(options: SeedOptions): Promise<void> {
           ?.stateSince?.getTime(),
         storedState: stored.find((doc) => doc.sessionId === entry.sessionId)
           ?.state,
+        storedReviewSeenAt: stored
+          .find((doc) => doc.sessionId === entry.sessionId)
+          ?.reviewSeenAt?.getTime(),
+        storedReviewClearedAt: stored
+          .find((doc) => doc.sessionId === entry.sessionId)
+          ?.reviewClearedAt?.getTime(),
         firstMessage: transcript.firstMessage,
         pasteHead: transcript.pasteHead,
         request: transcript.request,

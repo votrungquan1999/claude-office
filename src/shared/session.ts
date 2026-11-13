@@ -128,3 +128,19 @@ export const stepsPageSchema = z.object({
 });
 
 export type StepsPage = z.infer<typeof stepsPageSchema>;
+
+/** The Reviews the owner has looked at, each named by the `stateSince` the owner saw. */
+export const reviewSeenRequestSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        machineId: z.string().min(1),
+        sessionId: z.string().min(1),
+        stateSince: z.iso.datetime(),
+      }),
+    )
+    .min(1)
+    .max(200),
+});
+
+export type ReviewSeenRequest = z.infer<typeof reviewSeenRequestSchema>;
