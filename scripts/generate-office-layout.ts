@@ -7,6 +7,7 @@ import type {
   AreaDefinition,
   ColorValue,
   PlacedFurniture,
+  SpotDefinition,
 } from "../src/office/types";
 import { TileType } from "../src/office/types";
 
@@ -58,6 +59,10 @@ const tiles: number[] = new Array(COLS * ROWS).fill(TileType.VOID);
 const tileColors: Array<ColorValue | null> = new Array(COLS * ROWS).fill(null);
 const areaTiles: Array<string | null> = new Array(COLS * ROWS).fill(null);
 const furniture: PlacedFurniture[] = [];
+/** Places that rooms give their employees, in the order each room fills. */
+const spots: SpotDefinition[] = [];
+/** Rooms whose employees keep their places. */
+const stayPutRooms: Room[] = [];
 
 /**
  * Places a piece of furniture with a stable id.
@@ -135,13 +140,49 @@ function furnishWithDesks({ c0, width, top }: RoomBox): void {
   place("PLANT", c0 + width - 2, wallRow + 8);
 }
 
+/**
+ * The lounge: two sofas facing a third across a coffee table, a coffee corner, bookshelves on the wall and a reader standing below them.
+ * @param box - The room to furnish.
+ */
+function furnishAsLounge({ c0, width, top }: RoomBox): void {
+  const wallRow = wallRowOf(top);
+  const left = c0 + 2;
+  const right = c0 + width - 4;
+  // Wall: two bookshelves either side of the doorway under the sign
+  place("BOOKSHELF", left, wallRow);
+  place("BOOKSHELF", right, wallRow);
+  // Sofas along the top of the seating area, the coffee table below them and a sofa facing it from below
+  place("SOFA_FRONT", left, wallRow + 4);
+  place("SOFA_FRONT", left + 3, wallRow + 4);
+  place("COFFEE_TABLE", left + 1, wallRow + 5);
+  // Mugs lie on the table's front row, or they would float above it
+  place("COFFEE", left + 1, wallRow + 6);
+  place("COFFEE", left + 2, wallRow + 6);
+  // The sofa below leaves a row between it and the table so its sitter is not drawn over the table
+  place("SOFA_BACK", left + 1, wallRow + 8);
+  // Coffee corner: a small table with a mug on its front row
+  place("SMALL_TABLE_FRONT", right, wallRow + 5);
+  place("COFFEE", right + 1, wallRow + 6);
+  place("PLANT", c0 + 1, wallRow + 8);
+  place("PLANT", c0 + width - 2, wallRow + 8);
+  // Places in fill order: a sofa, the reader at the bookshelf, a sofa, a stander at the coffee corner, the facing sofa, a second stander
+  spots.push(
+    { col: left, row: wallRow + 4, facing: "down", pose: "sit" },
+    { col: left, row: wallRow + 2, facing: "up", pose: "read", standing: true },
+    { col: left + 3, row: wallRow + 4, facing: "down", pose: "sit" },
+    { col: right, row: wallRow + 7, facing: "up", pose: "stand" },
+    { col: left + 1, row: wallRow + 8, facing: "up", pose: "sit" },
+    { col: right + 1, row: wallRow + 7, facing: "up", pose: "stand" },
+  );
+}
+
 /** How each room is furnished; one entry per room. */
 const FURNISH: Record<Room, (box: RoomBox) => void> = {
   [Room.Working]: furnishWithDesks,
   [Room.NeedsPermission]: furnishWithDesks,
   [Room.WaitingForYou]: furnishWithDesks,
   [Room.Review]: furnishWithDesks,
-  [Room.Idle]: furnishWithDesks,
+  [Room.Idle]: furnishAsLounge,
 };
 for (const box of ROOMS) FURNISH[box.room](box);
 
@@ -161,5 +202,7 @@ writeFileSync(
     furniture,
     areas,
     areaTiles,
+    ...(spots.length ? { spots } : {}),
+    ...(stayPutRooms.length ? { stayPutRooms } : {}),
   }),
 );

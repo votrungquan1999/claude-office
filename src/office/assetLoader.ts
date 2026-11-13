@@ -173,14 +173,28 @@ async function decodeFurnitureFromPng(
   return sprites;
 }
 
+/** One load per scene, so a remount of the view never rebuilds the layout twice. */
+const loads = new WeakMap<OfficeState, Promise<void>>();
+
 /**
- * Loads the art and the office layout into the renderer's module state and the scene.
+ * Loads the art and the office layout into the renderer's module state and the scene, once per scene.
+ * @param officeState - The scene to rebuild from the loaded layout.
+ * @returns Resolves when the scene holds the layout.
+ */
+export function loadOfficeAssets(officeState: OfficeState): Promise<void> {
+  let load = loads.get(officeState);
+  if (!load) {
+    load = loadAssetsInto(officeState);
+    loads.set(officeState, load);
+  }
+  return load;
+}
+
+/**
  * Order matters: the layout goes last, or its chairs find no furniture catalog and yield no seats.
  * @param officeState - The scene to rebuild from the loaded layout.
  */
-export async function loadOfficeAssets(
-  officeState: OfficeState,
-): Promise<void> {
+async function loadAssetsInto(officeState: OfficeState): Promise<void> {
   const base = "/";
   const [assetIndex, catalog, layout] = await Promise.all([
     fetch(`${base}assets/asset-index.json`).then(

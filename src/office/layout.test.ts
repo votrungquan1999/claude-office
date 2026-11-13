@@ -11,7 +11,7 @@ const SEATS_PER_ROOM: Record<string, number> = {
   needsPermission: 12,
   waitingForYou: 12,
   review: 12,
-  idle: 12,
+  idle: 6,
 };
 
 describe("the office layout", () => {
@@ -125,5 +125,53 @@ describe("the office layout", () => {
         seat.facingDir === Direction.UP ? "front" : "back",
       ]),
     );
+  });
+});
+
+describe("the Idle lounge", () => {
+  it("has no desks or computers, and its places are three sofa seats, a reader at the bookshelf and two standers by the coffee corner, in that fill order", () => {
+    // Given the generated office
+    const office = loadOffice();
+    const { cols, areaTiles, furniture } = office.getLayout();
+    const roomAt = (col: number, row: number) =>
+      areaTiles?.[row * cols + col] ?? null;
+
+    // When we read the furniture standing in the Idle room and its places
+    const idleFurniture = furniture
+      // A wall piece stands on the wall row just above the room's floor
+      .filter(
+        (item) =>
+          roomAt(item.col, item.row) === "idle" ||
+          roomAt(item.col, item.row + 1) === "idle",
+      )
+      .map((item) => item.type);
+    const places = [...office.seats.entries()]
+      .filter(([uid]) => office.seatZone(uid) === "idle")
+      .map(([, seat]) => [seat.pose, seat.standing, seat.facingDir]);
+
+    // Then no desk or computer is in the room, and it has the lounge's pieces
+    expect(idleFurniture.filter((type) => /^(DESK_|PC_)/.test(type))).toEqual(
+      [],
+    );
+    expect(idleFurniture).toEqual(
+      expect.arrayContaining([
+        "SOFA_FRONT",
+        "COFFEE_TABLE",
+        "COFFEE",
+        "SMALL_TABLE_FRONT",
+        "BOOKSHELF",
+        "PLANT",
+      ]),
+    );
+
+    // And the places fill sofa, reader, sofa, stander, sofa, stander
+    expect(places).toEqual([
+      ["sit", false, Direction.DOWN],
+      ["read", true, Direction.UP],
+      ["sit", false, Direction.DOWN],
+      ["stand", true, Direction.UP],
+      ["sit", false, Direction.UP],
+      ["stand", true, Direction.UP],
+    ]);
   });
 });

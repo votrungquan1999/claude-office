@@ -11,6 +11,10 @@ interface OfficeTestHooks {
     row: number;
     areaLabel: string | null;
     assigned: boolean;
+    pose: string;
+    standing: boolean;
+    /** 0 down, 1 left, 2 right, 3 up */
+    facing: number;
   }>;
   getAgentSeats: () => Array<{
     id: number;
@@ -26,6 +30,10 @@ interface OfficeTestHooks {
     isActive: boolean;
     macOffline: boolean;
     bubbleType: "permission" | "waiting" | null;
+    pose: string;
+    standing: boolean;
+    /** 0 down, 1 left, 2 right, 3 up */
+    dir: number;
   }>;
   /** Centre of a tile in CSS px relative to the canvas, through the renderer's own zoom and pan. */
   getTileCenter: (col: number, row: number) => { x: number; y: number } | null;
@@ -70,6 +78,9 @@ export function installTestHooks(view: TestHookView): void {
         row: seat.seatRow,
         areaLabel: office.seatZone(uid),
         assigned: seat.assigned,
+        pose: seat.pose,
+        standing: seat.standing,
+        facing: seat.facingDir,
       }));
     },
     getAgentSeats: () => {
@@ -93,6 +104,9 @@ export function installTestHooks(view: TestHookView): void {
           isActive: ch.isActive,
           macOffline: ch.macOffline === true,
           bubbleType: ch.bubbleType,
+          pose: ch.pose,
+          standing: ch.standing,
+          dir: ch.dir,
         })),
     getTileCenter: (col, row) => {
       const canvas = document.querySelector(

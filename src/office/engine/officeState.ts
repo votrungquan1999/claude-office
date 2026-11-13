@@ -42,7 +42,12 @@ import type {
   TileType as TileTypeVal,
 } from "../types";
 import { CharacterState, Direction, PetState, TILE_SIZE } from "../types";
-import { createCharacter, updateCharacter } from "./characters";
+import {
+  createCharacter,
+  isSeated,
+  settleAtSeat,
+  updateCharacter,
+} from "./characters";
 import { advanceMatrixEffect, startMatrixEffect } from "./matrixEffectState";
 import { createPet, updatePet } from "./petEntity";
 import { anchorTile, closestFreeSeat } from "./seatPlacement";
@@ -137,7 +142,7 @@ export class OfficeState {
   constructor(layout?: OfficeLayout) {
     this.layout = layout || createDefaultLayout();
     this.tileMap = layoutToTileMap(this.layout);
-    this.seats = layoutToSeats(this.layout.furniture);
+    this.seats = layoutToSeats(this.layout.furniture, this.layout);
     this.blockedTiles = getBlockedTiles(this.layout.furniture);
     this.furniture = layoutToFurnitureInstances(this.layout.furniture);
     this.walkableTiles = getWalkableTiles(this.tileMap, this.blockedTiles);
@@ -154,7 +159,7 @@ export class OfficeState {
   ): void {
     this.layout = layout;
     this.tileMap = layoutToTileMap(layout);
-    this.seats = layoutToSeats(layout.furniture);
+    this.seats = layoutToSeats(layout.furniture, layout);
     this.blockedTiles = getBlockedTiles(layout.furniture);
     this.rebuildFurnitureInstances();
     this.walkableTiles = getWalkableTiles(this.tileMap, this.blockedTiles);
@@ -204,6 +209,8 @@ export class OfficeState {
           ch.x = cx;
           ch.y = cy;
           ch.dir = seat.facingDir;
+          ch.pose = seat.pose;
+          ch.standing = seat.standing;
           continue;
         }
       }
@@ -212,7 +219,8 @@ export class OfficeState {
 
     // Second pass: assign remaining characters to free seats
     for (const ch of this.characters.values()) {
-      if (ch.seatId) continue;
+      // A stander belongs to its room's floor; a free seat elsewhere would move it out.
+      if (ch.seatId || ch.standingRoom) continue;
       const seatId = this.findFreeSeat(ch.directoryName);
       if (seatId) {
         this.seats.get(seatId)!.assigned = true;
@@ -223,6 +231,8 @@ export class OfficeState {
         ch.x = seat.seatCol * TILE_SIZE + TILE_SIZE / 2;
         ch.y = seat.seatRow * TILE_SIZE + TILE_SIZE / 2;
         ch.dir = seat.facingDir;
+        ch.pose = seat.pose;
+        ch.standing = seat.standing;
       }
     }
 
@@ -318,6 +328,12 @@ export class OfficeState {
       }
     }
     return out;
+  }
+
+  /** Whether the employee's room keeps its employees at their places. */
+  private isStayPut(ch: Character): boolean {
+    const room = ch.seatId ? this.seatZone(ch.seatId) : ch.standingRoom;
+    return room != null && (this.layout.stayPutRooms ?? []).includes(room);
   }
 
   /** Where an idle employee may wander: its own room, or the whole office when it has none. */
@@ -717,11 +733,8 @@ export class OfficeState {
       ch.frame = 0;
       ch.frameTimer = 0;
     } else {
-      // Already at seat or no path — sit down
-      ch.state = CharacterState.TYPE;
-      ch.dir = seat.facingDir;
-      ch.frame = 0;
-      ch.frameTimer = 0;
+      // Already at the place or no path — settle there
+      settleAtSeat(ch, seat);
       if (!ch.isActive) {
         ch.seatTimer =
           INACTIVE_SEAT_TIMER_MIN_SEC +
@@ -785,11 +798,8 @@ export class OfficeState {
       ch.frame = 0;
       ch.frameTimer = 0;
     } else {
-      // Already at seat — sit down
-      ch.state = CharacterState.TYPE;
-      ch.dir = seat.facingDir;
-      ch.frame = 0;
-      ch.frameTimer = 0;
+      // Already at the place — settle there
+      settleAtSeat(ch, seat);
       if (!ch.isActive) {
         ch.seatTimer =
           INACTIVE_SEAT_TIMER_MIN_SEC +
@@ -1292,6 +1302,7 @@ export class OfficeState {
           this.seats,
           this.tileMap,
           this.blockedTiles,
+          this.isStayPut(ch),
         ),
       );
 
@@ -1375,8 +1386,7 @@ export class OfficeState {
       if (ch.matrixEffect === "despawn") continue;
       // Character sprite is 16x24, anchored bottom-center
       // Apply sitting offset to match visual position
-      const sittingOffset =
-        ch.state === CharacterState.TYPE ? CHARACTER_SITTING_OFFSET_PX : 0;
+      const sittingOffset = isSeated(ch) ? CHARACTER_SITTING_OFFSET_PX : 0;
       const anchorY = ch.y + sittingOffset;
       const left = ch.x - CHARACTER_HIT_HALF_WIDTH;
       const right = ch.x + CHARACTER_HIT_HALF_WIDTH;

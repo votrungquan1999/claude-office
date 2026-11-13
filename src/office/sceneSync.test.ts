@@ -452,6 +452,35 @@ describe("scene sync", () => {
       expect(inDoorway).toHaveLength(0);
     });
 
+    it("keeps standers on the floor when the layout is rebuilt twice", () => {
+      // Given 15 Needs permission employees in a room of 7 seats, so 8 stand
+      const office = loadOffice();
+      const sync = createSceneSync(office);
+      sync.apply(
+        Array.from({ length: 15 }, (_, n) =>
+          session(
+            "m1",
+            "Mac",
+            `s${n}`,
+            "/w",
+            "2026-11-08T10:00:00.000Z",
+            "needsPermission",
+          ),
+        ),
+        { firstLoad: true },
+      );
+      const standing = () =>
+        office.getCharacters().filter((ch) => ch.seatId === null);
+      expect(standing()).toHaveLength(8);
+
+      // When the layout loads again, as a second asset load does
+      office.rebuildFromLayout(office.getLayout());
+      office.rebuildFromLayout(office.getLayout());
+
+      // Then nobody who stood has been put in a free seat of another room
+      expect(standing()).toHaveLength(8);
+    });
+
     it("makes a seated employee walk onto the floor of a full room and free its old seat", () => {
       // Given a full Working room and one employee seated in the Idle room
       const office = loadOffice();

@@ -51,6 +51,29 @@ function directionBetween(
   return Direction.UP;
 }
 
+/**
+ * Puts the employee at its place in the pose the place gives.
+ * @param ch - The employee.
+ * @param seat - The place it reached.
+ */
+export function settleAtSeat(ch: Character, seat: Seat): void {
+  ch.state = CharacterState.TYPE;
+  ch.dir = seat.facingDir;
+  ch.pose = seat.pose;
+  ch.standing = seat.standing;
+  ch.frame = 0;
+  ch.frameTimer = 0;
+}
+
+/**
+ * Whether the employee is drawn sitting, lower than a standing one.
+ * @param ch - The employee.
+ * @returns True while it sits at a place.
+ */
+export function isSeated(ch: Character): boolean {
+  return ch.state === CharacterState.TYPE && !ch.standing;
+}
+
 export function createCharacter(
   id: number,
   palette: number,
@@ -83,6 +106,8 @@ export function createCharacter(
       WANDER_MOVES_BEFORE_REST_MAX,
     ),
     isActive: true,
+    pose: seat ? seat.pose : "stand",
+    standing: seat ? seat.standing : true,
     seatId,
     bubbleType: null,
     bubbleTimer: 0,
@@ -104,6 +129,7 @@ export function updateCharacter(
   seats: Map<string, Seat>,
   tileMap: TileTypeVal[][],
   blockedTiles: Set<string>,
+  stayPut = false,
 ): void {
   ch.frameTimer += dt;
 
@@ -115,6 +141,8 @@ export function updateCharacter(
       }
       // If no longer active, stand up and start wandering (after seatTimer expires)
       if (!ch.isActive) {
+        // A stay-put room's employees keep their place.
+        if (stayPut) break;
         if (ch.seatTimer > 0) {
           ch.seatTimer -= dt;
           break;
@@ -143,8 +171,10 @@ export function updateCharacter(
       // If became active, pathfind to seat
       if (ch.isActive) {
         if (!ch.seatId) {
-          // No seat assigned — type in place
+          // No place assigned: stand where it is
           ch.state = CharacterState.TYPE;
+          ch.pose = "stand";
+          ch.standing = true;
           ch.frame = 0;
           ch.frameTimer = 0;
           break;
@@ -166,15 +196,13 @@ export function updateCharacter(
             ch.frame = 0;
             ch.frameTimer = 0;
           } else {
-            // Already at seat or no path — sit down
-            ch.state = CharacterState.TYPE;
-            ch.dir = seat.facingDir;
-            ch.frame = 0;
-            ch.frameTimer = 0;
+            // Already at the place or no path — settle there
+            settleAtSeat(ch, seat);
           }
         }
         break;
       }
+      if (stayPut) break;
       // Countdown wander timer
       ch.wanderTimer -= dt;
       if (ch.wanderTimer <= 0) {
@@ -243,8 +271,10 @@ export function updateCharacter(
 
         if (ch.isActive) {
           if (!ch.seatId) {
-            // No seat — type in place
+            // No place: stand where it is
             ch.state = CharacterState.TYPE;
+            ch.pose = "stand";
+            ch.standing = true;
           } else {
             const seat = seats.get(ch.seatId);
             if (
@@ -252,8 +282,7 @@ export function updateCharacter(
               ch.tileCol === seat.seatCol &&
               ch.tileRow === seat.seatRow
             ) {
-              ch.state = CharacterState.TYPE;
-              ch.dir = seat.facingDir;
+              settleAtSeat(ch, seat);
             } else {
               ch.state = CharacterState.IDLE;
             }
@@ -267,8 +296,7 @@ export function updateCharacter(
               ch.tileCol === seat.seatCol &&
               ch.tileRow === seat.seatRow
             ) {
-              ch.state = CharacterState.TYPE;
-              ch.dir = seat.facingDir;
+              settleAtSeat(ch, seat);
               // seatTimer < 0 is a sentinel from setAgentActive(false) meaning
               // "turn just ended" — skip the long rest so idle transition is immediate
               if (ch.seatTimer < 0) {
@@ -364,6 +392,10 @@ export function getCharacterSprite(
 ): SpriteData {
   switch (ch.state) {
     case CharacterState.TYPE:
+      // Only the typing pose animates; the others hold one frame.
+      if (ch.pose === "stand") return sprites.walk[ch.dir][1];
+      if (ch.pose === "sit") return sprites.typing[ch.dir][0];
+      if (ch.pose === "read") return sprites.reading[ch.dir][0];
       if (isReadingTool(ch.currentTool)) {
         return sprites.reading[ch.dir][ch.frame % 2];
       }

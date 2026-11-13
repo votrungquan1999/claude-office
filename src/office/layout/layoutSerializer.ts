@@ -1,4 +1,5 @@
 import { getColorizedSprite } from "../colorize";
+import { Room } from "../rooms";
 import type {
   FurnitureInstance,
   OfficeLayout,
@@ -178,10 +179,27 @@ function orientationToFacing(orientation: string): Direction {
   }
 }
 
-/** Generate seats from chair furniture.
- *  Facing priority: 1) chair orientation, 2) adjacent desk, 3) forward (DOWN). */
-export function layoutToSeats(furniture: PlacedFurniture[]): Map<string, Seat> {
+const SPOT_FACING = {
+  up: Direction.UP,
+  down: Direction.DOWN,
+  left: Direction.LEFT,
+  right: Direction.RIGHT,
+} as const;
+
+/** Seats from chairs, plus the places rooms list (`layout.spots`, in list order).
+ *  A room that lists places takes its seats only from that list.
+ *  Chair facing: 1) orientation, 2) adjacent desk, 3) DOWN.
+ *  @param layout - Supplies room labels and listed places. */
+export function layoutToSeats(
+  furniture: PlacedFurniture[],
+  layout?: Pick<OfficeLayout, "cols" | "areaTiles" | "spots">,
+): Map<string, Seat> {
   const seats = new Map<string, Seat>();
+  const roomAt = (col: number, row: number): string | null =>
+    layout?.areaTiles?.[row * layout.cols + col] ?? null;
+  const spots = layout?.spots ?? [];
+  // A room that lists places gives its employees those and nothing else.
+  const listingRooms = new Set(spots.map((spot) => roomAt(spot.col, spot.row)));
 
   // Build set of all desk tiles
   const deskTiles = new Set<string>();
@@ -219,6 +237,8 @@ export function layoutToSeats(furniture: PlacedFurniture[]): Map<string, Seat> {
         // 1) Chair orientation takes priority
         // 2) Adjacent desk direction
         // 3) Default forward (DOWN)
+        const room = roomAt(tileCol, tileRow);
+        if (room !== null && listingRooms.has(room)) continue;
         let facingDir: Direction = Direction.DOWN;
         if (entry.orientation) {
           facingDir = orientationToFacing(entry.orientation);
@@ -239,11 +259,28 @@ export function layoutToSeats(furniture: PlacedFurniture[]): Map<string, Seat> {
           seatRow: tileRow,
           facingDir,
           assigned: false,
+          // Only Working employees type; anywhere else a chair seat sits still.
+          pose: room === null || room === Room.Working ? "type" : "sit",
+          standing: false,
         });
         seatCount++;
       }
     }
   }
+
+  // Listed places come in list order, which is the order the room fills.
+  spots.forEach((spot, index) => {
+    const uid = `spot:${index}`;
+    seats.set(uid, {
+      uid,
+      seatCol: spot.col,
+      seatRow: spot.row,
+      facingDir: SPOT_FACING[spot.facing],
+      assigned: false,
+      pose: spot.pose,
+      standing: spot.pose === "stand" || spot.standing === true,
+    });
+  });
 
   return seats;
 }

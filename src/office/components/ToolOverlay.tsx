@@ -12,6 +12,7 @@ import {
   OVERLAY_LABEL_Z_INDEX,
   TOOL_OVERLAY_VERTICAL_OFFSET,
 } from "../constants";
+import { isSeated } from "../engine/characters";
 import type { OfficeState } from "../engine/officeState";
 import { overlayProjection } from "../projection";
 import { getCachedSprite } from "../sprites/spriteCache";
@@ -19,7 +20,6 @@ import {
   BUBBLE_PERMISSION_SPRITE,
   BUBBLE_WAITING_SPRITE,
 } from "../sprites/spriteData";
-import { CharacterState } from "../types";
 
 interface ToolOverlayProps {
   officeState: OfficeState;
@@ -117,8 +117,7 @@ export function ToolOverlay({
               : BUBBLE_WAITING_SPRITE,
             zoom,
           );
-          const bubbleSittingOff =
-            ch.state === CharacterState.TYPE ? BUBBLE_SITTING_OFFSET_PX : 0;
+          const bubbleSittingOff = isSeated(ch) ? BUBBLE_SITTING_OFFSET_PX : 0;
           const alpha =
             ch.bubbleType === "waiting" &&
             ch.bubbleTimer < BUBBLE_FADE_DURATION_SEC
@@ -153,8 +152,7 @@ export function ToolOverlay({
         }
 
         // Position above character
-        const sittingOffset =
-          ch.state === CharacterState.TYPE ? CHARACTER_SITTING_OFFSET_PX : 0;
+        const sittingOffset = isSeated(ch) ? CHARACTER_SITTING_OFFSET_PX : 0;
         const screenX = project.toScreenX(ch.x);
         const screenY = project.toScreenY(
           ch.y + sittingOffset - TOOL_OVERLAY_VERTICAL_OFFSET,

@@ -20,7 +20,7 @@ const SEATS: Record<string, number> = {
   needsPermission: 12,
   waitingForYou: 12,
   review: 12,
-  idle: 12,
+  idle: 6,
 };
 
 test("the owner sees an office with five labelled rooms", async ({
@@ -59,6 +59,25 @@ test("the owner sees an office with five labelled rooms", async ({
       SEATS[room],
     );
   }
+
+  // And the Idle lounge's places are sofa seats, a reader and standers; every desk room's chairs sit still and only Working types
+  expect(
+    seats.filter((seat) => seat.areaLabel === "idle").map((seat) => seat.pose),
+  ).toEqual(["sit", "read", "sit", "stand", "sit", "stand"]);
+  expect(
+    new Set(
+      seats
+        .filter((seat) => seat.areaLabel === "working")
+        .map((seat) => seat.pose),
+    ),
+  ).toEqual(new Set(["type"]));
+  expect(
+    new Set(
+      seats
+        .filter((seat) => !["working", "idle"].includes(seat.areaLabel ?? ""))
+        .map((seat) => seat.pose),
+    ),
+  ).toEqual(new Set(["sit"]));
 });
 
 test("idle, waiting-for-you and thinking sessions each sit in their own room, thinking inside Working", async ({

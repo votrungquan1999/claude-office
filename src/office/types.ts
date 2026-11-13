@@ -46,16 +46,32 @@ export type Direction = (typeof Direction)[keyof typeof Direction];
 /** 2D array of hex color strings: '' = transparent, '#RRGGBB' = opaque, '#RRGGBBAA' = semi-transparent. [row][col] */
 export type SpriteData = string[][];
 
+/** How an employee settles at a place: typing animated (Working only), sitting still, holding a paper, or standing. */
+export type SeatPose = "type" | "sit" | "read" | "stand";
+
 export interface Seat {
-  /** Chair furniture uid */
+  /** Chair furniture uid, or `spot:<index>` for a place the room lists */
   uid: string;
   /** Tile col where agent sits */
   seatCol: number;
   /** Tile row where agent sits */
   seatRow: number;
-  /** Direction character faces when sitting (toward adjacent desk) */
+  /** Direction the employee faces at this place; a chair's faces its desk */
   facingDir: Direction;
   assigned: boolean;
+  pose: SeatPose;
+  /** True when the employee stands here (no chair), so it is drawn without the sitting offset. */
+  standing: boolean;
+}
+
+/** A place a room lists for its employees, in the order the room fills. */
+export interface SpotDefinition {
+  col: number;
+  row: number;
+  facing: "up" | "down" | "left" | "right";
+  pose: Exclude<SeatPose, "type">;
+  /** A reader may sit or stand; `stand` always stands. */
+  standing?: boolean;
 }
 
 export interface FurnitureInstance {
@@ -167,6 +183,10 @@ export interface OfficeLayout {
   areas?: AreaDefinition[];
   /** Per-tile Area label, parallel to tiles array. null = no area assignment. */
   areaTiles?: Array<string | null>;
+  /** Places the listed rooms give their employees; a room with any listed place takes its seats only from this list, in this order. */
+  spots?: SpotDefinition[];
+  /** Rooms whose employees do not wander or get up. */
+  stayPutRooms?: string[];
 }
 
 export interface Character {
@@ -202,6 +222,10 @@ export interface Character {
   wanderLimit: number;
   /** Whether the agent is actively working */
   isActive: boolean;
+  /** How the employee is settled where it is: see `SeatPose`. */
+  pose: SeatPose;
+  /** True while it stands without a chair, so it is drawn without the sitting offset. */
+  standing: boolean;
   /** Assigned seat uid, or null if no seat */
   seatId: string | null;
   /** Room a seatless employee stands in; wandering stays inside it. */

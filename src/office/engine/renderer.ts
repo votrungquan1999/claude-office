@@ -72,10 +72,10 @@ import type {
   SpriteData,
   TileType as TileTypeVal,
 } from "../types";
-import { CharacterState, TILE_SIZE, TileType } from "../types";
+import { TILE_SIZE, TileType } from "../types";
 import type { ColorValue } from "../types/color";
 import { getWallInstances, hasWallSprites, wallColorToHex } from "../wallTiles";
-import { getCharacterSprite } from "./characters";
+import { getCharacterSprite, isSeated } from "./characters";
 import { renderMatrixEffect } from "./matrixEffect";
 import { getPetSpriteData } from "./petEntity";
 
@@ -420,8 +420,7 @@ export function renderScene(
       : colourSprite;
     const cached = getCachedSprite(spriteData, zoom);
     // Sitting offset: shift character down when seated so they visually sit in the chair
-    const sittingOffset =
-      ch.state === CharacterState.TYPE ? CHARACTER_SITTING_OFFSET_PX : 0;
+    const sittingOffset = isSeated(ch) ? CHARACTER_SITTING_OFFSET_PX : 0;
     // Anchor at bottom-center of character — round to integer device pixels
     const drawX = Math.round(offsetX + ch.x * zoom - cached.width / 2);
     const drawY = Math.round(

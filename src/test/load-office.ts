@@ -9,9 +9,10 @@ const ASSETS_DIR = path.join(process.cwd(), "public/assets");
 
 /**
  * The generated office with the real furniture catalog loaded (blank sprites; no PNG decoding in node).
+ * @param custom - A hand-built layout to use instead of the generated one.
  * @returns A fresh scene.
  */
-export function loadOffice(): OfficeState {
+export function loadOffice(custom?: OfficeLayout): OfficeState {
   const catalog = buildFurnitureCatalog(ASSETS_DIR);
   const sprites = Object.fromEntries(
     catalog.map((entry) => [
@@ -20,8 +21,10 @@ export function loadOffice(): OfficeState {
     ]),
   );
   buildDynamicCatalog({ catalog, sprites });
-  const layout: OfficeLayout = JSON.parse(
-    readFileSync(path.join(ASSETS_DIR, "office-layout.json"), "utf8"),
-  );
+  const layout: OfficeLayout =
+    custom ??
+    JSON.parse(
+      readFileSync(path.join(ASSETS_DIR, "office-layout.json"), "utf8"),
+    );
   return new OfficeState(layout);
 }
