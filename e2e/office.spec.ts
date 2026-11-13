@@ -17,7 +17,7 @@ test.use({ viewport: { width: 1600, height: 1200 }, hasTouch: false });
 const ROOMS = ["working", "needsPermission", "waitingForYou", "review", "idle"];
 const SEATS: Record<string, number> = {
   working: 24,
-  needsPermission: 12,
+  needsPermission: 7,
   waitingForYou: 8,
   review: 12,
   idle: 6,
@@ -45,6 +45,7 @@ test("the owner sees an office with five labelled rooms", async ({
   await expect(page.getByTestId("room-sign").nth(2)).toHaveText(
     "Waiting for you",
   );
+  await expect(page.getByTestId("sign-off-label")).toHaveText("SIGN-OFF");
 
   // And the scene has the five areas, each with seats an employee can take
   const areas = await page.evaluate(() =>
@@ -60,7 +61,7 @@ test("the owner sees an office with five labelled rooms", async ({
     );
   }
 
-  // And the Idle lounge's places are sofa seats, a reader and standers; every desk room's chairs sit still and only Working types
+  // And the Idle lounge's places are sofa seats, a reader and standers; only Working types
   expect(
     seats.filter((seat) => seat.areaLabel === "idle").map((seat) => seat.pose),
   ).toEqual(["sit", "read", "sit", "stand", "sit", "stand"]);
@@ -71,13 +72,14 @@ test("the owner sees an office with five labelled rooms", async ({
         .map((seat) => seat.pose),
     ),
   ).toEqual(new Set(["type"]));
-  expect(
+  // And the sign-off queue holds a paper while the benches and Review's chairs sit still
+  const posesOf = (room: string) =>
     new Set(
-      seats
-        .filter((seat) => !["working", "idle"].includes(seat.areaLabel ?? ""))
-        .map((seat) => seat.pose),
-    ),
-  ).toEqual(new Set(["sit"]));
+      seats.filter((seat) => seat.areaLabel === room).map((seat) => seat.pose),
+    );
+  expect(posesOf("needsPermission")).toEqual(new Set(["read"]));
+  expect(posesOf("waitingForYou")).toEqual(new Set(["sit"]));
+  expect(posesOf("review")).toEqual(new Set(["sit"]));
 });
 
 test("idle, waiting-for-you and thinking sessions each sit in their own room, thinking inside Working", async ({

@@ -3,6 +3,7 @@ import { PALETTE_COUNT } from "../constants";
 import type { Direction, SpriteData } from "../types";
 import { Direction as Dir } from "../types";
 import type { ColorValue } from "../types/color";
+import bubbleDotsData from "./bubble-dots.json";
 import bubblePermissionData from "./bubble-permission.json";
 import bubblePetData from "./bubble-pet.json";
 import bubbleWaitingData from "./bubble-waiting.json";
@@ -18,13 +19,25 @@ function resolveBubbleSprite(data: BubbleSpriteJson): SpriteData {
   return data.pixels.map((row) => row.map((key) => data.palette[key] ?? key));
 }
 
-/** Permission bubble: white square with "..." in amber, and a tail pointer (11x13) */
+/** Dots bubble: white square with "..." in amber, and a tail pointer (11x13) */
+export const BUBBLE_DOTS_SPRITE: SpriteData =
+  resolveBubbleSprite(bubbleDotsData);
+
+/** Permission bubble: white square with a red "!", and a tail pointer (11x13) */
 export const BUBBLE_PERMISSION_SPRITE: SpriteData =
   resolveBubbleSprite(bubblePermissionData);
 
 /** Waiting bubble: white square with green checkmark, and a tail pointer (11x13) */
 export const BUBBLE_WAITING_SPRITE: SpriteData =
   resolveBubbleSprite(bubbleWaitingData);
+
+/** The picture shown over an employee's head for each bubble kind. */
+export function bubbleSpriteFor(
+  type: "permission" | "waiting" | "asks" | "review",
+): SpriteData {
+  if (type === "permission") return BUBBLE_PERMISSION_SPRITE;
+  return type === "asks" ? BUBBLE_DOTS_SPRITE : BUBBLE_WAITING_SPRITE;
+}
 
 /** Heart bubble: pet petting feedback (11x13) */
 export const BUBBLE_HEART_SPRITE: SpriteData =

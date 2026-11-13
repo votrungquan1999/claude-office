@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionDto } from "@/shared/session";
 import { loadOffice } from "@/test/load-office";
 import { createSceneSync } from "../sceneSync";
+import { Direction } from "../types";
 
 /** A session numbered `n` in the given state. */
 const session = (n: number, state: SessionDto["state"]): SessionDto => ({
@@ -96,5 +97,52 @@ describe("Waiting for you employees stay where they are put", () => {
     const moved = office.getCharacters()[0];
     expect(office.seatZone(moved.seatId ?? "")).toBe("working");
     expect(tileOf().slice(1)).toEqual(placed.slice(1));
+  });
+});
+
+describe("Needs permission employees queue at the counter", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("puts the first at the place nearest the counter, holding a paper and facing it, and keeps all ten, standing extras included, still for half an hour", () => {
+    // Given ten employees needing permission: seven take the queue places, three stand on the floor
+    vi.spyOn(Math, "random").mockImplementation(seededRandom(5));
+    const office = loadOffice();
+    const sync = createSceneSync(office, { smoothMs: 0 });
+    sync.apply(
+      Array.from({ length: 10 }, (_, n) => session(n, "needsPermission")),
+      { firstLoad: true },
+    );
+    const characters = office.getCharacters();
+    const tileOf = () =>
+      office.getCharacters().map((ch) => `${ch.tileCol},${ch.tileRow}`);
+    const placed = tileOf();
+    const firstSeat = office.seats.get(characters[0].seatId ?? "");
+
+    // When half an hour passes
+    const visited = new Set<string>();
+    for (let step = 0; step < 30 * 60 * 10; step++) {
+      office.update(0.1);
+      for (const tile of tileOf()) visited.add(tile);
+    }
+
+    // Then the first stands on the first listed place, reading, facing left, and never typing
+    const [first, ...others] = office.getCharacters();
+    expect([first.pose, first.standing, first.dir]).toEqual([
+      "read",
+      true,
+      Direction.LEFT,
+    ]);
+    expect(first.seatId).toBe(
+      [...office.seats.keys()].find(
+        (uid) => office.seatZone(uid) === "needsPermission",
+      ),
+    );
+    expect(firstSeat?.assigned).toBe(true);
+    expect(others.slice(0, 6).every((ch) => ch.pose === "read")).toBe(true);
+
+    // And nobody left the tile it was put on
+    expect([...visited].sort()).toEqual([...new Set(placed)].sort());
   });
 });

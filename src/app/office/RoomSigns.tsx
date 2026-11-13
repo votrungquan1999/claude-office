@@ -59,6 +59,26 @@ export function roomAnchors(officeState: OfficeState): RoomAnchor[] {
 }
 
 /**
+ * Where the SIGN-OFF label hangs: at the wall row, just right of the whiteboard. The label sits above that line, so a long room sign on the line never covers it.
+ * @param officeState - The scene holding the layout.
+ * @returns The label's world position, or null when the layout has no whiteboard.
+ */
+export function signOffAnchor(
+  officeState: OfficeState,
+): { worldX: number; worldY: number } | null {
+  const whiteboard = officeState
+    .getLayout()
+    .furniture.find((item) => item.type === "WHITEBOARD");
+  if (!whiteboard) return null;
+  return {
+    // A quarter tile clear of the whiteboard's right edge; the label grows to the right
+    worldX: (whiteboard.col + 2.25) * TILE_SIZE,
+    // The whiteboard ends on the wall row, which is where room signs hang too
+    worldY: (whiteboard.row + 1) * TILE_SIZE,
+  };
+}
+
+/**
  * How many seats each room has.
  * @param officeState - The scene holding the seats.
  * @returns Seat counts by room label.
@@ -122,6 +142,7 @@ export function RoomSigns({
 
   // A full-size sign suits a tile of 1 CSS px per world px; on a phone the tile is smaller and the sign shrinks with it.
   const scale = Math.min(1, zoom / (window.devicePixelRatio || 1));
+  const signOff = signOffAnchor(officeState);
   return (
     <>
       {roomAnchors(officeState).map((anchor) => (
@@ -146,6 +167,26 @@ export function RoomSigns({
           )}
         </div>
       ))}
+      {signOff && (
+        <div
+          data-testid="sign-off-label"
+          className="pointer-events-none absolute whitespace-nowrap font-semibold"
+          style={{
+            left: project.toScreenX(signOff.worldX),
+            top: project.toScreenY(signOff.worldY),
+            // Its bottom edge ends just above the room signs' line
+            transform: `translateY(calc(-100% - ${4 * scale}px))`,
+            fontSize: 12 * scale,
+            lineHeight: 1.33,
+            padding: `${1 * scale}px ${6 * scale}px`,
+            background: "#e8e0c8",
+            color: "#181828",
+            border: `${Math.max(1, 2 * scale)}px solid #0b0b12`,
+          }}
+        >
+          SIGN-OFF
+        </div>
+      )}
     </>
   );
 }

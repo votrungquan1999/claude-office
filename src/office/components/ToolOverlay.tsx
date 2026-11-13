@@ -16,10 +16,7 @@ import { isSeated } from "../engine/characters";
 import type { OfficeState } from "../engine/officeState";
 import { overlayProjection } from "../projection";
 import { getCachedSprite } from "../sprites/spriteCache";
-import {
-  BUBBLE_PERMISSION_SPRITE,
-  BUBBLE_WAITING_SPRITE,
-} from "../sprites/spriteData";
+import { bubbleSpriteFor } from "../sprites/spriteData";
 
 interface ToolOverlayProps {
   officeState: OfficeState;
@@ -112,9 +109,7 @@ export function ToolOverlay({
           !(ch.bubbleType === "waiting" && ch.waitingAwaitingInput)
         ) {
           const cachedBubble = getCachedSprite(
-            ch.bubbleType === "permission" || ch.bubbleType === "asks"
-              ? BUBBLE_PERMISSION_SPRITE
-              : BUBBLE_WAITING_SPRITE,
+            bubbleSpriteFor(ch.bubbleType),
             zoom,
           );
           const bubbleSittingOff = isSeated(ch) ? BUBBLE_SITTING_OFFSET_PX : 0;

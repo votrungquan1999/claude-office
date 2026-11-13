@@ -8,7 +8,7 @@ import { Direction, TileType } from "./types";
 
 const SEATS_PER_ROOM: Record<string, number> = {
   working: 24,
-  needsPermission: 12,
+  needsPermission: 7,
   waitingForYou: 8,
   review: 12,
   idle: 6,
@@ -299,5 +299,61 @@ describe("the Waiting for you room", () => {
       (item) => item !== door && item.row === door?.row,
     );
     expect(wallPieces.map((item) => item.col)).not.toContain(door?.col);
+  });
+});
+
+describe("the Needs permission sign-off counter", () => {
+  it("has a whiteboard, a counter with a paper and the owner's empty chair, and a single queue line of standing places at the counter's front row that fill from the counter outwards, facing the counter", () => {
+    // Given the generated office
+    const office = loadOffice();
+    const { cols, areaTiles, furniture } = office.getLayout();
+    const roomAt = (col: number, row: number) =>
+      areaTiles?.[row * cols + col] ?? null;
+    const inRoom = furniture.filter(
+      (item) =>
+        roomAt(item.col, item.row) === "needsPermission" ||
+        // A wall piece stands on the wall rows above the room's floor
+        roomAt(item.col, item.row + 1) === "needsPermission" ||
+        roomAt(item.col, item.row + 2) === "needsPermission",
+    );
+    const typesIn = inRoom.map((item) => item.type);
+    const counter = inRoom.find((item) => item.type === "DESK_FRONT");
+    const paper = inRoom.find((item) => item.type === "PAPER");
+    const chair = inRoom.find((item) =>
+      item.type.startsWith("CUSHIONED_CHAIR"),
+    );
+    const places = [...office.seats.entries()]
+      .filter(([uid]) => office.seatZone(uid) === "needsPermission")
+      .map(([, seat]) => seat);
+    const blocked = getBlockedTiles(furniture, getSeatTiles(office.seats));
+
+    // Then the room has the whiteboard and the counter's one desk, and no computer
+    expect(typesIn).toEqual(expect.arrayContaining(["WHITEBOARD", "PAPER"]));
+    expect(typesIn.filter((type) => /^DESK_/.test(type))).toEqual([
+      "DESK_FRONT",
+    ]);
+    expect(typesIn.filter((type) => /^PC_/.test(type))).toEqual([]);
+
+    // And the paper lies on the counter's front row, and the owner's chair stands behind it, is no place and stays blocked
+    expect(paper?.col).toBeGreaterThanOrEqual(counter?.col ?? 99);
+    expect(paper?.col).toBeLessThan((counter?.col ?? 0) + 3);
+    expect(paper?.row).toBe((counter?.row ?? 0) + 1);
+    expect(chair?.row).toBeLessThan(counter?.row ?? 0);
+    expect(
+      places.some((s) => s.seatCol === chair?.col && s.seatRow === chair?.row),
+    ).toBe(false);
+    expect(blocked.has(`${chair?.col},${chair?.row}`)).toBe(true);
+
+    // And the places stand in one line at the counter's front row, east of it, holding a paper, facing left, nearest the counter first
+    expect(
+      places.map((seat) => [seat.pose, seat.standing, seat.facingDir]),
+    ).toEqual(Array(7).fill(["read", true, Direction.LEFT]));
+    expect(new Set(places.map((seat) => seat.seatRow))).toEqual(
+      new Set([(counter?.row ?? 0) + 1]),
+    );
+    const counterEdge = (counter?.col ?? 0) + 3;
+    expect(places.every((seat) => seat.seatCol >= counterEdge)).toBe(true);
+    const distances = places.map((seat) => seat.seatCol - counterEdge);
+    expect(distances).toEqual([...distances].sort((a, b) => a - b));
   });
 });

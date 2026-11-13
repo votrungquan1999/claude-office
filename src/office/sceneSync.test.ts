@@ -394,8 +394,8 @@ describe("scene sync", () => {
       sync.apply(sessions, { firstLoad: true });
 
       // Then the room counts every one of them, and the two without a seat stand inside it
-      expect(seatsInRoom).toBe(12);
-      expect(sync.roomCounts()).toEqual({ needsPermission: 14 });
+      expect(seatsInRoom).toBe(7);
+      expect(sync.roomCounts()).toEqual({ needsPermission: 9 });
       const standing = office
         .getCharacters()
         .filter((ch) => ch.seatId === null);
@@ -429,7 +429,7 @@ describe("scene sync", () => {
       const standing = office
         .getCharacters()
         .filter((ch) => ch.seatId === null);
-      expect(standing).toHaveLength(138);
+      expect(standing).toHaveLength(143);
       const { cols, areaTiles } = office.getLayout();
       const rooms = new Set(
         standing.map((ch) => areaTiles?.[ch.tileRow * cols + ch.tileCol]),

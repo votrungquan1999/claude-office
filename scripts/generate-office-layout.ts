@@ -110,7 +110,8 @@ for (let c = 0; c < COLS; c++) {
 }
 
 // Doorways: floor tiles in a shared wall, coloured and labelled as the room they open into
-setFloor(22, wallRowOf(true) + 5, Room.NeedsPermission);
+// Needs permission's doorway sits below its queue line, which runs along the counter's front row
+setFloor(22, wallRowOf(true) + 7, Room.NeedsPermission);
 setFloor(11, wallRowOf(false) + 5, Room.Review);
 setFloor(22, wallRowOf(false) + 5, Room.Idle);
 setFloor(5, wallRowOf(false), Room.WaitingForYou);
@@ -198,10 +199,40 @@ function furnishAsWaitingArea({ c0, width, top }: RoomBox): void {
   stayPutRooms.push(Room.WaitingForYou);
 }
 
+/**
+ * The sign-off counter: a whiteboard on the wall, the owner's empty chair behind a counter with a paper, and one queue line of standing places east of it at the counter's front row.
+ * @param box - The room to furnish.
+ */
+function furnishAsSignOff({ c0, width, top }: RoomBox): void {
+  const wallRow = wallRowOf(top);
+  const counterCol = c0 + 1;
+  const counterRow = wallRow + 4;
+  // A wall piece two tiles tall starts one row above the wall row
+  place("WHITEBOARD", c0 + 1, wallRow - 1);
+  // The owner's chair is behind the counter, and no place lists it
+  place("CUSHIONED_CHAIR_FRONT", counterCol + 1, wallRow + 3);
+  place("DESK_FRONT", counterCol, counterRow);
+  // The paper lies on the counter's front row, or it would float above the counter
+  place("PAPER", counterCol + 1, counterRow + 1);
+  place("PLANT", c0 + 1, wallRow + 8);
+  place("PLANT", c0 + width - 2, wallRow + 8);
+  // One line at counter height, filled from the counter outwards
+  for (let col = counterCol + 3; col <= c0 + width - 2; col++) {
+    spots.push({
+      col,
+      row: counterRow + 1,
+      facing: "left",
+      pose: "read",
+      standing: true,
+    });
+  }
+  stayPutRooms.push(Room.NeedsPermission);
+}
+
 /** How each room is furnished; one entry per room. */
 const FURNISH: Record<Room, (box: RoomBox) => void> = {
   [Room.Working]: furnishWithDesks,
-  [Room.NeedsPermission]: furnishWithDesks,
+  [Room.NeedsPermission]: furnishAsSignOff,
   [Room.WaitingForYou]: furnishAsWaitingArea,
   [Room.Review]: furnishWithDesks,
   [Room.Idle]: furnishAsLounge,
