@@ -20,6 +20,7 @@ interface SessionRow {
   endedAt?: Date;
   bridgeSessionId?: string;
   deskName?: string;
+  ownerName?: string;
   request?: string;
   recentSteps?: Array<Omit<StepDto, "startedAt"> & { startedAt: Date }>;
   runningSteps?: Array<{ text: string; startedAt: Date }>;
@@ -78,6 +79,7 @@ function toDto(row: SessionRow): SessionDto {
     startedAt: row.startedAt.toISOString(),
     ...(row.endedAt ? { endedAt: row.endedAt.toISOString() } : {}),
     ...(row.deskName ? { deskName: row.deskName } : {}),
+    ...(row.ownerName ? { ownerName: row.ownerName } : {}),
     ...(row.request ? { request: row.request } : {}),
     ...(row.bridgeSessionId ? { bridgeSessionId: row.bridgeSessionId } : {}),
     ...(row.recentSteps?.length

@@ -1,4 +1,5 @@
 import type { CompanySessionInput, SessionCompany } from "@/shared/companies";
+import { folderName } from "@/shared/employee-name";
 import type { SessionDto } from "@/shared/session";
 import { sessionKey } from "@/shared/session";
 import { tagLabels } from "@/shared/tag-labels";
@@ -64,10 +65,6 @@ export function lookOf(key: string): { palette: number; hueShift: number } {
     palette: hash % getLoadedCharacterCount(),
     hueShift: (Math.floor(hash / 256) % 8) * 45,
   };
-}
-
-function folderName(cwd: string): string {
-  return cwd.split("/").filter(Boolean).at(-1) ?? cwd;
 }
 
 /**
@@ -253,9 +250,9 @@ export function createSceneSync(
             labelsByCompany.get(placed?.companyKey ?? null) ?? new Map(),
           ),
         ].join(" ");
-        const label = session.deskName
-          ? `${session.deskName} · ${place}`
-          : place;
+        // No folder fallback: the place already names the folder
+        const name = session.ownerName ?? session.deskName;
+        const label = name ? `${name} · ${place}` : place;
         const employee = employees.get(key);
         if (session.state === "wentHome") {
           // The renderer finishes the despawn on its own; a resume later gets a fresh id, so it never meets the leaver.

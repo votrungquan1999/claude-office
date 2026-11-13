@@ -4,11 +4,11 @@ import { getDb } from "@/db/mongo";
 import { useTestMongo } from "@/test/use-test-mongo";
 import { SessionWriter } from "./writer";
 
-describe("the owner's Review-to-Idle mark on a stored session", () => {
+describe("the owner's fields on a stored session (Review-to-Idle mark, employee name)", () => {
   useTestMongo();
 
-  it("survives the agent republishing the session, with or without steps", async () => {
-    // Given a stored Review the owner moved to Idle
+  it("survive the agent republishing the session, with or without steps", async () => {
+    // Given a stored Review the owner moved to Idle and named
     const db = await getDb();
     const sessions = db.collection("sessions");
     await sessions.deleteMany({});
@@ -23,6 +23,7 @@ describe("the owner's Review-to-Idle mark on a stored session", () => {
       stateSince: reviewSince,
       reviewSeenAt: reviewSince,
       reviewClearedAt: clearedAt,
+      ownerName: "Login fixer",
       startedAt: new Date(0),
       changedAt: new Date(0),
     });
@@ -59,12 +60,13 @@ describe("the owner's Review-to-Idle mark on a stored session", () => {
     await writer.flush();
     writer.stop();
 
-    // Then the mark is still on the row
+    // Then the mark and the name are still on the row
     const stored = await sessions.findOne({ sessionId: "s1" });
     expect(stored?.cwd).toBe("/work/b");
-    expect([stored?.reviewSeenAt, stored?.reviewClearedAt]).toEqual([
-      reviewSince,
-      clearedAt,
-    ]);
+    expect([
+      stored?.reviewSeenAt,
+      stored?.reviewClearedAt,
+      stored?.ownerName,
+    ]).toEqual([reviewSince, clearedAt, "Login fixer"]);
   }, 60_000);
 });

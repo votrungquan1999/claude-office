@@ -19,6 +19,7 @@ import { ROOM_OF_STATE } from "@/office/rooms";
 import { createSceneSync, lookOf } from "@/office/sceneSync";
 import { installTestHooks } from "@/office/testHooks";
 import { dayStartOf, todaysDepartures } from "@/office/wentHome";
+import { employeeName } from "@/shared/employee-name";
 import type { FolderDto } from "@/shared/folders";
 import { buildOverview, resolveSelection } from "@/shared/overview";
 import {
@@ -40,6 +41,12 @@ import { postCompanyMode } from "./companyMode";
 import { DetailsPanel, type OrderClickState } from "./DetailsPanel";
 import { postDismiss } from "./dismiss";
 import { postDisplayName } from "./displayName";
+import {
+  applyEmployeeNames,
+  type PendingEmployeeNames,
+  postEmployeeName,
+  settleEmployeeNames,
+} from "./employeeName";
 import { HireDialog, type HireMac } from "./HireDialog";
 import {
   acceptName,
@@ -67,15 +74,6 @@ import { useOfficeChanges } from "./useOfficeChanges";
 import { WentHomeButton } from "./WentHomeButton";
 import { WentHomeDrawer, type WentHomeRow } from "./WentHomeDrawer";
 import { postWake } from "./wake";
-
-/**
- * The last path segment of a folder.
- * @param cwd - A folder path.
- * @returns Its name.
- */
-function folderName(cwd: string): string {
-  return cwd.split("/").filter(Boolean).at(-1) ?? cwd;
-}
 
 const COMPANY_STORAGE_KEY = "claude-office.company";
 
@@ -114,6 +112,8 @@ interface OfficeData {
   names: NameOverrides;
   /** Reviews the owner moved to Idle on this device that no answer has confirmed yet. */
   reviewMoves: ReviewMoves;
+  /** Employee names the owner gave on this device that no answer has confirmed yet. */
+  employeeNames: PendingEmployeeNames;
   offline: ReadonlySet<string>;
 }
 
@@ -123,7 +123,10 @@ interface OfficeData {
  * @returns The sessions to show.
  */
 function shownSessions(data: OfficeData): SessionMap {
-  return applyReviewMoves(data.sessions, data.reviewMoves);
+  return applyEmployeeNames(
+    applyReviewMoves(data.sessions, data.reviewMoves),
+    data.employeeNames,
+  );
 }
 
 /**
@@ -275,6 +278,7 @@ export function OfficeView() {
     overrides: new Map(),
     names: new Map(),
     reviewMoves: new Map(),
+    employeeNames: new Map(),
     offline: new Set(),
   });
   // The poll reads refs only, so the picked company lives in one too.
@@ -396,6 +400,12 @@ export function OfficeView() {
         names: settleNames(dataRef.current.names, answer.folders, poll),
         // A move stays in force until an answer shows something other than the Review the owner saw.
         reviewMoves: settleReviewMoves(dataRef.current.reviewMoves, sessions),
+        // A name stays in force until an answer shows it, so a poll already in flight cannot put the old one back.
+        employeeNames: settleEmployeeNames(
+          dataRef.current.employeeNames,
+          sessions,
+          poll,
+        ),
         // Judged against the server's clock: the phone's may be minutes off.
         offline: offlineMachineIds(answer.machines, answer.serverNow, [
           ...[...sessions.values()].map((session) => session.machineId),
@@ -511,6 +521,47 @@ export function OfficeView() {
     setMoveRefusedKey(key);
   };
 
+  /** Shows the owner's name for an employee at once and sends it; a refused request puts the old name back. */
+  const renameEmployee = async (key: string, name: string) => {
+    const session = dataRef.current.sessions.get(key);
+    if (!session) return false;
+    const pending = { name, storedAfterPoll: null };
+    commit(
+      {
+        ...dataRef.current,
+        employeeNames: new Map(dataRef.current.employeeNames).set(key, pending),
+      },
+      false,
+    );
+    const sent = await postEmployeeName({
+      machineId: session.machineId,
+      sessionId: session.sessionId,
+      name,
+    });
+    if (sent) {
+      // The server holds it now; an answer to a poll started from here on is the truth, whatever name it shows.
+      if (dataRef.current.employeeNames.get(key) === pending)
+        commit(
+          {
+            ...dataRef.current,
+            employeeNames: new Map(dataRef.current.employeeNames).set(key, {
+              name,
+              storedAfterPoll: lastStartedPoll(),
+            }),
+          },
+          false,
+        );
+      return true;
+    }
+    // Only this rename's own pending name is taken back
+    if (dataRef.current.employeeNames.get(key) === pending) {
+      const reverted = new Map(dataRef.current.employeeNames);
+      reverted.delete(key);
+      commit({ ...dataRef.current, employeeNames: reverted }, false);
+    }
+    return false;
+  };
+
   /** Opens the company drawer; a details panel left open would sit under it, so it closes. */
   const openDrawer = () => {
     setSwitchError(null);
@@ -618,7 +669,7 @@ export function OfficeView() {
     return [
       {
         id,
-        deskName: session.deskName ?? folderName(session.cwd),
+        deskName: employeeName(session),
         machineName: session.machineName,
         state: session.state,
         palette: character.palette,
@@ -636,7 +687,7 @@ export function OfficeView() {
       {
         key,
         room,
-        task: session.deskName ?? folderName(session.cwd),
+        task: employeeName(session),
         ...lookOf(key),
         state: session.state,
         offline: offlineIds.has(session.machineId),
@@ -661,6 +712,7 @@ export function OfficeView() {
       overrides,
       names,
       reviewMoves: new Map(),
+      employeeNames: new Map(),
       offline: offlineIds,
     },
     now,
@@ -736,7 +788,7 @@ export function OfficeView() {
         return {
           key,
           ...lookOf(key),
-          task: session.deskName ?? folderName(session.cwd),
+          task: employeeName(session),
           where: `${session.machineName} / ${placed?.companyName}${placed?.project ? `/${placed.project}` : ""}`,
           time: new Date(session.endedAt ?? "").toLocaleTimeString("en-GB", {
             hour: "2-digit",
@@ -965,6 +1017,11 @@ export function OfficeView() {
             onWake={() => void wakeSelected()}
             dismiss={selectedKey ? dismisses.get(selectedKey) : undefined}
             onDismiss={() => void dismissSelected()}
+            onRename={(name) =>
+              selectedKey
+                ? renameEmployee(selectedKey, name)
+                : Promise.resolve(false)
+            }
             onMoveToIdle={() => selectedKey && void moveToIdle(selectedKey)}
             moveToIdleError={
               selectedKey && selectedKey === moveRefusedKey

@@ -14,3 +14,19 @@ export function renameToSend(
   const stored = company.name === company.folderName ? null : company.name;
   return next === stored ? null : { displayName: next };
 }
+
+/**
+ * What saving a typed employee name asks the server to store.
+ * @param draft - The text the owner saved.
+ * @param names - The owner's name now (absent when none) and the automatic name.
+ * @returns The name to send (empty brings the automatic name back), or null when saving changes nothing.
+ */
+export function employeeNameToSend(
+  draft: string,
+  names: { ownerName?: string; automaticName: string },
+): string | null {
+  const typed = draft.replace(/\s+/g, " ").trim();
+  // A blank or the automatic name itself means "no owner's name".
+  const next = typed === names.automaticName ? "" : typed;
+  return next === (names.ownerName ?? "") ? null : next;
+}

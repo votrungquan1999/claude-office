@@ -153,6 +153,31 @@ describe("scene sync", () => {
     );
   });
 
+  it("labels an employee with the owner's name ahead of the desk name, and falls back to the desk name when the owner's name is taken away", () => {
+    // Given a session with a desk name and an owner's name
+    const office = loadOffice();
+    const sync = createSceneSync(office);
+    const named = {
+      ...session("m1", "Mac mini", "a", "/Users/q/docs"),
+      deskName: "Write the report",
+      ownerName: "Report writer",
+    };
+    sync.apply([named], { firstLoad: true });
+    expect(office.getCharacters()[0].directoryName).toBe(
+      "Report writer · Mac mini / docs",
+    );
+
+    // When the owner's name is taken away
+    sync.apply([
+      { ...named, ownerName: undefined, changedAt: "2026-11-08T10:01:00.000Z" },
+    ]);
+
+    // Then the label shows the desk name again
+    expect(office.getCharacters()[0].directoryName).toBe(
+      "Write the report · Mac mini / docs",
+    );
+  });
+
   it("labels an employee with its project below the company folder, or the company name when it started at the folder itself", () => {
     // Given sessions started at, below and deep below the company folder "personal", and one in another company
     const at = (id: string, startCwd: string) => ({

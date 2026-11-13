@@ -1,10 +1,13 @@
+import { useState } from "react";
 import type { MacBlock } from "@/office/offline";
 import { remoteControlUrl } from "@/office/remoteControl";
 import { ROOM_DISPLAY_NAMES, ROOM_OF_STATE } from "@/office/rooms";
+import { employeeName } from "@/shared/employee-name";
 import type { FolderDto } from "@/shared/folders";
 import { type SessionDto, sessionKey } from "@/shared/session";
 import { DismissControl } from "./DismissControl";
 import { formatElapsed } from "./elapsed";
+import { RenameEmployeeDialog } from "./RenameEmployeeDialog";
 import { RequestPopup } from "./RequestPopup";
 import { StepsList } from "./StepsList";
 import { useNow } from "./useNow";
@@ -44,14 +47,12 @@ interface DetailsPanelProps {
   dismiss?: OrderClickState;
   /** Sends one dismiss order for the employee. */
   onDismiss?: () => void;
+  /** Sends the owner's name for the employee; resolves true when the server stored it. */
+  onRename?: (name: string) => Promise<boolean>;
   /** Moves the employee's Review to Idle. */
   onMoveToIdle?: () => void;
   /** Why the last move to Idle was refused; absent when it was not. */
   moveToIdleError?: string;
-}
-
-function folderName(cwd: string): string {
-  return cwd.split("/").filter(Boolean).at(-1) ?? cwd;
 }
 
 /** The look of a state band: its colour and the text colour that reads on it. */
@@ -222,11 +223,17 @@ function Card({
   onWake,
   dismiss,
   onDismiss,
+  onRename,
   onMoveToIdle,
   moveToIdleError,
 }: DetailsPanelProps & { session: SessionDto }) {
   // The browser's clock moved onto the server's, so a phone clock minutes off still shows right times.
   const nowMs = useNow() + serverOffsetMs;
+  const [renaming, setRenaming] = useState(false);
+  const automaticName = employeeName({
+    deskName: session.deskName,
+    cwd: session.cwd,
+  });
   // A session with no process has nothing left to control, so it gets no link and no "off" message.
   const ended = session.state === "wentHome" || session.notRunning === true;
   const launching = session.waitingAtMac === true || session.starting === true;
@@ -308,8 +315,27 @@ function Card({
       <div className="flex min-h-0 flex-1 flex-col gap-2 p-3 [@media(max-height:500px)]:flex-none [@media(max-height:500px)]:gap-1 [@media(max-height:500px)]:p-2">
         <div className="flex shrink-0 items-start gap-8">
           <h2 className="line-clamp-2 min-w-0 flex-1 text-lg leading-[1.15] font-bold break-words [@media(max-height:500px)]:line-clamp-1">
-            {session.deskName ?? folderName(session.cwd)}
+            {employeeName(session)}
           </h2>
+          {onRename && (
+            <button
+              type="button"
+              aria-label="Rename employee"
+              onClick={() => setRenaming(true)}
+              className="shrink-0 px-8 text-lg leading-none hover:bg-btn-hover"
+            >
+              ✎
+            </button>
+          )}
+          {renaming && onRename && (
+            <RenameEmployeeDialog
+              key={sessionKey(session)}
+              ownerName={session.ownerName}
+              automaticName={automaticName}
+              onSave={onRename}
+              onClose={() => setRenaming(false)}
+            />
+          )}
           {session.request && (
             <RequestPopup key={sessionKey(session)} request={session.request} />
           )}

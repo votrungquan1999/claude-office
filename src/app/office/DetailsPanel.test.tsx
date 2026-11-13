@@ -978,6 +978,138 @@ describe("the details panel", () => {
   });
 });
 
+describe("renaming an employee from its card", () => {
+  afterEach(cleanup);
+
+  it("opens a dialog from the pencil that shows the automatic name and the owner's name, and Enter sends the typed name once and closes it", async () => {
+    // Given a card whose employee already has an owner's name over its automatic one
+    const onRename = vi.fn().mockResolvedValue(true);
+    openWithWake(
+      session({ deskName: "Fix the login bug", ownerName: "Login fixer" }),
+      { onRename },
+    );
+
+    // When the owner presses the pencil
+    fireEvent.click(screen.getByRole("button", { name: "Rename employee" }));
+
+    // Then a modal dialog asks for the name, filled with the owner's name, and says what an empty name does
+    const dialog = screen.getByRole("dialog", { name: "Rename employee" });
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    const input = screen.getByLabelText("Name") as HTMLInputElement;
+    expect(input.value).toBe("Login fixer");
+    expect(dialog.textContent).toContain(
+      'Leave it empty to get the automatic name back: "Fix the login bug".',
+    );
+
+    // When the owner types a new name and presses Enter
+    fireEvent.change(input, { target: { value: "  Bug squasher " } });
+    await act(async () => {
+      fireEvent.submit(input.closest("form") as HTMLFormElement);
+    });
+
+    // Then one rename is sent with the typed name and the dialog is gone
+    expect(onRename).toHaveBeenCalledTimes(1);
+    expect(onRename).toHaveBeenCalledWith("Bug squasher");
+    expect(
+      screen.queryByRole("dialog", { name: "Rename employee" }),
+    ).toBeNull();
+  });
+
+  it("sends nothing when the owner cancels with Escape, the Cancel button or the backdrop, or saves the name as it stands", async () => {
+    // Given a card with an owner's name
+    const onRename = vi.fn().mockResolvedValue(true);
+    openWithWake(session({ ownerName: "Login fixer" }), { onRename });
+    const dialog = () =>
+      screen.queryByRole("dialog", { name: "Rename employee" });
+    const openDialog = () =>
+      fireEvent.click(screen.getByRole("button", { name: "Rename employee" }));
+
+    // When the owner types a name and presses Escape
+    openDialog();
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "Other" },
+    });
+    fireEvent.keyDown(document, { key: "Escape" });
+    // Then the dialog is gone
+    expect(dialog()).toBeNull();
+
+    // When the owner cancels with the button, then with the backdrop
+    openDialog();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(dialog()).toBeNull();
+    openDialog();
+    fireEvent.click(screen.getByTestId("rename-backdrop"));
+    expect(dialog()).toBeNull();
+
+    // When the owner saves without changing the name
+    openDialog();
+    await act(async () => {
+      fireEvent.submit(
+        screen.getByLabelText("Name").closest("form") as HTMLFormElement,
+      );
+    });
+
+    // Then the dialog closes and nothing was ever sent
+    expect(dialog()).toBeNull();
+    expect(onRename).not.toHaveBeenCalled();
+  });
+
+  it("keeps the dialog open with a one-line error when the server refuses the name, and closes once a retry is accepted", async () => {
+    // Given a server that refuses the first save and takes the second
+    const onRename = vi
+      .fn()
+      .mockResolvedValueOnce(false)
+      .mockResolvedValue(true);
+    openWithWake(session({ ownerName: "Login fixer" }), { onRename });
+    fireEvent.click(screen.getByRole("button", { name: "Rename employee" }));
+    const input = screen.getByLabelText("Name");
+    const form = input.closest("form") as HTMLFormElement;
+    fireEvent.change(input, { target: { value: "Bug squasher" } });
+
+    // When the owner saves and is refused
+    await act(async () => {
+      fireEvent.submit(form);
+    });
+
+    // Then the dialog stays with the typed name and an alert line
+    expect(screen.getByRole("alert").textContent).toBe(
+      "Could not rename. Try again.",
+    );
+    expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe(
+      "Bug squasher",
+    );
+
+    // When the owner saves again and it is accepted
+    await act(async () => {
+      fireEvent.submit(form);
+    });
+
+    // Then the dialog closes
+    expect(onRename).toHaveBeenCalledTimes(2);
+    expect(
+      screen.queryByRole("dialog", { name: "Rename employee" }),
+    ).toBeNull();
+  });
+
+  it("titles the card with the owner's name over the desk name, and the folder's name when neither exists", () => {
+    // Given three employees: named by the owner, by its desk, and by neither
+    const titleOf = (extra: Partial<SessionDto>) => {
+      const { unmount } = openWithWake(session(extra));
+      const title = screen.getByRole("heading", { level: 2 }).textContent;
+      unmount();
+      return title;
+    };
+
+    // When each card opens
+    // Then the owner's name wins, then the desk name, then the folder
+    expect(titleOf({ deskName: "Fix bug", ownerName: "Login fixer" })).toBe(
+      "Login fixer",
+    );
+    expect(titleOf({ deskName: "Fix bug" })).toBe("Fix bug");
+    expect(titleOf({})).toBe("claude-office");
+  });
+});
+
 describe("the original request", () => {
   afterEach(cleanup);
 

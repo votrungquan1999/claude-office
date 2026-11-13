@@ -47,6 +47,8 @@ export const sessionDtoSchema = z.object({
   endedAt: z.string().optional(),
   /** Name on the desk; absent only when nothing is known yet. */
   deskName: z.string().optional(),
+  /** The name the owner gave the employee; beats every automatic name. Absent when the owner gave none. */
+  ownerName: z.string().optional(),
   /** The original request: the typed first message, up to 2,000 characters; absent when the session has none. */
   request: z.string().optional(),
   /** Remote Control id; present only while Remote Control was connected. */
@@ -144,3 +146,15 @@ export const reviewSeenRequestSchema = z.object({
 });
 
 export type ReviewSeenRequest = z.infer<typeof reviewSeenRequestSchema>;
+
+/** The longest name the owner can give an employee, the same cut the automatic names get. */
+export const OWNER_NAME_MAX_LENGTH = 60;
+
+/** The owner's name for one employee; an empty name takes the owner's name away. */
+export const ownerNameRequestSchema = z.object({
+  machineId: z.string().min(1),
+  sessionId: z.string().min(1),
+  name: z.string().max(OWNER_NAME_MAX_LENGTH),
+});
+
+export type OwnerNameRequest = z.infer<typeof ownerNameRequestSchema>;
