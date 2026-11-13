@@ -72,6 +72,7 @@ import { RoomSigns } from "./RoomSigns";
 import { settleReviewMoves } from "./reviewSeen";
 import { TagFilter } from "./TagFilter";
 import { useOfficeChanges } from "./useOfficeChanges";
+import { useTabTitle } from "./useTabTitle";
 import { WentHomeDrawer, type WentHomeRow } from "./WentHomeDrawer";
 import { postWake } from "./wake";
 
@@ -693,6 +694,7 @@ export function OfficeView() {
     // Sessions come with the first answer, not with the assets
     loaded: loaded && lastUpdatedAt !== null,
   });
+  useTabTitle(needsYou.total);
   /**
    * Opens the original of a Needs you copy, switching company first when it lives elsewhere.
    * @param key - The employee to open.

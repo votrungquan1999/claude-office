@@ -9,6 +9,7 @@ import {
   seedOnlineMachine,
   seedSessions,
   signInAsOwner,
+  withE2eDb,
 } from "./helpers";
 
 const HOUR = 3_600_000;
@@ -129,6 +130,98 @@ test.describe("on a desktop", () => {
       await client.close();
     }
   });
+});
+
+test("the browser tab title counts the employees that need you in every company on an online Mac, and is the plain name when nobody does", async ({
+  context,
+  page,
+}) => {
+  // Given a permission, a waiting and a review in two companies of an online Mac, a permission on an offline Mac, and a working and a went-home employee
+  await withE2eDb(async (db) => {
+    await seedFolders(db.collection("folders"), [
+      { machineId: "air", path: "/Users/q/personal" },
+      { machineId: "air", path: "/Users/q/work" },
+      { machineId: "mini", path: "/Users/q/lab" },
+    ]);
+    await db.collection("machines").deleteMany({});
+    await seedOnlineMachine("air", "Air");
+    await db.collection("machines").insertOne({
+      machineId: "mini",
+      machineName: "Mini",
+      lastSeenAt: new Date(Date.now() - 600_000),
+    });
+    await seedSessions(db.collection("sessions"), [
+      {
+        sessionId: "p",
+        machineId: "air",
+        cwd: "/Users/q/personal/a",
+        startCwd: "/Users/q/personal/a",
+        state: "needsPermission",
+      },
+      {
+        sessionId: "w",
+        machineId: "air",
+        cwd: "/Users/q/work/b",
+        startCwd: "/Users/q/work/b",
+        state: "waitingForYou",
+      },
+      {
+        sessionId: "r",
+        machineId: "air",
+        cwd: "/Users/q/work/c",
+        startCwd: "/Users/q/work/c",
+        state: "review",
+      },
+      {
+        sessionId: "busy",
+        machineId: "air",
+        cwd: "/Users/q/work/d",
+        startCwd: "/Users/q/work/d",
+        state: "working",
+      },
+      {
+        sessionId: "gone",
+        machineId: "air",
+        cwd: "/Users/q/work/e",
+        startCwd: "/Users/q/work/e",
+        state: "wentHome",
+        hadPrompt: true,
+        endedAt: new Date(),
+      },
+      {
+        sessionId: "off",
+        machineId: "mini",
+        cwd: "/Users/q/lab/f",
+        startCwd: "/Users/q/lab/f",
+        state: "needsPermission",
+      },
+    ]);
+  });
+  await signInAsOwner(context);
+
+  try {
+    // When the owner opens the office
+    await page.goto("/");
+
+    // Then the title counts the three on the online Mac, the viewed company or not
+    await expect(page).toHaveTitle("(3) Claude Office");
+
+    // When nobody needs the owner any more
+    await withE2eDb(async (db) => {
+      await db
+        .collection("sessions")
+        .updateMany({}, { $set: { state: "idle", changedAt: new Date() } });
+    });
+
+    // Then the title is the plain name
+    await expect(page).toHaveTitle("Claude Office");
+  } finally {
+    await withE2eDb(async (db) => {
+      await seedFolders(db.collection("folders"), []);
+      await db.collection("machines").deleteMany({});
+      await db.collection("sessions").deleteMany({});
+    });
+  }
 });
 
 test("clicking a company tab shows only that company's employees, went-home list and room tiles, and the first company is shown to begin with", async ({
