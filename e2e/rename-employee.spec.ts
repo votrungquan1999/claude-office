@@ -7,6 +7,7 @@ import {
   seedFolders,
   seedOnlineMachine,
   seedSessions,
+  showRooms,
   signInAsOwner,
   waitForEmployees,
   withE2eDb,
@@ -185,5 +186,111 @@ test.describe("renaming an employee", () => {
         await db.collection("sessions").deleteMany({});
       });
     }
+  });
+});
+
+test.describe("Escape with several overlays open", () => {
+  test.use({ viewport: { width: 1280, height: 800 }, hasTouch: false });
+
+  test.beforeEach(async () => {
+    await withE2eDb(async (db) => {
+      await seedFolders(db.collection("folders"), [
+        { machineId: "air", path: "/Users/q/personal" },
+      ]);
+      await seedOnlineMachine("air", "Air");
+      await seedSessions(db.collection("sessions"), [
+        {
+          sessionId: "e1",
+          machineId: "air",
+          machineName: "Air",
+          cwd: "/Users/q/personal",
+          startCwd: "/Users/q/personal",
+          state: "idle",
+          deskName: "Audit signup emails",
+        },
+        {
+          sessionId: "gone",
+          machineId: "air",
+          machineName: "Air",
+          cwd: "/Users/q/personal",
+          startCwd: "/Users/q/personal",
+          state: "wentHome",
+          hadPrompt: true,
+          deskName: "Echo gone",
+          endedAt: new Date(),
+        },
+      ]);
+    });
+  });
+
+  test.afterEach(async () => {
+    await withE2eDb(async (db) => {
+      await seedFolders(db.collection("folders"), []);
+      await db.collection("machines").deleteMany({});
+      await db.collection("sessions").deleteMany({});
+    });
+  });
+
+  test("Escape closes only the rename dialog when the All companies drawer and a card are open under it", async ({
+    context,
+    page,
+  }) => {
+    // Given the drawer open, an employee's card open and its rename dialog open
+    await signInAsOwner(context);
+    await page.goto("/");
+    await waitForEmployees(page, 1);
+    await page.getByRole("button", { name: "All companies" }).click();
+    const drawer = page.getByRole("dialog", { name: /companies/i });
+    await expect(drawer).toBeVisible();
+    await page
+      .getByTestId("list-row-name")
+      .filter({ hasText: "Audit signup emails" })
+      .click();
+    const panel = page.getByTestId("details-panel");
+    await panel.getByRole("button", { name: "Rename employee" }).click();
+    const dialog = page.getByRole("dialog", { name: "Rename employee" });
+    await expect(dialog).toBeVisible();
+
+    // When the owner presses Escape
+    await page.keyboard.press("Escape");
+
+    // Then only the rename dialog closes
+    await expect(dialog).toBeHidden();
+    await expect(drawer).toBeVisible();
+    await expect(panel).toBeVisible();
+  });
+
+  test.describe("on a phone", () => {
+    test.use({
+      viewport: { width: 390, height: 844 },
+      hasTouch: true,
+      isMobile: true,
+    });
+
+    test("Escape closes only the rename dialog when the Went home sheet and a departure's card are open under it", async ({
+      context,
+      page,
+    }) => {
+      // Given the Went home sheet open with a departure's card and its rename dialog over it
+      await signInAsOwner(context);
+      await showRooms(context);
+      await page.goto("/");
+      await page.getByRole("button", { name: /^Went home/ }).tap();
+      const sheet = page.getByRole("dialog", { name: "Went home today" });
+      await sheet.getByRole("listitem").tap();
+      const panel = page.getByTestId("details-panel");
+      await expect(panel).toContainText("Echo gone");
+      await panel.getByRole("button", { name: "Rename employee" }).tap();
+      const dialog = page.getByRole("dialog", { name: "Rename employee" });
+      await expect(dialog).toBeVisible();
+
+      // When the owner presses Escape
+      await page.keyboard.press("Escape");
+
+      // Then only the rename dialog closes
+      await expect(dialog).toBeHidden();
+      await expect(panel).toBeVisible();
+      await expect(sheet).toBeVisible();
+    });
   });
 });

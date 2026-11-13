@@ -36,6 +36,9 @@ const listeners = new Set<() => void>();
 // The snapshot must keep its identity until the stored text changes
 let cached: { raw: string | null; settings: DeviceSettings } | null = null;
 
+// The settings of this visit once storage has refused a write; they win over whatever storage holds.
+let unsaved: DeviceSettings | null = null;
+
 /**
  * The stored text, or null when there is none or storage is unavailable.
  * @returns The raw text.
@@ -50,9 +53,10 @@ function storedText(): string | null {
 
 /**
  * The settings remembered on this device.
- * @returns The settings as stored now; the same object while the stored text is unchanged.
+ * @returns The settings as stored now, or as chosen this visit when storage refused them; the same object while neither changes.
  */
-function readDeviceSettings(): DeviceSettings {
+export function readDeviceSettings(): DeviceSettings {
+  if (unsaved) return unsaved;
   const raw = storedText();
   if (cached?.raw !== raw) cached = { raw, settings: parseDeviceSettings(raw) };
   return cached.settings;
@@ -63,13 +67,16 @@ function readDeviceSettings(): DeviceSettings {
  * @param change - The settings to change.
  */
 export function storeDeviceSettings(change: Partial<DeviceSettings>): void {
+  const next = { ...readDeviceSettings(), ...change };
   try {
     window.localStorage.setItem(
       DEVICE_SETTINGS_STORAGE_KEY,
-      JSON.stringify({ ...readDeviceSettings(), ...change }),
+      JSON.stringify(next),
     );
+    unsaved = null;
   } catch {
-    // The change still shows for this visit through the readers below.
+    // Readers show the change for this visit from memory; it is lost on reload.
+    unsaved = next;
   }
   for (const listener of listeners) listener();
 }

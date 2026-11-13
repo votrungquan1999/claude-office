@@ -14,6 +14,12 @@ export interface CompanyStripProps {
   onOpenDrawer: () => void;
   /** The drawer's trigger, so focus can return to it. */
   drawerButtonRef?: Ref<HTMLButtonElement>;
+  /** Opens the device settings; the button shows only when this is given. */
+  onOpenSettings?: () => void;
+  /** The settings' trigger, so focus can return to it. */
+  settingsButtonRef?: Ref<HTMLButtonElement>;
+  /** Whether the settings are open. */
+  settingsOpen?: boolean;
   /** Macs whose group is folded to one label. */
   collapsedMacs: ReadonlySet<string>;
   /** Asks to fold or open a Mac's group. */
@@ -92,6 +98,9 @@ export function CompanyStrip({
   onSelect,
   onOpenDrawer,
   drawerButtonRef,
+  onOpenSettings,
+  settingsButtonRef,
+  settingsOpen = false,
   collapsedMacs,
   onToggleMac,
   onRename,
@@ -263,7 +272,7 @@ export function CompanyStrip({
           );
         })}
       </div>
-      <div className="flex shrink-0 items-center border-l-2 border-border px-8">
+      <div className="flex shrink-0 items-center gap-8 border-l-2 border-border px-8">
         <button
           ref={drawerButtonRef}
           type="button"
@@ -292,6 +301,32 @@ export function CompanyStrip({
             "All companies"
           )}
         </button>
+        {onOpenSettings && (
+          <button
+            ref={settingsButtonRef}
+            type="button"
+            data-testid="open-settings"
+            aria-label="Settings"
+            aria-haspopup="dialog"
+            aria-expanded={settingsOpen}
+            onClick={onOpenSettings}
+            className={`shrink-0 border-2 border-border bg-btn-bg text-sm hover:bg-btn-hover ${phone ? "grid min-h-[44px] min-w-[44px] place-items-center" : "h-40 px-10"}`}
+          >
+            <svg
+              aria-hidden="true"
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path d="M1 4h14M1 12h14" />
+              <rect x="9" y="2" width="4" height="4" fill="currentColor" />
+              <rect x="3" y="10" width="4" height="4" fill="currentColor" />
+            </svg>
+          </button>
+        )}
       </div>
     </nav>
   );

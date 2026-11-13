@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useEscape } from "./useEscape";
 
 interface RequestPopupProps {
   /** The original request shown in the popup. */
@@ -13,15 +14,7 @@ interface RequestPopupProps {
 export function RequestPopup({ request }: RequestPopupProps) {
   const [open, setOpen] = useState(false);
 
-  // Escape closes the popup wherever focus is, so the listener sits on the document.
-  useEffect(() => {
-    if (!open) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [open]);
+  useEscape(() => setOpen(false), open);
 
   return (
     <>

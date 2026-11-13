@@ -79,6 +79,8 @@ import { PhoneBottomBar } from "./PhoneBottomBar";
 import { RoomSigns } from "./RoomSigns";
 import { settleReviewMoves } from "./reviewSeen";
 import { useDeviceSettings } from "./settings/deviceSettings";
+import { PhoneSettings } from "./settings/PhoneSettings";
+import { useSettingsPanel } from "./settings/useSettingsPanel";
 import { TagFilter } from "./TagFilter";
 import { useOfficeChanges } from "./useOfficeChanges";
 import { useTabTitle } from "./useTabTitle";
@@ -708,6 +710,13 @@ export function OfficeView() {
   useTabTitle(needsYou.total);
   const palette = useSearchPalette(!isPhone);
   const { phoneView } = useDeviceSettings();
+  const settings = useSettingsPanel({
+    enabled: isPhone,
+    beforeOpen: () => {
+      setSelectedKey(null);
+      officeState.selectedAgentId = null;
+    },
+  });
   const phoneSearchRef = useRef<HTMLInputElement>(null);
   /**
    * Opens the original of a Needs you copy, switching company first when it lives elsewhere.
@@ -824,6 +833,7 @@ export function OfficeView() {
         onSelect={selectCompany}
         onOpenDrawer={toggleDrawer}
         drawerButtonRef={drawerButtonRef}
+        {...settings.stripProps}
         collapsedMacs={collapsedMacs}
         onToggleMac={toggleMac}
         onRename={(machineId, path, name) =>
@@ -962,6 +972,9 @@ export function OfficeView() {
               onClose={closeDrawer}
             />
           )}
+          {isPhone && settings.open && (
+            <PhoneSettings onClose={settings.close} />
+          )}
           {/* Not on a phone (the bottom bar has its own Hire); hidden while a right panel or a details sheet is open, so it never sits over or beside them. */}
           {!isPhone &&
             !drawerOpen &&
@@ -1075,6 +1088,7 @@ export function OfficeView() {
       )}
       {isPhone &&
         !drawerOpen &&
+        !settings.open &&
         !wentHomeOpen &&
         !selectedSession &&
         !tagSheetOpen && (

@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { OWNER_NAME_MAX_LENGTH } from "@/shared/session";
 import { employeeNameToSend } from "./renameRule";
+import { useEscape } from "./useEscape";
 
 interface RenameEmployeeDialogProps {
   /** The name the owner gave the employee; absent when it has none. */
@@ -26,14 +27,7 @@ export function RenameEmployeeDialog({
   const [draft, setDraft] = useState(ownerName ?? automaticName);
   const [refused, setRefused] = useState(false);
 
-  // Escape closes the dialog wherever focus is, so the listener sits on the document.
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
+  useEscape(onClose);
 
   const save = async () => {
     const name = employeeNameToSend(draft, { ownerName, automaticName });

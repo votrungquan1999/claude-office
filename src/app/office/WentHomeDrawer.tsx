@@ -1,5 +1,5 @@
-import { useEffect } from "react";
 import { CharacterMugShot } from "@/office/components/CharacterMugShot";
+import { useEscape } from "./useEscape";
 
 export interface WentHomeRow {
   /** Session key, which opens its details. */
@@ -39,16 +39,8 @@ export function WentHomeDrawer({
   onCloseDetails,
   onClose,
 }: WentHomeDrawerProps) {
-  // Escape acts wherever focus is, so the listener sits on the document; the last-opened overlay goes first.
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      if (detailsOpen) onCloseDetails();
-      else onClose();
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [detailsOpen, onCloseDetails, onClose]);
+  // A card opened over the drawer closes first.
+  useEscape(detailsOpen ? onCloseDetails : onClose);
   return (
     <section
       role="dialog"

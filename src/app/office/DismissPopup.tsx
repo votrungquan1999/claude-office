@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEscape } from "./useEscape";
 
 interface DismissPopupProps {
   /** Name of the Mac the employee's window is open on. */
@@ -30,14 +30,7 @@ export function DismissPopup({
   onConfirm,
   onCancel,
 }: DismissPopupProps) {
-  // Escape cancels wherever focus is, so the listener sits on the document.
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onCancel();
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [onCancel]);
+  useEscape(onCancel);
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-12">

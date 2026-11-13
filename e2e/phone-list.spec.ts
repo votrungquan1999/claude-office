@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { devices, expect, type Page, test } from "@playwright/test";
 import { E2E_BASE_URL } from "./constants";
 import {
   centerOf,
@@ -901,5 +901,156 @@ test.describe("holding a grip on an iPad", () => {
     // Then it is first, with one request
     await expect(names).toHaveText(["Task D", "Task A", "Task B", "Task C"]);
     await expect.poll(() => requests.count).toBe(1);
+  });
+});
+
+test.describe("the phone's settings", () => {
+  test("switch the phone between the List and today's Rooms, which keep their Went home bar, and the choice holds after a reload", async ({
+    context,
+    page,
+  }) => {
+    // Given a phone that shows the list, with one employee
+    await seed([
+      {
+        sessionId: "a",
+        cwd: PERSONAL,
+        startCwd: PERSONAL,
+        deskName: "Task A",
+        state: "idle",
+        rank: "b",
+      },
+    ]);
+    await signInAsOwner(context);
+    await page.goto("/");
+    await expect(page.getByTestId("phone-list")).toBeVisible();
+
+    // When the owner opens the settings and picks Rooms
+    await page.getByRole("button", { name: "Settings" }).click();
+    const sheet = page.getByRole("dialog", { name: "Settings" });
+    await expect(sheet.getByRole("button", { name: "List" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await sheet.getByRole("button", { name: /^Rooms/ }).click();
+
+    // Then the rooms replace the list
+    await expect(page.getByTestId("phone-list")).toHaveCount(0);
+    await expect(page.getByTestId("stacked-rooms")).toBeVisible();
+
+    // When the owner closes the settings
+    await sheet.getByRole("button", { name: "Close" }).click();
+
+    // Then the bottom bar offers Went home and Hire, and the Settings button has focus
+    await expect(
+      page.getByRole("button", { name: /^Went home/ }),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Settings" })).toBeFocused();
+
+    // And the rooms are still there after a reload
+    await page.reload();
+    await expect(page.getByTestId("stacked-rooms")).toBeVisible();
+
+    // When the owner picks List again
+    await page.getByRole("button", { name: "Settings" }).click();
+    await page.getByRole("button", { name: /^List/ }).click();
+
+    // Then the list is back
+    await expect(page.getByTestId("phone-list")).toBeVisible();
+  });
+
+  test("Escape closes the sheet and returns focus to the Settings button, a card closes before the sheet opens, and the strip still fits the screen", async ({
+    context,
+    page,
+  }) => {
+    // Given a phone with an employee whose card is open
+    await seed([
+      {
+        sessionId: "a",
+        cwd: PERSONAL,
+        startCwd: PERSONAL,
+        deskName: "Task A",
+        state: "idle",
+        rank: "b",
+      },
+    ]);
+    await signInAsOwner(context);
+    await page.goto("/");
+    await page.getByTestId("list-row-name").first().tap();
+    await expect(page.getByTestId("details-panel")).toBeVisible();
+
+    // When the owner opens the settings
+    const button = page.getByRole("button", { name: "Settings" });
+    await button.tap();
+
+    // Then the card is gone, the sheet is open and the bottom bar is out of its way
+    await expect(page.getByTestId("details-panel")).toHaveCount(0);
+    await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Hire" })).toHaveCount(0);
+
+    // And the page is no wider than the screen
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+
+    // When the owner presses Escape
+    await page.keyboard.press("Escape");
+
+    // Then the sheet closes and focus is back on the button
+    await expect(page.getByRole("dialog", { name: "Settings" })).toHaveCount(0);
+    await expect(button).toBeFocused();
+  });
+
+  test("a second phone still shows the list, and a Mac has no Settings button", async ({
+    browser,
+    context,
+    page,
+  }) => {
+    // Given the first phone switched to Rooms
+    await seed([
+      {
+        sessionId: "a",
+        cwd: PERSONAL,
+        startCwd: PERSONAL,
+        deskName: "Task A",
+        state: "idle",
+        rank: "b",
+      },
+    ]);
+    await signInAsOwner(context);
+    await page.goto("/");
+    await page.getByRole("button", { name: "Settings" }).tap();
+    await page.getByRole("button", { name: /^Rooms/ }).tap();
+    await expect(page.getByTestId("stacked-rooms")).toBeVisible();
+
+    // When a fresh phone and a Mac open the office
+    const phone = await browser.newContext({
+      ...devices["iPhone 15"],
+      baseURL: E2E_BASE_URL,
+    });
+    const mac = await browser.newContext({
+      baseURL: E2E_BASE_URL,
+      viewport: { width: 1280, height: 800 },
+      hasTouch: false,
+    });
+    try {
+      await signInAsOwner(phone);
+      const phonePage = await phone.newPage();
+      await phonePage.goto("/");
+      await signInAsOwner(mac);
+      const macPage = await mac.newPage();
+      await macPage.goto("/");
+
+      // Then the phone shows the list and the Mac its list panel with no Settings button
+      await expect(phonePage.getByTestId("phone-list")).toBeVisible();
+      await expect(macPage.getByTestId("list-panel")).toBeVisible();
+      await expect(
+        macPage.getByRole("button", { name: "Settings" }),
+      ).toHaveCount(0);
+    } finally {
+      await phone.close();
+      await mac.close();
+    }
   });
 });
