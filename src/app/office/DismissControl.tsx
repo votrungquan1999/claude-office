@@ -20,10 +20,13 @@ const DISMISS_WORDS: OrderOutcomeWords = {
 };
 
 interface DismissControlProps {
+  /** Whether the employee is still kept; the button and its pop-up go with it, the order's outcome stays. */
+  kept: boolean;
   /** Why the employee's Mac cannot take orders; absent when it can. */
   block?: MacBlock;
   dismiss?: OrderClickState;
-  onDismiss?: () => void;
+  /** Sends the order; `endRunning` only from the confirmed pop-up. */
+  onDismiss?: (endRunning: boolean) => void;
   /** Whether the Mac's agent closes the window on Dismiss. */
   closesWindow: boolean;
   /** The employee, for the pop-up's wording. */
@@ -59,6 +62,7 @@ function strongWarning(session: DismissControlProps["session"]) {
  * @returns The control.
  */
 export function DismissControl({
+  kept,
   block,
   dismiss,
   onDismiss,
@@ -77,18 +81,24 @@ export function DismissControl({
   const sending = dismiss?.sending === true || phase.phase === "pending";
   return (
     <div className="flex shrink-0 flex-col gap-1">
-      <button
-        ref={buttonRef}
-        type="button"
-        data-testid="dismiss-button"
-        disabled={block !== undefined || sending}
-        // A desk with no process has nothing to explain
-        onClick={session.notRunning ? onDismiss : () => setAsking(true)}
-        className="border-2 border-bg-dark bg-btn-bg px-3 py-3 text-center font-bold uppercase shadow-[3px_3px_0_var(--color-bg-dark)] hover:bg-btn-hover disabled:opacity-50 [@media(max-height:500px)]:py-1"
-      >
-        Dismiss
-      </button>
-      {asking && (
+      {kept && (
+        <button
+          ref={buttonRef}
+          type="button"
+          data-testid="dismiss-button"
+          disabled={block !== undefined || sending}
+          // A desk with no process has nothing to explain
+          onClick={
+            session.notRunning
+              ? () => onDismiss?.(false)
+              : () => setAsking(true)
+          }
+          className="border-2 border-bg-dark bg-btn-bg px-3 py-3 text-center font-bold uppercase shadow-[3px_3px_0_var(--color-bg-dark)] hover:bg-btn-hover disabled:opacity-50 [@media(max-height:500px)]:py-1"
+        >
+          Dismiss
+        </button>
+      )}
+      {kept && asking && (
         <DismissPopup
           machineName={session.machineName}
           warning={strongWarning(session)}
@@ -97,12 +107,12 @@ export function DismissControl({
           canWake={session.hadPrompt === true}
           onConfirm={() => {
             closePopup();
-            onDismiss?.();
+            onDismiss?.(true);
           }}
           onCancel={closePopup}
         />
       )}
-      {block === MacBlock.Outdated && (
+      {kept && block === MacBlock.Outdated && (
         <p data-testid="dismiss-note" className="text-xs">
           Update this Mac's agent to dismiss employees.
         </p>

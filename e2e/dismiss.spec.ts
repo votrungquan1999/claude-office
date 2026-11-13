@@ -116,7 +116,7 @@ test("Dismiss is offered for a kept employee and not a plain one, sends one orde
   await panel.getByTestId("dismiss-button").click();
   await page.getByTestId("dismiss-confirm").click();
 
-  // Then exactly one dismiss order for that Mac and session exists, and the button is disabled while it is pending
+  // Then exactly one dismiss order for that Mac and session exists, allowed to end the conversation, and the button is disabled while it is pending
   await expect.poll(async () => (await readCommands()).length).toBe(1);
   const [order] = await readCommands();
   expect(order).toMatchObject({
@@ -124,6 +124,7 @@ test("Dismiss is offered for a kept employee and not a plain one, sends one orde
     machineId: "m-up",
     sessionId: "s-m-up",
     status: "pending",
+    endRunning: true,
   });
   await expect(panel.getByTestId("dismiss-button")).toBeDisabled();
 
@@ -144,6 +145,40 @@ test("Dismiss is offered for a kept employee and not a plain one, sends one orde
   await expect(panel.getByTestId("dismiss-outcome")).toContainText(
     "Not dismissed",
   );
+});
+
+test("a done dismiss with a note shows the note on the card after the employee stopped being kept, and offers no Dismiss button", async ({
+  context,
+  page,
+}) => {
+  // Given the owner dismissed the kept employee and the Mac has taken the order
+  await signInAsOwner(context);
+  await page.goto("/");
+  await page.locator('[data-company-name="up"]').click();
+  await waitForEmployees(page, 3);
+  const panel = page.getByTestId("details-panel");
+  await clickEmployee(page, await employeeLabelled(page, "Kept on Up Mac"));
+  await panel.getByTestId("dismiss-button").click();
+  await page.getByTestId("dismiss-confirm").click();
+  await expect.poll(async () => (await readCommands()).length).toBe(1);
+  const [order] = await readCommands();
+
+  // When the agent stops keeping the desk, leaves its conversation running and marks the order done with a note
+  await withE2eDb(async (db) => {
+    await db
+      .collection("sessions")
+      .updateOne({ sessionId: "s-m-up" }, { $unset: { kept: "" } });
+  });
+  await updateCommand(order._id, {
+    status: "done",
+    note: "Stopped keeping this desk. Its conversation was left running because Claude Office cannot tell it runs in the window it opened.",
+  });
+
+  // Then the card shows the note and no Dismiss button
+  await expect(panel.getByTestId("dismiss-outcome")).toContainText(
+    "left running",
+  );
+  await expect(panel.getByTestId("dismiss-button")).toHaveCount(0);
 });
 
 test("Dismiss is disabled for an offline Mac, and for an out-of-date agent with the update text", async ({

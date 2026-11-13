@@ -13,6 +13,7 @@ interface NewOrder {
   sessionId: string;
   folder: string;
   firstMessage?: string;
+  endRunning?: boolean;
 }
 
 /**
@@ -37,6 +38,7 @@ export async function insertOrder(db: Db, order: NewOrder): Promise<string> {
           ...(order.firstMessage !== undefined && {
             firstMessage: { $literal: order.firstMessage },
           }),
+          ...(order.endRunning === true && { endRunning: true }),
           // The database clock, so the 30 s pickup rule never depends on this server's.
           createdAt: "$$NOW",
           expireAt: { $add: ["$$NOW", UNCLAIMED_ORDER_TTL_MS] },

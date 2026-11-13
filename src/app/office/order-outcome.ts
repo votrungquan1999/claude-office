@@ -14,7 +14,7 @@ export interface OrderOutcomeWords {
  * The line shown for an order's phase; "not sent" reads the same for every kind.
  * @param phase - Where the order is.
  * @param words - The order kind's own wording.
- * @returns The line, or null when the order is done or none was given.
+ * @returns The line; a done order's note when it has one, else null (also when no order was given).
  */
 export function orderOutcomeText(
   phase: OrderPhase,
@@ -31,6 +31,8 @@ export function orderOutcomeText(
       return words.checkMac;
     case "failed":
       return words.failed(phase.reason);
+    case "done":
+      return phase.note ?? null;
     default:
       return null;
   }

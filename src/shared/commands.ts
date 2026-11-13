@@ -34,11 +34,15 @@ export interface CommandDocument {
   kind: CommandKind;
   status: CommandStatus;
   reason?: CommandFailReason;
+  /** What the owner should know about an order that is done, such as a window left open; plain words. */
+  note?: string;
   /** Session the order starts. */
   sessionId: string;
   folder: string;
   /** Present only until the agent claims the order. */
   firstMessage?: string;
+  /** A dismiss the owner confirmed after the warning: the agent may end a running conversation. */
+  endRunning?: boolean;
   createdAt: Date;
   claimedAt?: Date;
   expireAt: Date;
@@ -74,6 +78,8 @@ export type WakeRequest = z.infer<typeof wakeRequestSchema>;
 export const dismissRequestSchema = z.object({
   machineId: z.string().min(1),
   sessionId: z.string().min(1),
+  /** Set only by a page that warned the owner first; without it a running conversation is left running. */
+  endRunning: z.boolean().optional(),
 });
 
 export type DismissRequest = z.infer<typeof dismissRequestSchema>;
@@ -90,6 +96,8 @@ export type OrderResponse = z.infer<typeof orderResponseSchema>;
 export const orderStatusSchema = z.object({
   status: z.enum(CommandStatus),
   reason: z.enum(CommandFailReason).optional(),
+  /** A note on a done order. */
+  note: z.string().optional(),
   /** Age by the database clock, so "not sent" never depends on the browser's. */
   ageMs: z.number(),
 });

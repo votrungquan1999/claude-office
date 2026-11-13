@@ -766,13 +766,14 @@ export function OfficeView() {
       ),
     );
   };
-  const dismissSelected = async () => {
+  const dismissSelected = async (endRunning: boolean) => {
     if (!selectedSession) return;
     const key = sessionKey(selectedSession);
     setDismisses((current) => new Map(current).set(key, { sending: true }));
     const result = await postDismiss({
       machineId: selectedSession.machineId,
       sessionId: selectedSession.sessionId,
+      ...(endRunning && { endRunning }),
     });
     setDismisses((current) =>
       new Map(current).set(
@@ -1025,7 +1026,7 @@ export function OfficeView() {
               )?.agentVersion,
             )}
             dismiss={selectedKey ? dismisses.get(selectedKey) : undefined}
-            onDismiss={() => void dismissSelected()}
+            onDismiss={(endRunning) => void dismissSelected(endRunning)}
             onRename={(name) =>
               selectedKey
                 ? renameEmployee(selectedKey, name)

@@ -31,6 +31,7 @@ export async function GET(
           _id: 0,
           status: 1,
           reason: 1,
+          note: 1,
           ageMs: { $subtract: ["$$NOW", "$createdAt"] },
         },
       },

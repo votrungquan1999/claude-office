@@ -843,6 +843,33 @@ describe("the details panel", () => {
       ).toBe(false);
     });
 
+    it("shows the note of a done dismiss, such as a window left open, once the employee is no longer kept, and offers no second Dismiss", async () => {
+      // Given a dismiss that is done with a note, for an employee the agent has already stopped keeping
+      const home = session({ state: "wentHome" });
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              status: "done",
+              note: "Ended, but its Terminal window stays open. Close it yourself.",
+              ageMs: 900,
+            }),
+          ),
+        ),
+      );
+
+      // When the panel follows the order
+      openWithWake(home, { dismiss: { orderId: "o1" }, onDismiss: vi.fn() });
+
+      // Then the card shows the note and no Dismiss button
+      const note = await screen.findByText(
+        "Ended, but its Terminal window stays open. Close it yourself.",
+      );
+      expect(note.getAttribute("data-testid")).toBe("dismiss-outcome");
+      expect(screen.queryByTestId("dismiss-button")).toBeNull();
+    });
+
     it("shows the server's refusal as sent", () => {
       // Given a refusal text from the server
       openWithWake(hired(), {
@@ -1093,9 +1120,10 @@ describe("the Dismiss pop-up", () => {
     );
     pressDismiss();
 
-    // Then no pop-up appeared, one dismiss went out, and the button reads disabled
+    // Then no pop-up appeared, one dismiss went out without asking to end a conversation, and the button reads disabled
     expect(popup()).toBeNull();
     expect(onDismiss).toHaveBeenCalledTimes(1);
+    expect(onDismiss).toHaveBeenCalledWith(false);
     expect(
       (screen.getByTestId("dismiss-button") as HTMLButtonElement).disabled,
     ).toBe(true);

@@ -10,7 +10,7 @@ import {
 export type OrderPhase =
   | { phase: "none" }
   | { phase: "pending" }
-  | { phase: "done" }
+  | { phase: "done"; note?: string }
   | { phase: "failed"; reason: CommandFailReason }
   | { phase: "notSent" }
   | { phase: "lostContact" }
@@ -55,8 +55,12 @@ export function useOrderStatus(
         } else if (response.ok) {
           const order = orderStatusSchema.parse(await response.json());
           lastAnswerAt = Date.now();
-          if (order.status === CommandStatus.Done) next = { phase: "done" };
-          else if (order.status === CommandStatus.Failed) {
+          if (order.status === CommandStatus.Done) {
+            next = {
+              phase: "done",
+              ...(order.note ? { note: order.note } : {}),
+            };
+          } else if (order.status === CommandStatus.Failed) {
             next = {
               phase: "failed",
               reason: order.reason ?? CommandFailReason.LaunchFailed,

@@ -29,6 +29,8 @@ export type WakeOrder = z.infer<typeof wakeOrderSchema>;
 export const dismissOrderSchema = z.object({
   kind: z.literal(CommandKind.Dismiss),
   sessionId: sessionIdSchema,
+  /** Only an order carrying this may end a running conversation. */
+  endRunning: z.boolean().optional(),
 });
 
 export type DismissOrder = z.infer<typeof dismissOrderSchema>;

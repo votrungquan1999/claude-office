@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { dismissClosesWindow, macBlock, offlineMachineIds } from "./offline";
 
@@ -74,5 +75,17 @@ describe("which agents close a window on Dismiss", () => {
     expect(dismissClosesWindow("0.3.1")).toBe(false);
     expect(dismissClosesWindow("beta")).toBe(false);
     expect(dismissClosesWindow(undefined)).toBe(false);
+  });
+});
+
+describe("the agent this repo ships", () => {
+  it("is new enough to close windows on Dismiss, so an updated Mac gets the full pop-up", () => {
+    // Given the version in package.json, which the agent reports
+    const { version } = JSON.parse(
+      readFileSync(new URL("../../package.json", import.meta.url), "utf8"),
+    ) as { version: string };
+
+    // Then it reaches the Dismiss minimum
+    expect(dismissClosesWindow(version)).toBe(true);
   });
 });

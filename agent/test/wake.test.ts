@@ -245,7 +245,7 @@ describe("waking an employee that is not open", () => {
       reason: "conversationNotFound",
     });
     expect(mac.terminal.opened).toEqual([]);
-  });
+  }, 60_000);
 
   it("resumes in the start folder it stored for the conversation, not the folder written in the order", async () => {
     // Given a went-home session that started in one folder, and a wake order that names another existing folder

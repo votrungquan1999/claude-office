@@ -6,7 +6,11 @@ import { MongoClient } from "mongodb";
 import { z } from "zod";
 import { ensureIndexes } from "../src/db/indexes";
 import type { CommandDocument } from "../src/shared/commands";
-import { createCommandPoller, failInterrupted } from "./commands";
+import {
+  createCommandPoller,
+  type DismissWaits,
+  failInterrupted,
+} from "./commands";
 import { readComputerName } from "./computer-name";
 import {
   type AgentFile,
@@ -17,11 +21,13 @@ import {
 } from "./config";
 import { type FolderDocument, FolderRecorder, refreshFolders } from "./folders";
 import { startHeartbeat } from "./heartbeat";
+import { errorText } from "./helpers";
 import { startKanbanWatch } from "./kanban-watch";
 import { cleanLaunchFiles, KeptDesks } from "./kept";
 import { readProcessStart } from "./process-start";
 import {
   isRunning,
+  type ProcessTable,
   readProcessTable,
   reconcileSessions,
   seedRunningSessions,
@@ -30,6 +36,11 @@ import { listRegistry } from "./registry";
 import { createRepoResolver } from "./repo-resolver";
 import { startListener } from "./server";
 import { TaskNamer } from "./task-namer";
+import {
+  createOsascriptControl,
+  osascriptRunner,
+  type TerminalControl,
+} from "./terminal-control";
 import {
   openInTerminal,
   sweepLaunchFiles,
@@ -81,6 +92,14 @@ export interface AgentOptions {
   terminalOpener?: TerminalOpener;
   /** How long the Terminal opener may take before the order fails; 30 s when absent. */
   openerTimeoutMs?: number;
+  /** Finds, polls and closes Terminal windows; tests pass a fake. */
+  terminalControl?: TerminalControl;
+  /** How long after opening a window the agent keeps looking for its terminal device; 10 s when absent. */
+  windowRecordMs?: number;
+  /** The waits of a dismiss, shortened by tests. */
+  dismissWaits?: Partial<DismissWaits>;
+  /** Reads the process table for dismisses; `ps` when absent. */
+  processTable?: () => Promise<ProcessTable>;
   /** The claude binary a hired window runs; found on the agent's PATH when absent. */
   claudePath?: string;
   /** The version the agent reports; read from package.json when absent. */
@@ -140,7 +159,7 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
   // Without the process list the agent would guess which sessions are alive, so it stops before touching the database; the login job retries.
   await readProcessTable().catch((error: unknown) => {
     throw new Error(
-      `could not read the process list (ps failed: ${error instanceof Error ? error.message : String(error)})`,
+      `could not read the process list (ps failed: ${errorText(error)})`,
     );
   });
   // Both read once: `~/.claude.json` is large and neither changes while the agent runs.
@@ -245,9 +264,7 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
         machineId,
         readTrust(),
       ).catch((error: unknown) =>
-        log(
-          `folder check failed: ${error instanceof Error ? error.message : String(error)}`,
-        ),
+        log(`folder check failed: ${errorText(error)}`),
       ),
     intervalMs: options.heartbeatMs ?? 60_000,
     log,
@@ -284,9 +301,7 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
     () =>
       // A failed pass (for example `ps` unavailable) is retried at the next tick.
       void reconcile().catch((error: unknown) =>
-        log(
-          `reconcile failed: ${error instanceof Error ? error.message : String(error)}`,
-        ),
+        log(`reconcile failed: ${errorText(error)}`),
       ),
     options.reconcileMs ?? 5000,
   );
@@ -295,7 +310,7 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
   // Orders the previous run claimed are over: no window is opened late.
   const commands = db.collection<CommandDocument>("commands");
   await failInterrupted(commands, machineId);
-  sweepLaunchFiles(home);
+  sweepLaunchFiles(home, (sessionId) => tracker.isKept(sessionId));
   const commandPoller = createCommandPoller({
     commands,
     sessions: db.collection("sessions"),
@@ -307,6 +322,15 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
     opener: options.terminalOpener ?? openInTerminal,
     openerTimeoutMs: options.openerTimeoutMs,
     claudePath: options.claudePath,
+    terminalControl:
+      options.terminalControl ??
+      createOsascriptControl(
+        osascriptRunner(options.dismissWaits?.controlLimitMs ?? 5000),
+      ),
+    dismissWaits: options.dismissWaits,
+    processTable: options.processTable,
+    windowRecordMs: options.windowRecordMs,
+    reconcile,
     now,
     log,
   });
@@ -315,9 +339,7 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
       void commandPoller
         .poll()
         .catch((error: unknown) =>
-          log(
-            `order poll failed: ${error instanceof Error ? error.message : String(error)}`,
-          ),
+          log(`order poll failed: ${errorText(error)}`),
         ),
     options.commandPollMs ?? 1000,
   );
@@ -340,7 +362,10 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
       await tracker.settleNames();
     },
     reconcile,
-    pollCommands: commandPoller.poll,
+    pollCommands: async () => {
+      await commandPoller.poll();
+      await commandPoller.idle();
+    },
     heartbeat: heartbeat.beat,
     checkWriteHealth: watchdog.check,
     async stop() {

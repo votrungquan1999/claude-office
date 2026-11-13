@@ -101,4 +101,36 @@ describe("reading one order", () => {
       expect(body.ageMs).toBeLessThan(60_000);
     });
   });
+
+  it("carries the note of a done order, and nothing for an order that has none", async () => {
+    // Given a done order with a note and a done order without
+    await (await getDb()).collection("commands").insertMany([
+      {
+        _id: "n1" as never,
+        status: "done",
+        note: "Ended, but its Terminal window stays open.",
+        firstMessage: "private words",
+        createdAt: new Date(),
+        expireAt: new Date(Date.now() + 600_000),
+      },
+      {
+        _id: "n2" as never,
+        status: "done",
+        createdAt: new Date(),
+        expireAt: new Date(Date.now() + 600_000),
+      },
+    ]);
+
+    // When the owner reads them
+    const noted = await (await read("n1", ownerHeaders)).json();
+    const plain = await (await read("n2", ownerHeaders)).json();
+
+    // Then the note comes through, with no message
+    expect(noted).toMatchObject({
+      status: "done",
+      note: "Ended, but its Terminal window stays open.",
+    });
+    expect(JSON.stringify(noted)).not.toContain("private words");
+    expect(plain).not.toHaveProperty("note");
+  });
 });

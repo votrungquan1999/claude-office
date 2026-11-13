@@ -64,6 +64,8 @@ Confirm it is running:
 
 If the repo lives under `~/Documents`, macOS may ask the owner to let `node` access the Documents folder the first time the agent starts at login. Look in the log for `EPERM` or `Operation not permitted`; if present, tell the owner to open System Settings, Privacy & Security, Files and Folders (or Full Disk Access), allow `node`, and then run `launchctl kickstart gui/$(id -u)/dev.quanvo.claude-office.agent` or log out and in.
 
+The first time the agent controls Terminal (to record a hired window's id and to close it on Dismiss), macOS may ask the owner to let it control Terminal. If it does not, open System Settings, Privacy & Security, Automation and allow it. Until it is allowed, hire windows record no window id and Dismiss leaves them open with a note; windows opened before allowing need closing by hand. Whether the prompt appears when the agent runs under launchd (rather than from a Terminal) has not been observed yet.
+
 Stop it for now: `launchctl bootout gui/$(id -u)/dev.quanvo.claude-office.agent` (it starts again at the next login, or when setup is run again).
 
 Remove it by hand: run that `bootout`, delete `~/Library/LaunchAgents/dev.quanvo.claude-office.agent.plist`, and optionally delete `~/.claude-office/` (config, address file and logs). Then remove the hooks and the link as described in step 4.

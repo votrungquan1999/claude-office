@@ -137,9 +137,9 @@ describe("the repo front page", () => {
   });
 
   describe("package.json", () => {
-    it("is version 0.3.1 with a typecheck script", () => {
+    it("is version 0.4.0 with a typecheck script", () => {
       const pkg = JSON.parse(read("package.json"));
-      expect(pkg.version).toBe("0.3.1");
+      expect(pkg.version).toBe("0.4.0");
       expect(pkg.scripts.typecheck).toBe("tsc --noEmit");
     });
   });

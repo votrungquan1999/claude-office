@@ -7,6 +7,7 @@ import { changesResponseSchema, type SessionDto } from "@/shared/session";
 import { sessionHeadersFor } from "@/test/owner-session";
 import { useTestAuth } from "@/test/use-test-auth";
 import { useTestMongo } from "@/test/use-test-mongo";
+import type { DismissWaits } from "../commands";
 import { type RunningAgent, startAgent } from "../start-agent";
 import type { TerminalOpener } from "../terminal-launch";
 import { type FakeHome, makeFakeHome } from "./fake-home";
@@ -58,6 +59,8 @@ export interface MacHarness {
       terminalOpener?: TerminalOpener;
       /** How long the Terminal opener may take before an order fails. */
       openerTimeoutMs?: number;
+      /** The waits of a dismiss; short by default so a test never sits through a real grace period. */
+      dismissWaits?: Partial<DismissWaits>;
       /** The claude binary hires run; a path that exists by default. */
       claudePath?: string;
       /** The version the agent reports; the repo's own version when absent. */
@@ -129,6 +132,18 @@ export function useMacHarness(): MacHarness {
         terminalOpener: options?.terminalOpener ?? terminal.open,
         openerTimeoutMs: options?.openerTimeoutMs,
         claudePath: options?.claudePath ?? process.execPath,
+        terminalControl: terminal.control,
+        processTable: terminal.readProcessTable,
+        // A test opener that writes no terminal record is given up on quickly.
+        windowRecordMs: 200,
+        dismissWaits: {
+          termGraceMs: 300,
+          childGraceMs: 300,
+          busyLimitMs: 600,
+          controlLimitMs: 200,
+          pollMs: 20,
+          ...options?.dismissWaits,
+        },
         kanbanPollMs: 50,
         now: options?.now,
         anthropicApiKey: options?.anthropic?.apiKey,

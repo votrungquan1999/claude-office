@@ -19,6 +19,29 @@ describe("following an order", () => {
     vi.unstubAllGlobals();
   });
 
+  it("carries the note of a done order in the done phase", async () => {
+    // Given an order that is done with a note
+    fetchMock.mockResolvedValue(
+      answer({
+        status: "done",
+        note: "Ended, but its window stays open.",
+        ageMs: 900,
+      }),
+    );
+
+    // When the hook follows it
+    const { result } = renderHook(() => useOrderStatus("o1"));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    // Then the done phase holds the note
+    expect(result.current).toEqual({
+      phase: "done",
+      note: "Ended, but its window stays open.",
+    });
+  });
+
   it("polls every 2 s while pending, calls back once when done, and stops polling", async () => {
     // Given an order that is pending, then claimed, then done
     fetchMock

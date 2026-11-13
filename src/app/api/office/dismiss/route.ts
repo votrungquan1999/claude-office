@@ -16,7 +16,7 @@ interface SessionRow {
 }
 
 /**
- * The owner dismisses a hired or woken employee: an order for its Mac's agent to stop keeping the desk.
+ * The owner dismisses a hired or woken employee: an order for its Mac's agent to stop keeping the desk, and to end its running conversation only when the request says `endRunning`.
  * @param request - The request carrying the Mac and the session.
  * @returns The order and session ids; 401 when not the owner, 400 for a bad body or a session that is not kept, 409 for a Mac that cannot take orders.
  */
@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
   if (!body.success) {
     return Response.json({ error: "invalid request" }, { status: 400 });
   }
-  const { machineId, sessionId } = body.data;
+  const { machineId, sessionId, endRunning } = body.data;
   const refusal = await refuseUnlessMacOnline(machineId);
   if (refusal) return refusal;
   const db = await getDb();
@@ -49,6 +49,7 @@ export async function POST(request: NextRequest) {
     kind: CommandKind.Dismiss,
     sessionId,
     folder: row.startCwd ?? row.cwd,
+    endRunning,
   });
   const answer: OrderResponse = { orderId, sessionId };
   return Response.json(answer);

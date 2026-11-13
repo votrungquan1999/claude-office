@@ -47,8 +47,8 @@ interface DetailsPanelProps {
   dismiss?: OrderClickState;
   /** Whether the employee's Mac has an agent that closes the window on Dismiss; true when not given. */
   dismissClosesWindow?: boolean;
-  /** Sends one dismiss order for the employee. */
-  onDismiss?: () => void;
+  /** Sends one dismiss order for the employee; `endRunning` once the owner confirmed the warning pop-up. */
+  onDismiss?: (endRunning: boolean) => void;
   /** Sends the owner's name for the employee; resolves true when the server stored it. */
   onRename?: (name: string) => Promise<boolean>;
   /** Moves the employee's Review to Idle. */
@@ -409,8 +409,10 @@ function Card({
             onWake={onWake}
           />
         )}
-        {session.kept && (
+        {/* The agent stops keeping a desk before it marks the order done, so the outcome outlives the button. */}
+        {(session.kept || dismiss) && (
           <DismissControl
+            kept={session.kept !== undefined}
             block={macBlock}
             dismiss={dismiss}
             onDismiss={onDismiss}

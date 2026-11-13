@@ -89,16 +89,25 @@ export async function postWake(machineId: string, sessionId: string) {
  * The owner's dismiss request, as the browser sends it.
  * @param machineId - The Mac the session belongs to.
  * @param sessionId - The kept session to dismiss.
+ * @param endRunning - Whether the request asks to end a running conversation, as the confirmed pop-up does; false sends the request of a page without the pop-up.
  * @returns The route's response and, when accepted, its parsed answer.
  */
-export async function postDismiss(machineId: string, sessionId: string) {
+export async function postDismiss(
+  machineId: string,
+  sessionId: string,
+  endRunning = true,
+) {
   const headers = new Headers((await sessionHeadersFor(OWNER)) ?? undefined);
   headers.set("content-type", "application/json");
   const response = await dismiss(
     new NextRequest("http://localhost:4710/api/office/dismiss", {
       method: "POST",
       headers,
-      body: JSON.stringify({ machineId, sessionId }),
+      body: JSON.stringify(
+        endRunning
+          ? { machineId, sessionId, endRunning }
+          : { machineId, sessionId },
+      ),
     }),
   );
   return {

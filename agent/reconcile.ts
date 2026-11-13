@@ -15,22 +15,25 @@ import { EXPIRY_DAYS } from "./writer";
 
 const run = promisify(execFile);
 
-/** One running process: its start time as `ps -o lstart` prints it, and its command line. */
-interface ProcessInfo {
+/** One running process: its start time as `ps -o lstart` prints it, its command line, its parent and its terminal device. */
+export interface ProcessInfo {
   started: string;
   args: string;
+  ppid: number;
+  /** As `ps -o tty` prints it: `ttys003`, or `??` for a process with no terminal. */
+  tty: string;
 }
 
 /** Every running process by pid. */
-type ProcessTable = Map<number, ProcessInfo>;
+export type ProcessTable = Map<number, ProcessInfo>;
 
 function normalize(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
-/** One `ps -o pid=,lstart=,args=` line; a message with newlines in the arguments leaves lines that do not match and are skipped. */
+/** One `ps -o pid=,ppid=,tty=,lstart=,args=` line; a message with newlines in the arguments leaves lines that do not match and are skipped. */
 const PROCESS_LINE =
-  /^\s*(\d+)\s+([A-Z][a-z]{2} [A-Z][a-z]{2} +\d{1,2} \d{2}:\d{2}:\d{2} \d{4})\s*(.*)$/;
+  /^\s*(\d+)\s+(\d+)\s+(\S+)\s+([A-Z][a-z]{2} [A-Z][a-z]{2} +\d{1,2} \d{2}:\d{2}:\d{2} \d{4})\s*(.*)$/;
 
 /**
  * Reads every running process in one call.
@@ -39,7 +42,7 @@ const PROCESS_LINE =
 export async function readProcessTable(): Promise<ProcessTable> {
   const { stdout } = await run(
     "ps",
-    ["-ww", "-A", "-o", "pid=,lstart=,args="],
+    ["-ww", "-A", "-o", "pid=,ppid=,tty=,lstart=,args="],
     {
       maxBuffer: 16 * 1024 * 1024,
       // A fixed locale and UTC keep the start time in the format and zone Claude Code records.
@@ -51,12 +54,34 @@ export async function readProcessTable(): Promise<ProcessTable> {
     const match = PROCESS_LINE.exec(line);
     if (match) {
       table.set(Number(match[1]), {
-        started: normalize(match[2]),
-        args: match[3].trim(),
+        ppid: Number(match[2]),
+        tty: match[3],
+        started: normalize(match[4]),
+        args: match[5].trim(),
       });
     }
   }
   return table;
+}
+
+/**
+ * Every process below a pid, children first-level and deeper, from one table read.
+ * @param table - A process table.
+ * @param pid - The ancestor.
+ * @returns The descendants' pids; empty when it has none.
+ */
+export function descendantsOf(table: ProcessTable, pid: number): number[] {
+  const found: number[] = [];
+  const queue = [pid];
+  for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
+    for (const [candidate, info] of table) {
+      if (info.ppid === next && !found.includes(candidate)) {
+        found.push(candidate);
+        queue.push(candidate);
+      }
+    }
+  }
+  return found;
 }
 
 /** `ps -o lstart` in the C locale, e.g. "Mon Nov  6 08:00:00 2026". */

@@ -491,6 +491,15 @@ export class SessionTracker {
   }
 
   /**
+   * Whether the office keeps the session at its desk.
+   * @param sessionId - The session.
+   * @returns True while the kept mark is on.
+   */
+  isKept(sessionId: string): boolean {
+    return this.sessions.get(sessionId)?.kept !== undefined;
+  }
+
+  /**
    * Stops keeping a session at its desk: a desk with nothing running behind it goes home now, a running one when its process ends.
    * @param sessionId - The kept session.
    */

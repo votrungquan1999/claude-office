@@ -8,6 +8,7 @@ import type {
 import type { StepDto } from "../src/shared/session";
 import { sessionKey } from "../src/shared/session";
 import type { SessionState } from "../src/shared/session-state";
+import { errorText } from "./helpers";
 
 /** A finished step as stored in the `steps` collection (and, newest five, on the session). */
 export interface StepDoc extends Omit<StepDto, "id" | "startedAt"> {
@@ -196,7 +197,7 @@ export class SessionWriter {
     if (!this.down) {
       this.down = true;
       this.options.log(
-        `session write failed, queuing until it works: ${reason instanceof Error ? reason.message : String(reason)}`,
+        `session write failed, queuing until it works: ${errorText(reason)}`,
       );
     }
     if (this.retryTimer) return;
