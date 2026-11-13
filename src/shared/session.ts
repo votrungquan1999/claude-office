@@ -49,6 +49,8 @@ export const sessionDtoSchema = z.object({
   deskName: z.string().optional(),
   /** The name the owner gave the employee; beats every automatic name. Absent when the owner gave none. */
   ownerName: z.string().optional(),
+  /** The conversation's place in the owner's list: plain text sorted by character code; absent until the owner first moves a row. */
+  rank: z.string().optional(),
   /** The original request: the typed first message, up to 2,000 characters; absent when the session has none. */
   request: z.string().optional(),
   /** Remote Control id; present only while Remote Control was connected. */

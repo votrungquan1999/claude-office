@@ -238,6 +238,25 @@ describe("the office changes API", () => {
     );
   });
 
+  it("passes on each conversation's place in the owner's list, and none for one the owner never placed", async () => {
+    // Given one placed and one unplaced conversation
+    await seedSession("placed", new Date(T0));
+    await seedSession("unplaced", new Date(T0));
+    await (await getDb())
+      .collection("sessions")
+      .updateOne({ sessionId: "placed" }, { $set: { rank: "mm" } });
+
+    // When the owner asks for the changes
+    const body = changesResponseSchema.parse(
+      await (await GET(changesRequest(ownerHeaders))).json(),
+    );
+
+    // Then only the placed one carries its rank
+    expect(
+      Object.fromEntries(body.sessions.map((s) => [s.sessionId, s.rank])),
+    ).toEqual({ placed: "mm", unplaced: undefined });
+  });
+
   it("passes on which employees are waiting at the Mac or starting", async () => {
     // Given a waiting row, a starting row and a plain open row
     const db = await getDb();

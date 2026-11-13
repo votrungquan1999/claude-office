@@ -15,7 +15,7 @@ const row = (key: string, task: string, where: string, time: string) =>
 describe("the went-home drawer", () => {
   afterEach(cleanup);
 
-  it("heads the list with the company, how many employees and newest first, and gives each row its full task name, where it ran and when it went home", () => {
+  it("heads the sheet with the company and newest first, and gives each row its full task name, where it ran and when it went home", () => {
     // Given two departures, one with a task name too long for one line
     const longTask =
       "VN30F single shared model, two decision points (1d_atc), multi-account paper run";
@@ -34,7 +34,6 @@ describe("the went-home drawer", () => {
       <WentHomeDrawer
         companyName="harbor-labs"
         rows={rows}
-        sheet={false}
         detailsOpen={false}
         onSelect={() => {}}
         onCloseDetails={() => {}}
@@ -44,25 +43,22 @@ describe("the went-home drawer", () => {
 
     // Then the header names the company and the count
     const dialog = screen.getByRole("dialog", { name: "Went home today" });
-    expect(dialog.textContent).toContain(
-      "harbor-labs · 2 employees · newest first",
-    );
+    expect(dialog.textContent).toContain("harbor-labs · newest first");
 
     // And each row shows the task in full, where it ran and the time
     const items = within(screen.getByTestId("went-home-list")).getAllByRole(
       "listitem",
     );
     expect(items.map((item) => item.textContent)).toEqual([
-      `${longTask}Studio Mac / harbor-labs13:52`,
-      "Fix login redirectStudio Mac / harbor-labs/web13:10",
+      `${longTask}Studio Mac / harbor-labs13:52›`,
+      "Fix login redirectStudio Mac / harbor-labs/web13:10›",
     ]);
   });
 
-  it("says 1 employee for a single departure and Nobody has gone home today for none", () => {
+  it("lists a single departure, and says Nobody has gone home today for none", () => {
     // Given one departure
     const props = {
       companyName: "harbor-labs",
-      sheet: false,
       detailsOpen: false,
       onSelect: () => {},
       onCloseDetails: () => {},
@@ -75,10 +71,8 @@ describe("the went-home drawer", () => {
       />,
     );
 
-    // Then the header is singular
-    expect(screen.getByRole("dialog").textContent).toContain(
-      "harbor-labs · 1 employee · newest first",
-    );
+    // Then the row is listed
+    expect(screen.queryAllByRole("listitem")).toHaveLength(1);
 
     // When nobody is left
     rerender(<WentHomeDrawer {...props} rows={[]} />);
@@ -98,7 +92,6 @@ describe("the went-home drawer", () => {
       <WentHomeDrawer
         companyName="harbor-labs"
         rows={[row("m1/a", "Fix", "Studio Mac / harbor-labs", "09:00")]}
-        sheet={false}
         detailsOpen={false}
         onSelect={onSelect}
         onCloseDetails={() => {}}
@@ -127,7 +120,6 @@ describe("the went-home drawer", () => {
       <WentHomeDrawer
         companyName="harbor-labs"
         rows={[]}
-        sheet={false}
         detailsOpen={false}
         onSelect={() => {}}
         onCloseDetails={() => {}}
@@ -149,7 +141,6 @@ describe("the went-home drawer", () => {
       <WentHomeDrawer
         companyName="harbor-labs"
         rows={[]}
-        sheet={false}
         detailsOpen
         onSelect={() => {}}
         onCloseDetails={onCloseDetails}

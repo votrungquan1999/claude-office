@@ -1,7 +1,6 @@
 import { useState } from "react";
 import type { MacBlock } from "@/office/offline";
 import { remoteControlUrl } from "@/office/remoteControl";
-import { ROOM_DISPLAY_NAMES, ROOM_OF_STATE } from "@/office/rooms";
 import { employeeName } from "@/shared/employee-name";
 import type { FolderDto } from "@/shared/folders";
 import { type SessionDto, sessionKey } from "@/shared/session";
@@ -9,6 +8,7 @@ import { DismissControl } from "./DismissControl";
 import { formatElapsed } from "./elapsed";
 import { RenameEmployeeDialog } from "./RenameEmployeeDialog";
 import { RequestPopup } from "./RequestPopup";
+import { type BandKey, bandOf } from "./rowText";
 import { StepsList } from "./StepsList";
 import { useNow } from "./useNow";
 import { WakeControl } from "./WakeControl";
@@ -78,43 +78,10 @@ const BAND_STYLES = {
   notRunning: { background: "bg-pill-offline", text: "text-text" },
   waitingAtMac: { background: "bg-room-permission", text: "text-bg-dark" },
   starting: { background: "bg-room-idle", text: "text-bg-dark" },
-} satisfies Record<string, BandStyle>;
+} satisfies Record<BandKey, BandStyle>;
 
 /** Tags shown on the card before the rest fold into "+N". */
 const MAX_TAGS = 3;
-
-/**
- * What the state band says and which colour key it takes.
- * @param session - The session shown.
- * @param offline - Whether the session's Mac is offline.
- * @returns The band's text and its state key.
- */
-function bandOf(
-  session: SessionDto,
-  offline: boolean,
-): { text: string; key: keyof typeof BAND_STYLES } {
-  if (session.state === "wentHome")
-    return { text: "Went home", key: "wentHome" };
-  // Still true when the Mac is offline: the window closed before that.
-  if (session.notRunning) return { text: "Not running", key: "notRunning" };
-  // A window the office opened that Claude Code has not registered yet outranks the Mac being offline.
-  if (session.waitingAtMac)
-    return { text: "Waiting at the Mac", key: "waitingAtMac" };
-  if (session.starting) return { text: "Starting", key: "starting" };
-  if (offline) return { text: "Mac offline", key: "offline" };
-  // Thinking shares the Working room but keeps its own wording.
-  if (session.state === "thinking")
-    return { text: "Thinking", key: "thinking" };
-  // The band is short, so the permission room reads "Needs you" here.
-  if (session.state === "needsPermission")
-    return { text: "Needs you", key: "needsPermission" };
-  if (session.state === "review") return { text: "Review", key: "review" };
-  const room = ROOM_OF_STATE[session.state];
-  return {
-    text: room ? ROOM_DISPLAY_NAMES[room] : "",
-    key: session.state,
-  };
-}
 
 const MAX_PATH_LENGTH = 28;
 
@@ -165,9 +132,9 @@ function boxOf(session: SessionDto, nowMs: number) {
   let text: string | null = null;
   let since: string | undefined;
   if (session.state === "working") {
-    const first = running[0];
-    text = first ? first.text : "working…";
-    since = first?.startedAt;
+    const latest = running.at(-1);
+    text = latest ? latest.text : "working…";
+    since = latest?.startedAt;
   } else if (session.state === "thinking") text = "thinking…";
   else if (session.state === "waitingForYou") text = "waiting for your reply";
   else if (session.state === "idle" || session.state === "review")
@@ -242,7 +209,7 @@ function Card({
   const launching = session.waitingAtMac === true || session.starting === true;
   const offline = offlineMachineIds.has(session.machineId);
   const approving = session.state === "needsPermission" && !offline;
-  const band = bandOf(session, offline);
+  const band = bandOf(session, offline, { short: true });
   const style = BAND_STYLES[band.key];
   const remoteControl = remoteControlUrl(session.bridgeSessionId);
   // A Mac that is offline says nothing about how long the session has been in its state; rows from before the stamp have none.

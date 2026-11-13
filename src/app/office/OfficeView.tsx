@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import { loadOfficeAssets } from "@/office/assetLoader";
-import { MobileAgentBar } from "@/office/components/MobileAgentBar";
 import { OfficeCanvas } from "@/office/components/OfficeCanvas";
 import {
   StackedRooms,
@@ -25,6 +24,7 @@ import { installTestHooks } from "@/office/testHooks";
 import { dayStartOf, todaysDepartures } from "@/office/wentHome";
 import { employeeName } from "@/shared/employee-name";
 import type { FolderDto } from "@/shared/folders";
+import { sortByListOrder } from "@/shared/list-order";
 import { buildOverview, resolveSelection } from "@/shared/overview";
 import {
   type ChangesResponse,
@@ -52,6 +52,7 @@ import {
   settleEmployeeNames,
 } from "./employeeName";
 import { HireDialog, type HireMac } from "./HireDialog";
+import { ListPanel } from "./list/ListPanel";
 import {
   acceptName,
   applyNames,
@@ -75,7 +76,6 @@ import {
 } from "./reviewSeen";
 import { TagFilter } from "./TagFilter";
 import { useOfficeChanges } from "./useOfficeChanges";
-import { WentHomeButton } from "./WentHomeButton";
 import { WentHomeDrawer, type WentHomeRow } from "./WentHomeDrawer";
 import { postWake } from "./wake";
 
@@ -666,22 +666,6 @@ export function OfficeView() {
     });
   }, [officeState]);
 
-  const cards = agentIds.flatMap((id) => {
-    const session = sessions.get(sceneSync.sessionKeyOf(id) ?? "");
-    const character = officeState.characters.get(id);
-    if (!session || !character) return [];
-    return [
-      {
-        id,
-        deskName: employeeName(session),
-        machineName: session.machineName,
-        state: session.state,
-        palette: character.palette,
-        hueShift: character.hueShift,
-      },
-    ];
-  });
-
   const tiles: StackedTile[] = agentIds.flatMap((id) => {
     const key = sceneSync.sessionKeyOf(id) ?? "";
     const session = sessions.get(key);
@@ -782,6 +766,15 @@ export function OfficeView() {
       ),
     );
   };
+  // The list shows live employees in the owner's order; the tag filter narrows it like the office.
+  const everyone = sortByListOrder(
+    [...sessions.values()].filter(
+      (session) =>
+        session.state !== "wentHome" &&
+        overview.tree.companyOf(session)?.companyKey === companyKey &&
+        tagFilterView.matches(session),
+    ),
+  );
   const departures = todaysDepartures([...sessions.values()], now).filter(
     (session) => overview.tree.companyOf(session)?.companyKey === companyKey,
   );
@@ -819,8 +812,7 @@ export function OfficeView() {
   const closeWentHome = () => {
     setCardOverWentHome(false);
     setRightPanel(null);
-    if (isPhone) focusWentHomeOnMount.current = true;
-    else wentHomeButtonRef.current?.focus();
+    focusWentHomeOnMount.current = true;
   };
 
   return (
@@ -929,16 +921,6 @@ export function OfficeView() {
               besideDrawer={drawerOpen && !isMobile}
             />
           )}
-          {/* Steps aside for the details sheet, which spans the bottom of the office. */}
-          {!isPhone && !(isMobile && selectedSession) && (
-            <WentHomeButton
-              label="Went home today"
-              count={departures.length}
-              open={wentHomeOpen}
-              onClick={() => (wentHomeOpen ? closeWentHome() : openWentHome())}
-              buttonRef={wentHomeButtonRef}
-            />
-          )}
           {/* Over the office below the bar, so it takes no layout height; the drawer shows its own copy in the row. */}
           {renameError && !drawerOpen && (
             <p
@@ -972,7 +954,6 @@ export function OfficeView() {
           {/* Not on a phone (the bottom bar has its own Hire); hidden while a right panel or a details sheet is open, so it never sits over or beside them. */}
           {!isPhone &&
             !drawerOpen &&
-            !wentHomeOpen &&
             !(isMobile && selectedSession) &&
             hireButton}
           {hireOpen && (
@@ -984,11 +965,10 @@ export function OfficeView() {
               onClose={() => setHireOpen(false)}
             />
           )}
-          {wentHomeOpen && isMobile && (
+          {wentHomeOpen && (
             <WentHomeDrawer
               companyName={viewedCompany?.name ?? ""}
               rows={wentHomeRows}
-              sheet
               detailsOpen={cardOverWentHome && selectedKey !== null}
               onSelect={openDetails}
               onCloseDetails={closeDetails}
@@ -1042,15 +1022,18 @@ export function OfficeView() {
             onClose={closeDetails}
           />
         </div>
-        {wentHomeOpen && !isMobile && (
-          <WentHomeDrawer
+        {!isPhone && (
+          <ListPanel
             companyName={viewedCompany?.name ?? ""}
-            rows={wentHomeRows}
-            sheet={false}
-            detailsOpen={cardOverWentHome && selectedKey !== null}
+            employees={everyone}
+            departures={wentHomeRows}
+            onSelectDeparture={openDetails}
+            offlineMachineIds={offlineIds}
+            tagLabels={tagFilterView.labels}
+            serverOffsetMs={serverOffsetMs}
             onSelect={openDetails}
-            onCloseDetails={closeDetails}
-            onClose={closeWentHome}
+            onMoveToIdle={(key) => void moveToIdle(key)}
+            onRename={renameEmployee}
           />
         )}
       </div>
@@ -1066,16 +1049,6 @@ export function OfficeView() {
             onHire={() => setHireOpen(true)}
           />
         )}
-      {isMobile && !isPhone && (
-        <MobileAgentBar
-          cards={cards}
-          selectedId={officeState.selectedAgentId}
-          onSelect={(id) => {
-            officeState.selectAndFollow(id);
-            openDetails(sceneSync.sessionKeyOf(id) ?? null);
-          }}
-        />
-      )}
     </div>
   );
 }

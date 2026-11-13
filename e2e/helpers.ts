@@ -202,6 +202,8 @@ export interface SeedSession {
   /** Repo tags as the agent sends them. */
   tags?: Array<{ name: string; key: string }>;
   endedAt?: Date;
+  /** Whether the session ever got a prompt; only prompted departures show under Went home. */
+  hadPrompt?: boolean;
   /** Set while the owner keeps the employee at its desk. */
   kept?: "hired" | "woken";
   /** The Remote Control link of the window while it was open. */
@@ -213,6 +215,22 @@ export interface SeedSession {
   /** A hire whose window is still opening. */
   starting?: true;
   stateSince?: Date;
+  /** Finished steps, oldest first. */
+  recentSteps?: Array<{
+    id: string;
+    text: string;
+    startedAt: Date;
+    durationMs?: number;
+    status: "ok" | "failed" | "denied" | "stopped";
+  }>;
+  /** Steps that have started and not finished. */
+  runningSteps?: Array<{ text: string; startedAt: Date }>;
+  /** When the session started; the list puts unplaced rows on top newest first. */
+  startedAt?: Date;
+  /** The conversation's place in the owner's list. */
+  rank?: string;
+  /** The name the owner gave the employee. */
+  ownerName?: string;
   /** The `stateSince` of the Review the owner moved to Idle. */
   reviewSeenAt?: Date;
   /** When the owner moved it. */
@@ -338,14 +356,23 @@ export async function bottomOf(locator: Locator): Promise<number> {
 }
 
 /**
- * Opens the went-home drawer when it is closed, and returns its list.
+ * Opens today's went-home list: on a phone through the bottom bar's button and its sheet, elsewhere by unfolding the list panel's Went home today section.
  * @param page - The office page.
  * @returns The list of today's departures.
  */
 export async function openWentHome(page: Page): Promise<Locator> {
-  const drawer = page.getByTestId("went-home-drawer");
-  if (!(await drawer.isVisible()))
-    await page.getByTestId("went-home-button").click();
-  await expect(drawer).toBeVisible();
-  return page.getByTestId("went-home-list");
+  const panel = page.getByTestId("list-panel");
+  if ((await panel.count()) > 0) {
+    const toggle = panel.getByRole("button", { name: /^Went home today/ });
+    if ((await toggle.getAttribute("aria-expanded")) !== "true")
+      await toggle.click();
+  } else {
+    const drawer = page.getByTestId("went-home-drawer");
+    if (!(await drawer.isVisible()))
+      await page.getByTestId("went-home-button").click();
+    await expect(drawer).toBeVisible();
+  }
+  const list = page.getByTestId("went-home-list");
+  await expect(list).toBeVisible();
+  return list;
 }

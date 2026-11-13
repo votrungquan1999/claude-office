@@ -205,6 +205,25 @@ describe("the details panel", () => {
     expect(screen.getByTestId("terminal-time").textContent).toBe("13s");
   });
 
+  it("shows the latest running step when several run at once, the same one the list row shows", () => {
+    // Given a working session with two steps running
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-09T10:00:00Z"));
+    open(
+      session({
+        state: "working",
+        runningSteps: [
+          { text: "Read a.ts", startedAt: "2026-11-09T09:59:00Z" },
+          { text: "Edit b.ts", startedAt: "2026-11-09T09:59:48Z" },
+        ],
+      }),
+    );
+
+    // Then the box shows the later step and counts from its start
+    expect(screen.getByTestId("terminal-text").textContent).toBe("> Edit b.ts");
+    expect(screen.getByTestId("terminal-time").textContent).toBe("12s");
+  });
+
   it("reads the time against the server's clock and never shows a negative time", () => {
     // Given a step that started at 10:00:50 and a server clock 60 s ahead of this browser's
     vi.useFakeTimers();

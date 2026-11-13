@@ -3,6 +3,7 @@ import { expect, type Page, test } from "@playwright/test";
 import { type Collection, MongoClient } from "mongodb";
 import { E2E_DB, E2E_MONGO_URI_FILE } from "./constants";
 import {
+  clickEmployee,
   employeeLabelled,
   keepOneCompany,
   seedOnlineMachine,
@@ -437,7 +438,7 @@ test.describe("the office on an iPad: canvas touch gestures and room signs", () 
   }) => {
     // Given the office with an employee selected, so the camera follows it
     await openOffice(page);
-    await page.getByTestId("agent-card").filter({ hasText: "one:" }).tap();
+    await clickEmployee(page, await employeeLabelled(page, "one:"));
     await expect(page.getByTestId("details-panel")).toBeVisible();
     await page.waitForTimeout(800);
     const before = await panOf(page);
@@ -600,49 +601,42 @@ test.describe("the office on a sideways phone", () => {
   });
 });
 
-// `cards`: the mobile shell's card strip shows below 769 px wide or on a wide touch screen.
 const PIXEL_OFFICE_SCREENS = [
   {
     name: "an iPad landscape",
     width: 1024,
     height: 768,
     mouse: false,
-    cards: true,
   },
   {
     name: "an iPad portrait",
     width: 744,
     height: 1133,
     mouse: false,
-    cards: true,
   },
   {
     name: "a wide touch window",
     width: 700,
     height: 800,
     mouse: false,
-    cards: true,
   },
   {
     name: "a narrow mouse window",
     width: 400,
     height: 800,
     mouse: true,
-    cards: true,
   },
   {
     name: "a mid-width mouse window",
     width: 700,
     height: 800,
     mouse: true,
-    cards: true,
   },
   {
     name: "a short mouse window",
     width: 800,
     height: 400,
     mouse: true,
-    cards: false,
   },
 ];
 
@@ -689,10 +683,8 @@ for (const screen of PIXEL_OFFICE_SCREENS) {
       await expect(page.getByTestId("hire-button")).toBeVisible();
       await expect(page.getByTestId("phone-bottom-bar")).toHaveCount(0);
 
-      // And the card strip lists every session where the mobile shell shows one
-      await expect(page.getByTestId("agent-card")).toHaveCount(
-        screen.cards ? 3 : 0,
-      );
+      // And the list beside the office holds every session
+      await expect(page.getByTestId("list-row")).toHaveCount(3);
     });
   });
 }
