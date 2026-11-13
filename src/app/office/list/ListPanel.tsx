@@ -23,6 +23,8 @@ interface ListPanelProps {
   companyName: string;
   /** The company's live employees in the owner's order. */
   employees: SessionDto[];
+  /** The conversations this device has opened or already had; null when it cannot remember, so no row is new. */
+  seenKeys: ReadonlySet<string> | null;
   /** The employee whose card is open, if any. */
   selectedKey: string | null;
   /** The employee last picked in the office, with a number that changes on every pick; null when the list made the last pick. */
@@ -50,6 +52,7 @@ interface ListPanelProps {
 export function ListPanel({
   companyName,
   employees,
+  seenKeys,
   selectedKey,
   reveal,
   departures,
@@ -83,6 +86,7 @@ export function ListPanel({
             <ListRow
               key={sessionKey(session)}
               session={session}
+              isNew={seenKeys !== null && !seenKeys.has(sessionKey(session))}
               selected={sessionKey(session) === selectedKey}
               revealToken={
                 reveal?.key === sessionKey(session) ? reveal.token : null

@@ -11,6 +11,8 @@ import { useNow } from "../useNow";
 
 export interface ListRowProps {
   session: SessionDto;
+  /** Whether this conversation arrived after this device first showed the list and has not been opened yet. */
+  isNew: boolean;
   /** Whether this is the employee whose card is open. */
   selected: boolean;
   /** Changes each time the owner picks this employee in the office, so its row scrolls into view; null otherwise. */
@@ -69,6 +71,7 @@ const SHOWN_TAGS = 1;
  */
 export function ListRow({
   session,
+  isNew,
   selected,
   revealToken,
   offline,
@@ -137,6 +140,14 @@ export function ListRow({
         className="flex min-w-0 flex-1 flex-col gap-4 text-left"
       >
         <span className="flex w-full items-start gap-6">
+          {isNew && (
+            <span
+              role="img"
+              aria-label="new"
+              data-testid="list-row-new"
+              className="mt-4 size-8 shrink-0 bg-accent-bright"
+            />
+          )}
           <span
             data-testid="list-row-name"
             className="line-clamp-2 min-w-0 flex-1 text-base leading-[1.15] font-bold break-words"

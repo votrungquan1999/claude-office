@@ -435,6 +435,112 @@ test.describe("Went home today in the list", () => {
   });
 });
 
+test.describe("new conversations in the list", () => {
+  test.use({ viewport: { width: 1280, height: 800 }, hasTouch: false });
+
+  test("a conversation that arrives after the list showed joins the top with a new dot until it is opened, and the dot stays gone after a reload", async ({
+    context,
+    page,
+  }) => {
+    // Given one conversation and the office already open
+    await seed([
+      {
+        sessionId: "old",
+        deskName: "Old task",
+        startedAt: new Date(Date.now() - 60 * MIN),
+      },
+    ]);
+    await signInAsOwner(context);
+    await page.goto("/");
+    await waitForEmployees(page, 1);
+    const dots = page.getByTestId("list-row-new");
+    await expect(dots).toHaveCount(0);
+
+    // When a new conversation starts
+    await withE2eDb((db) =>
+      db.collection("sessions").insertOne({
+        machineId: "m1",
+        machineName: "Studio Mac",
+        sessionId: "fresh",
+        deskName: "Fresh task",
+        cwd: "/Users/q/personal",
+        state: "idle",
+        startedAt: new Date(),
+        changedAt: new Date(),
+      }),
+    );
+
+    // Then it joins the top of the list with the only new dot
+    const names = page.getByTestId("list-row-name");
+    await expect(names).toHaveText(["Fresh task", "Old task"], {
+      timeout: 20_000,
+    });
+    await expect(dots).toHaveCount(1);
+    await expect(
+      page
+        .getByTestId("list-row")
+        .filter({ hasText: "Fresh task" })
+        .getByTestId("list-row-new"),
+    ).toBeVisible();
+
+    // When the owner opens it
+    await names.first().click();
+
+    // Then the dot is gone, and still gone after a reload
+    await expect(dots).toHaveCount(0);
+    await page.reload();
+    await waitForEmployees(page, 2);
+    await expect(names).toHaveText(["Fresh task", "Old task"]);
+    await expect(dots).toHaveCount(0);
+  });
+});
+
+test.describe("a conversation that went home", () => {
+  test.use({ viewport: { width: 1280, height: 800 }, hasTouch: false });
+
+  test("keeps its place in the list and is back there when it is woken", async ({
+    context,
+    page,
+  }) => {
+    // Given three placed conversations, the middle one gone home
+    const ended = new Date(Date.now() - MIN);
+    await seed([
+      { sessionId: "p", deskName: "First task", rank: "a" },
+      {
+        sessionId: "r",
+        deskName: "Middle task",
+        rank: "b",
+        state: "wentHome",
+        hadPrompt: true,
+        endedAt: ended,
+      },
+      { sessionId: "q", deskName: "Last task", rank: "c" },
+    ]);
+    await signInAsOwner(context);
+    await page.goto("/");
+    await waitForEmployees(page, 2);
+    const names = page.getByTestId("list-row-name");
+    await expect(names).toHaveText(["First task", "Last task"]);
+
+    // When the same conversation is resumed
+    await withE2eDb((db) =>
+      db.collection("sessions").updateOne(
+        { sessionId: "r" },
+        {
+          $set: { state: "idle", changedAt: new Date() },
+          $unset: { endedAt: "" },
+        },
+      ),
+    );
+
+    // Then it is back between the other two, with no new dot
+    await expect(names).toHaveText(["First task", "Middle task", "Last task"], {
+      timeout: 20_000,
+    });
+    await expect(page.getByTestId("list-row-new")).toHaveCount(0);
+  });
+});
+
 test.describe("selecting from the list and from the office", () => {
   test.use({
     viewport: { width: 1600, height: 1200 },

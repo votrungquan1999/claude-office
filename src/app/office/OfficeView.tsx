@@ -53,6 +53,7 @@ import {
 } from "./employeeName";
 import { HireDialog, type HireMac } from "./HireDialog";
 import { ListPanel } from "./list/ListPanel";
+import { loadSeenRows, markSeen } from "./list/seenRows";
 import {
   acceptName,
   applyNames,
@@ -262,6 +263,8 @@ export function OfficeView() {
   // How far the server's clock is ahead of this browser's, from the latest answer.
   const [serverOffsetMs, setServerOffsetMs] = useState(0);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  // The conversations this device has opened or already had when it first showed the list; null until the first answer, or when storage is unavailable.
+  const [seenKeys, setSeenKeys] = useState<ReadonlySet<string> | null>(null);
   // The employee last picked in the office; the list scrolls its row into view.
   const [reveal, setReveal] = useState<{ key: string; token: number } | null>(
     null,
@@ -398,6 +401,10 @@ export function OfficeView() {
       firstLoad ? new Map() : dataRef.current.sessions,
       answer.sessions,
     );
+    if (firstLoad)
+      setSeenKeys(
+        loadSeenRows(() => window.localStorage, [...sessions.keys()]),
+      );
     commit(
       {
         sessions,
@@ -801,6 +808,8 @@ export function OfficeView() {
     : [];
   // A card opened while the went-home drawer is open is the newer overlay, however it was opened.
   const openDetails = (key: string | null) => {
+    if (key !== null && seenKeys && !seenKeys.has(key))
+      setSeenKeys(markSeen(() => window.localStorage, seenKeys, key));
     setSelectedKey(key);
     setCardOverWentHome(wentHomeOpen && key !== null);
   };
@@ -1049,6 +1058,7 @@ export function OfficeView() {
           <ListPanel
             companyName={viewedCompany?.name ?? ""}
             employees={everyone}
+            seenKeys={seenKeys}
             selectedKey={selectedKey}
             reveal={reveal}
             departures={wentHomeRows}
