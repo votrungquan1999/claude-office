@@ -1,5 +1,12 @@
 import { sortByListOrder } from "@/shared/list-order";
 import type { SessionDto } from "@/shared/session";
+import {
+  type OfficeData,
+  overviewOf,
+  shownSessions,
+  type TagPick,
+  tagFilterOf,
+} from "../officeData";
 
 /**
  * The company's live employees in the owner's order, also those a tag filter hides.
@@ -19,4 +26,29 @@ export function companyRows(
         session.state !== "wentHome" && companyKeyOf(session) === companyKey,
     ),
   );
+}
+
+/**
+ * The viewed company's live rows in list order as the owner's pending moves lay them, and which of them the tag filter shows.
+ * @param data - What the browser knows.
+ * @param companyKey - The company being viewed.
+ * @param tagPick - The owner's last tag pick.
+ * @returns The rows, also those the filter hides, and the filter's test.
+ */
+export function companyRowsOf(
+  data: OfficeData,
+  companyKey: string | null,
+  tagPick: TagPick,
+) {
+  const shown = shownSessions(data);
+  const { tree } = overviewOf(data, new Date());
+  const { matches } = tagFilterOf(shown, tree.companyOf, companyKey, tagPick);
+  return {
+    rows: companyRows(
+      shown.values(),
+      (session) => tree.companyOf(session)?.companyKey,
+      companyKey,
+    ),
+    matches,
+  };
 }

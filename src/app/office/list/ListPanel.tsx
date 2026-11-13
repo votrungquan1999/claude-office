@@ -18,8 +18,10 @@ import { employeeName } from "@/shared/employee-name";
 import type { SessionDto } from "@/shared/session";
 import { sessionKey } from "@/shared/session";
 import { RenameEmployeeDialog } from "../RenameEmployeeDialog";
+import { FoldedStrip } from "./FoldedStrip";
 import { ListRow } from "./ListRow";
 import { NeedsYouSection, type NeedsYouSectionProps } from "./NeedsYouSection";
+import type { ListFoldState } from "./useListFolds";
 
 /** One conversation that went home today. */
 export interface DepartureRow {
@@ -36,6 +38,8 @@ export interface DepartureRow {
 }
 
 interface ListPanelProps {
+  /** What is folded in the list. */
+  fold: ListFoldState;
   /** What the Needs you section lists, and how its rows open employees. */
   needsYou: Pick<
     NeedsYouSectionProps,
@@ -84,6 +88,7 @@ interface ListPanelProps {
  * @returns The panel.
  */
 export function ListPanel({
+  fold,
   needsYou,
   companyName,
   employees,
@@ -103,7 +108,7 @@ export function ListPanel({
   onMoveToIdle,
   onRename,
 }: ListPanelProps) {
-  const [wentHomeOpen, setWentHomeOpen] = useState(false);
+  const wentHomeOpen = fold.folds.wentHome;
   // A small move starts a drag, so a plain click still selects the row.
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -170,6 +175,19 @@ export function ListPanel({
     const { active, over } = event;
     if (over) onMove(String(active.id), String(over.id));
   };
+  if (!fold.listOpen) {
+    const total = needsYou.needsYou.total;
+    return (
+      <FoldedStrip
+        total={total}
+        inOtherCompanies={needsYou.needsYou.others.reduce(
+          (sum, group) => sum + group.rows.length,
+          0,
+        )}
+        onOpen={() => fold.setListOpen(true)}
+      />
+    );
+  }
   return (
     <aside
       aria-label="Employees"
@@ -177,10 +195,21 @@ export function ListPanel({
       className="relative flex min-h-0 w-[400px] max-w-[60%] shrink-0 flex-col border-l-2 border-border bg-bg-dark text-sm"
     >
       <div className="flex h-40 shrink-0 items-center border-b-2 border-border px-12">
-        <span data-testid="list-title" className="text-xs text-text-muted">
+        <span
+          data-testid="list-title"
+          className="flex-1 text-xs text-text-muted"
+        >
           {companyName} · {employees.length}{" "}
           {employees.length === 1 ? "employee" : "employees"}
         </span>
+        <button
+          type="button"
+          aria-label="Fold the list"
+          onClick={() => fold.setListOpen(false)}
+          className="px-8 text-base hover:bg-btn-hover"
+        >
+          »
+        </button>
       </div>
       {moveError && (
         <p
@@ -196,8 +225,23 @@ export function ListPanel({
         selectedKey={selectedKey}
         serverOffsetMs={serverOffsetMs}
         onMoveToIdle={onMoveToIdle}
+        open={fold.folds.needsYou}
+        onToggle={() => fold.toggle("needsYou")}
       />
       <section aria-label="Everyone" className="flex min-h-0 flex-1 flex-col">
+        <button
+          type="button"
+          aria-expanded={fold.folds.everyone}
+          aria-controls="list-everyone"
+          onClick={() => fold.toggle("everyone")}
+          className="flex h-40 shrink-0 items-center gap-8 px-12 text-left"
+        >
+          <span aria-hidden="true" className="text-xs">
+            {fold.folds.everyone ? "▼" : "▶"}
+          </span>
+          <span className="font-bold">Everyone</span>
+          <span className="bg-border px-6 text-xs">{employees.length}</span>
+        </button>
         <DndContext
           sensors={sensors}
           accessibility={accessibility}
@@ -221,6 +265,8 @@ export function ListPanel({
           >
             <ul
               ref={listRef}
+              id="list-everyone"
+              hidden={!fold.folds.everyone}
               data-testid="list-everyone"
               className="relative min-h-0 flex-1 overflow-y-auto"
             >
@@ -284,7 +330,7 @@ export function ListPanel({
         <button
           type="button"
           aria-expanded={wentHomeOpen}
-          onClick={() => setWentHomeOpen(!wentHomeOpen)}
+          onClick={() => fold.toggle("wentHome")}
           className="flex h-46 w-full items-center gap-8 px-12 text-left text-sm"
         >
           <span aria-hidden="true" className="text-xs">

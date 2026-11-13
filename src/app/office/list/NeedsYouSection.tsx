@@ -27,6 +27,9 @@ export interface NeedsYouSectionProps {
   onMoveAllToIdle: (items: ReviewItem[]) => void;
   /** Why the last move of all Reviews was refused; absent when it was not. */
   moveAllError?: string;
+  /** Whether the rows show; the header and Move all stay either way. */
+  open: boolean;
+  onToggle: () => void;
 }
 
 /** The badge on a copy's picture, by state. */
@@ -50,6 +53,8 @@ export function NeedsYouSection({
   onMoveToIdle,
   onMoveAllToIdle,
   moveAllError,
+  open: sectionOpen,
+  onToggle,
 }: NeedsYouSectionProps) {
   // Groups whose "and N more" the owner opened; "own" is the viewed company.
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
@@ -111,7 +116,18 @@ export function NeedsYouSection({
       className="flex max-h-[45%] shrink-0 flex-col border-b-2 border-border"
     >
       <div className="flex h-40 shrink-0 items-center gap-8 px-12">
-        <span className="font-bold">Needs you</span>
+        <button
+          type="button"
+          aria-expanded={sectionOpen}
+          aria-controls="needs-you-rows"
+          onClick={onToggle}
+          className="flex items-center gap-8"
+        >
+          <span aria-hidden="true" className="text-xs">
+            {sectionOpen ? "▼" : "▶"}
+          </span>
+          <span className="font-bold">Needs you</span>
+        </button>
         <span
           data-testid="needs-count"
           className="bg-room-permission px-6 text-xs text-bg-dark"
@@ -133,7 +149,11 @@ export function NeedsYouSection({
           {moveAllError}
         </p>
       )}
-      <ul className="min-h-0 overflow-y-auto">
+      <ul
+        id="needs-you-rows"
+        hidden={!sectionOpen}
+        className="min-h-0 overflow-y-auto"
+      >
         {renderGroup(groups[0])}
         {groups.length > 1 && (
           <li className="px-12 pt-6 text-xs text-text-muted uppercase">

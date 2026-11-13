@@ -24,20 +24,14 @@ import { installTestHooks } from "@/office/testHooks";
 import { dayStartOf, todaysDepartures } from "@/office/wentHome";
 import { employeeName } from "@/shared/employee-name";
 import type { FolderDto } from "@/shared/folders";
-import { placeOf } from "@/shared/list-order";
-import { selectNeedsYou } from "@/shared/needs-you";
-import { buildOverview, resolveSelection } from "@/shared/overview";
+import { resolveSelection } from "@/shared/overview";
 import {
   type ChangesResponse,
   type MachineDto,
   type SessionDto,
   sessionKey,
 } from "@/shared/session";
-import {
-  buildTagFilter,
-  SHOW_ALL,
-  type TagFilterSelection,
-} from "@/shared/tag-filter";
+import { SHOW_ALL, type TagFilterSelection } from "@/shared/tag-filter";
 import { CompanyDrawer } from "./CompanyDrawer";
 import { CompanyStrip } from "./CompanyStrip";
 import { ConnectionStatus } from "./ConnectionStatus";
@@ -46,27 +40,24 @@ import { postCompanyMode } from "./companyMode";
 import { DetailsPanel, type OrderClickState } from "./DetailsPanel";
 import { postDismiss } from "./dismiss";
 import { postDisplayName } from "./displayName";
-import {
-  applyEmployeeNames,
-  type PendingEmployeeNames,
-  postEmployeeName,
-  settleEmployeeNames,
-} from "./employeeName";
+import { postEmployeeName, settleEmployeeNames } from "./employeeName";
 import { HireDialog, type HireMac } from "./HireDialog";
-import { companyRows } from "./list/companyRows";
+import { companyRowsOf } from "./list/companyRows";
 import { ListPanel } from "./list/ListPanel";
-import {
-  applyRanks,
-  type PendingRanks,
-  settleRanks,
-} from "./list/pendingRanks";
+import { settleRanks } from "./list/pendingRanks";
+import { useListModel } from "./list/useListModel";
 import { useReviewMoves } from "./list/useReviewMoves";
 import { useRowMoves } from "./list/useRowMoves";
 import { useSeenRows } from "./list/useSeenRows";
 import {
+  type OfficeData,
+  overviewOf,
+  shownSessions,
+  type TagPick,
+  tagFilterOf,
+} from "./officeData";
+import {
   acceptName,
-  applyNames,
-  applyOverrides,
   type ModeOverrides,
   mergeSessions,
   type NameOverrides,
@@ -78,11 +69,7 @@ import {
 } from "./officeStore";
 import { PhoneBottomBar } from "./PhoneBottomBar";
 import { RoomSigns } from "./RoomSigns";
-import {
-  applyReviewMoves,
-  type ReviewMoves,
-  settleReviewMoves,
-} from "./reviewSeen";
+import { settleReviewMoves } from "./reviewSeen";
 import { TagFilter } from "./TagFilter";
 import { useOfficeChanges } from "./useOfficeChanges";
 import { WentHomeDrawer, type WentHomeRow } from "./WentHomeDrawer";
@@ -112,87 +99,6 @@ function storeCompany(key: string): void {
   } catch {
     // The pick still works for this visit.
   }
-}
-
-/** What the last answer left in the browser. */
-interface OfficeData {
-  sessions: SessionMap;
-  machines: MachineDto[];
-  folders: FolderDto[];
-  /** Switches the owner pressed that no answer has confirmed yet. */
-  overrides: ModeOverrides;
-  /** Company names the owner pressed that no answer has confirmed yet. */
-  names: NameOverrides;
-  /** Reviews the owner moved to Idle on this device that no answer has confirmed yet. */
-  reviewMoves: ReviewMoves;
-  /** Employee names the owner gave on this device that no answer has confirmed yet. */
-  employeeNames: PendingEmployeeNames;
-  /** List places the owner gave on this device that no answer has confirmed yet. */
-  ranks: PendingRanks;
-  offline: ReadonlySet<string>;
-}
-
-/**
- * The sessions as this device shows them: the answers' sessions with the owner's pending moves laid over.
- * @param data - What the browser knows.
- * @returns The sessions to show.
- */
-function shownSessions(data: OfficeData): SessionMap {
-  return applyRanks(
-    applyEmployeeNames(
-      applyReviewMoves(data.sessions, data.reviewMoves),
-      data.employeeNames,
-    ),
-    data.ranks,
-  );
-}
-
-/**
- * The overview of everything the browser knows, with today's departures.
- * @param data - Sessions, Macs and folders.
- * @param now - The current time.
- * @returns The per-Mac overview.
- */
-function overviewOf(data: OfficeData, now: Date) {
-  const sessions = [...shownSessions(data).values()];
-  return buildOverview({
-    folders: applyNames(
-      applyOverrides(data.folders, data.overrides),
-      data.names,
-    ),
-    sessions,
-    machines: data.machines,
-    offlineMachineIds: data.offline,
-    departures: todaysDepartures(sessions, now),
-  });
-}
-
-/** The tag the owner picked, and the company it was picked in; in any other company it means All. */
-interface TagPick {
-  companyKey: string | null;
-  selection: TagFilterSelection;
-}
-
-/**
- * The tag filter of one company, from what the browser knows.
- * @param sessions - Every session the browser knows.
- * @param companyOf - Places a session in its company.
- * @param companyKey - The viewed company.
- * @param pick - The owner's last pick.
- * @returns The filter's chips and who it shows.
- */
-function tagFilterOf(
-  sessions: SessionMap,
-  companyOf: (session: SessionDto) => { companyKey: string } | null,
-  companyKey: string | null,
-  pick: TagPick,
-) {
-  return buildTagFilter(
-    [...sessions.values()].filter(
-      (session) => companyOf(session)?.companyKey === companyKey,
-    ),
-    pick.companyKey === companyKey ? pick.selection : SHOW_ALL,
-  );
 }
 
 const STATUS_LINES = {
@@ -572,24 +478,8 @@ export function OfficeView() {
     getRanks: () => dataRef.current.ranks,
     setRanks: (ranks) => commit({ ...dataRef.current, ranks }, false),
     serverOffsetMs,
-    viewedRows: () => {
-      const shown = shownSessions(dataRef.current);
-      const overview = overviewOf(dataRef.current, new Date());
-      const { matches } = tagFilterOf(
-        shown,
-        overview.tree.companyOf,
-        companyRef.current,
-        tagPickRef.current,
-      );
-      return {
-        rows: companyRows(
-          shown.values(),
-          (session) => overview.tree.companyOf(session)?.companyKey,
-          companyRef.current,
-        ),
-        matches,
-      };
-    },
+    viewedRows: () =>
+      companyRowsOf(dataRef.current, companyRef.current, tagPickRef.current),
   });
 
   /** Opens the company drawer; a details panel left open would sit under it, so it closes. */
@@ -793,32 +683,15 @@ export function OfficeView() {
       ),
     );
   };
-  // The list shows live employees in the owner's order; the tag filter narrows it like the office.
-  const everyone = companyRows(
-    sessions.values(),
-    (session) => overview.tree.companyOf(session)?.companyKey,
+  const { everyone, selectedPlace, needsYou, listFold } = useListModel({
+    sessions,
+    overview,
     companyKey,
-  ).filter(tagFilterView.matches);
-  // The card's place counts the whole company, so a repo filter never changes it.
-  const selectedPlace = selectedKey
-    ? placeOf(
-        companyRows(
-          sessions.values(),
-          (session) => overview.tree.companyOf(session)?.companyKey,
-          companyKey,
-        ),
-        selectedKey,
-      )
-    : null;
-  const needsYou = selectNeedsYou({
-    sessions: sessions.values(),
-    companyOf: (session) => overview.tree.companyOf(session),
-    viewedCompany: companyKey,
-    companyOrder: overview.macs.flatMap((mac) =>
-      mac.companies.map((entry) => entry.company.key),
-    ),
-    offlineMachineIds: offlineIds,
-    includeOtherCompanies: true,
+    matches: tagFilterView.matches,
+    selectedKey,
+    offlineIds,
+    // Sessions come with the first answer, not with the assets
+    loaded: loaded && lastUpdatedAt !== null,
   });
   /**
    * Opens the original of a Needs you copy, switching company first when it lives elsewhere.
@@ -1116,6 +989,7 @@ export function OfficeView() {
         </div>
         {!isPhone && (
           <ListPanel
+            fold={listFold}
             needsYou={{
               needsYou,
               viewedCompanyKey: companyKey,

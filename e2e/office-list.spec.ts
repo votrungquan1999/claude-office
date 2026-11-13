@@ -1707,3 +1707,213 @@ test.describe("a refused Move all", () => {
     ).toBeVisible();
   });
 });
+
+test.describe("folding the list", () => {
+  test.use({ viewport: { width: 1280, height: 800 }, hasTouch: false });
+
+  /** Two waiting employees and one idle. */
+  const twoWaiting = () =>
+    seed([
+      { sessionId: "a", deskName: "Task A", state: "waitingForYou", rank: "b" },
+      { sessionId: "b", deskName: "Task B", state: "waitingForYou", rank: "c" },
+      { sessionId: "i", deskName: "Task I", state: "idle", rank: "d" },
+    ]);
+  const waitingArrives = () =>
+    withE2eDb(async (db) => {
+      await db.collection("sessions").insertOne({
+        machineId: "m1",
+        machineName: "Studio Mac",
+        cwd: "/Users/q/personal",
+        sessionId: "new",
+        deskName: "Task New",
+        state: "waitingForYou",
+        stateSince: new Date(),
+test.describe("Move all Review to Idle while Needs you is folded", () => {
+  test.use({ viewport: { width: 1280, height: 800 }, hasTouch: false });
+
+  test("the button stays in the folded header and moves the Review employees", async ({
+    context,
+    page,
+  }) => {
+    // Given two Review employees and Needs you folded
+    await seed(
+      ["a", "b"].map((name, i) => ({
+        sessionId: name,
+        deskName: `Task ${name}`,
+        state: "review",
+        stateSince: new Date(Date.now() - 5 * MIN),
+        rank: "bc"[i],
+      })),
+    );
+    await signInAsOwner(context);
+    await page.goto("/");
+    await waitForEmployees(page, 2);
+    await page.getByRole("button", { name: "Needs you", exact: true }).click();
+    await expect(
+      page.getByTestId("needs-row").locator("visible=true"),
+    ).toHaveCount(0);
+    const moveAll = page.getByRole("button", {
+      name: "Move all 2 Review to Idle",
+    });
+    await expect(moveAll).toBeVisible();
+
+    // When the owner presses it
+    await moveAll.click();
+
+    // Then both employees read Idle and the button is gone
+    await expect(
+      page.getByTestId("list-everyone").getByTestId("list-row-status"),
+    ).toHaveText([/^Idle/, /^Idle/]);
+    await expect(moveAll).toHaveCount(0);
+  });
+});
+
+        startedAt: new Date(),
+        changedAt: new Date(),
+      });
+    });
+
+  test("each section folds, section folds are remembered after a reload, and the whole list folds to a strip with the count and opens again at every load", async ({
+    context,
+    page,
+  }) => {
+    // Given two waiting employees and one idle
+    await twoWaiting();
+    await signInAsOwner(context);
+    await page.goto("/");
+    await waitForEmployees(page, 3);
+    const needsHeader = page.getByRole("button", {
+      name: "Needs you",
+      exact: true,
+    });
+    const everyoneHeader = page.getByRole("button", { name: /Everyone/ });
+    await expect(
+      page.getByTestId("list-row").locator("visible=true"),
+    ).toHaveCount(3);
+
+    // When the owner folds Everyone and Needs you
+    await everyoneHeader.click();
+    await expect(everyoneHeader).toHaveAttribute("aria-expanded", "false");
+    await expect(
+      page.getByTestId("list-row").locator("visible=true"),
+    ).toHaveCount(0);
+    await needsHeader.click();
+    await expect(
+      page.getByTestId("needs-row").locator("visible=true"),
+    ).toHaveCount(0);
+
+    // Then both stay folded after a reload and the header counts still show
+    await page.reload();
+    await waitForEmployees(page, 3);
+    await expect(
+      page.getByTestId("list-row").locator("visible=true"),
+    ).toHaveCount(0);
+    await expect(
+      page.getByTestId("needs-row").locator("visible=true"),
+    ).toHaveCount(0);
+    await expect(page.getByTestId("needs-count")).toHaveText("2");
+
+    // When the owner folds the whole list
+    await page.getByRole("button", { name: "Fold the list" }).click();
+
+    // Then a strip shows the needs-you count
+    const strip = page.getByTestId("list-folded-strip");
+    await expect(strip).toHaveAttribute(
+      "aria-label",
+      "2 need you: open the list",
+    );
+    await expect(page.getByTestId("list-panel")).toHaveCount(0);
+
+    // And after a reload the whole list is open again with the sections still folded
+    await page.reload();
+    await waitForEmployees(page, 3);
+    await expect(page.getByTestId("list-panel")).toBeVisible();
+    await expect(
+      page.getByTestId("list-row").locator("visible=true"),
+    ).toHaveCount(0);
+  });
+
+  test("an unfolded Went home today stays unfolded after a reload", async ({
+    context,
+    page,
+  }) => {
+    // Given one live conversation and one that went home today
+    await seed([
+      { sessionId: "a", deskName: "Task A", state: "idle", rank: "b" },
+      {
+        sessionId: "g",
+        deskName: "Gone task",
+        state: "wentHome",
+        hadPrompt: true,
+        endedAt: new Date(Date.now() - MIN),
+      },
+    ]);
+    await signInAsOwner(context);
+    await page.goto("/");
+    await waitForEmployees(page, 1);
+    const toggle = page.getByRole("button", { name: /^Went home today/ });
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+    // When the owner unfolds it and reloads
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await page.reload();
+    await waitForEmployees(page, 1);
+
+    // Then it is still unfolded
+    await expect(
+      page.getByRole("button", { name: /^Went home today/ }),
+    ).toHaveAttribute("aria-expanded", "true");
+    await expect(page.getByTestId("went-home-list")).toBeVisible();
+  });
+
+  test("a new needs-you arrival reopens a folded Needs you, a reload does not, and a folded strip stays folded while its count grows", async ({
+    context,
+    page,
+  }) => {
+    // Given Needs you folded
+    await twoWaiting();
+    await signInAsOwner(context);
+    await page.goto("/");
+    await waitForEmployees(page, 3);
+    await page.getByRole("button", { name: "Needs you", exact: true }).click();
+    await expect(
+      page.getByTestId("needs-row").locator("visible=true"),
+    ).toHaveCount(0);
+    await page.reload();
+    await waitForEmployees(page, 3);
+    await expect(
+      page.getByTestId("needs-row").locator("visible=true"),
+    ).toHaveCount(0);
+
+    // When a conversation starts waiting for the owner
+    await waitingArrives();
+
+    // Then Needs you opens by itself and lists three
+    await expect(
+      page.getByTestId("needs-row").locator("visible=true"),
+    ).toHaveCount(3, {
+      timeout: 20_000,
+    });
+
+    // When the whole list is folded and another arrives
+    await page.getByRole("button", { name: "Fold the list" }).click();
+    await withE2eDb(async (db) => {
+      await db.collection("sessions").updateOne(
+        { sessionId: "i" },
+        {
+          $set: { state: "waitingForYou", stateSince: new Date() },
+          $currentDate: { changedAt: true },
+        },
+      );
+    });
+
+    // Then the strip stays folded and its count follows
+    await expect(page.getByTestId("list-folded-strip")).toHaveAttribute(
+      "aria-label",
+      "4 need you: open the list",
+      { timeout: 20_000 },
+    );
+    await expect(page.getByTestId("list-panel")).toHaveCount(0);
+  });
+});

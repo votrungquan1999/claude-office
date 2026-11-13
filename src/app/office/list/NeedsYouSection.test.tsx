@@ -47,6 +47,8 @@ function show(
       onSelect={onSelect}
       onMoveToIdle={() => {}}
       onMoveAllToIdle={() => {}}
+      open={true}
+      onToggle={() => {}}
     />,
   );
 }

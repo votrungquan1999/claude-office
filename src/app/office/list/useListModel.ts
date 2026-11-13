@@ -1,0 +1,69 @@
+import { placeOf } from "@/shared/list-order";
+import { selectNeedsYou } from "@/shared/needs-you";
+import { type SessionDto, sessionKey } from "@/shared/session";
+import type { overviewOf } from "../officeData";
+import type { SessionMap } from "../officeStore";
+import { companyRows } from "./companyRows";
+import { useListFolds } from "./useListFolds";
+
+interface ListModelInput {
+  /** Every session this device knows, with the owner's pending moves laid over. */
+  sessions: SessionMap;
+  overview: ReturnType<typeof overviewOf>;
+  /** The company being viewed. */
+  companyKey: string | null;
+  /** Whether the tag filter shows a session. */
+  matches: (session: SessionDto) => boolean;
+  /** The employee whose card is open, if any. */
+  selectedKey: string | null;
+  offlineIds: ReadonlySet<string>;
+  /** Whether the first answer is in. */
+  loaded: boolean;
+}
+
+/**
+ * What the list shows: the viewed company's rows, the open card's place, the Needs you copies and the folds.
+ * @param input - The sessions, the view and the selection.
+ * @returns The rows the filter shows, the selected row's place, Needs you and the fold state.
+ */
+export function useListModel({
+  sessions,
+  overview,
+  companyKey,
+  matches,
+  selectedKey,
+  offlineIds,
+  loaded,
+}: ListModelInput) {
+  const rows = companyRows(
+    sessions.values(),
+    (session) => overview.tree.companyOf(session)?.companyKey,
+    companyKey,
+  );
+  const needsYou = selectNeedsYou({
+    sessions: sessions.values(),
+    companyOf: (session) => overview.tree.companyOf(session),
+    viewedCompany: companyKey,
+    companyOrder: overview.macs.flatMap((mac) =>
+      mac.companies.map((entry) => entry.company.key),
+    ),
+    offlineMachineIds: offlineIds,
+    includeOtherCompanies: true,
+  });
+  const listFold = useListFolds(
+    new Set(
+      [...needsYou.own, ...needsYou.others.flatMap((g) => g.rows)].map(
+        sessionKey,
+      ),
+    ),
+    loaded,
+  );
+  return {
+    // The tag filter narrows the list like the office
+    everyone: rows.filter(matches),
+    // The card's place counts the whole company, so a repo filter never changes it
+    selectedPlace: selectedKey ? placeOf(rows, selectedKey) : null,
+    needsYou,
+    listFold,
+  };
+}
