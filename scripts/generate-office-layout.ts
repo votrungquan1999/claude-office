@@ -1,4 +1,4 @@
-/** Writes `public/assets/office-layout.json`: four rooms in a 2+2 grid joined by doorways. */
+/** Writes `public/assets/office-layout.json`: five rooms joined by doorways, two on top and three below. */
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,6 +25,7 @@ const ROOM_STYLE: Record<Room, { hue: number; areaColor: string }> = {
   [Room.Working]: { hue: 209, areaColor: "#3b82f6" },
   [Room.NeedsPermission]: { hue: 15, areaColor: "#ef4444" },
   [Room.WaitingForYou]: { hue: 50, areaColor: "#eab308" },
+  [Room.Review]: { hue: 280, areaColor: "#b06ad9" },
   [Room.Idle]: { hue: 130, areaColor: "#22c55e" },
 };
 
@@ -36,12 +37,13 @@ interface RoomBox {
   top: boolean;
 }
 
-/** A 2+2 grid: Working and Needs permission on top, Waiting for you and Idle below. */
+/** Working and Needs permission on top; Waiting for you, Review and Idle below, 12 columns each. */
 const ROOMS: RoomBox[] = [
   { room: Room.Working, c0: 0, width: 23, top: true },
   { room: Room.NeedsPermission, c0: 22, width: 12, top: true },
-  { room: Room.WaitingForYou, c0: 0, width: 17, top: false },
-  { room: Room.Idle, c0: 16, width: 18, top: false },
+  { room: Room.WaitingForYou, c0: 0, width: 12, top: false },
+  { room: Room.Review, c0: 11, width: 12, top: false },
+  { room: Room.Idle, c0: 22, width: 12, top: false },
 ];
 
 /** The wall row above a room band: the top rooms' own wall, or the wall shared with the bottom rooms. */
@@ -104,13 +106,17 @@ for (let c = 0; c < COLS; c++) {
 
 // Doorways: floor tiles in a shared wall, coloured and labelled as the room they open into
 setFloor(22, wallRowOf(true) + 5, Room.NeedsPermission);
-setFloor(16, wallRowOf(false) + 5, Room.Idle);
+setFloor(11, wallRowOf(false) + 5, Room.Review);
+setFloor(22, wallRowOf(false) + 5, Room.Idle);
 setFloor(5, wallRowOf(false), Room.WaitingForYou);
-setFloor(18, wallRowOf(false), Room.Idle);
+setFloor(16, wallRowOf(false), Room.Review);
 setFloor(28, wallRowOf(false), Room.Idle);
 
-// Stations of two desks facing each other, three seats at each
-for (const { c0, width, top } of ROOMS) {
+/**
+ * Two desks facing each other per station, three seats at each, and a plant in each lower corner.
+ * @param box - The room to furnish.
+ */
+function furnishWithDesks({ c0, width, top }: RoomBox): void {
   const wallRow = wallRowOf(top);
   const stations = Math.floor((width - 2) / 5);
   for (let s = 0; s < stations; s++) {
@@ -128,6 +134,16 @@ for (const { c0, width, top } of ROOMS) {
   place("PLANT", c0 + 1, wallRow + 8);
   place("PLANT", c0 + width - 2, wallRow + 8);
 }
+
+/** How each room is furnished; one entry per room. */
+const FURNISH: Record<Room, (box: RoomBox) => void> = {
+  [Room.Working]: furnishWithDesks,
+  [Room.NeedsPermission]: furnishWithDesks,
+  [Room.WaitingForYou]: furnishWithDesks,
+  [Room.Review]: furnishWithDesks,
+  [Room.Idle]: furnishWithDesks,
+};
+for (const box of ROOMS) FURNISH[box.room](box);
 
 const areas: AreaDefinition[] = ROOM_ORDER.map((room) => ({
   label: room,

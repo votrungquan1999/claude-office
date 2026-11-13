@@ -89,6 +89,8 @@ test.describe("renaming a company", () => {
       expect(requests).toHaveLength(1);
 
       // And the renamed company's employee label on the canvas carries the new name
+      await page.keyboard.press("Escape");
+      await expect(drawer).toBeHidden();
       await waitForEmployees(page, 1);
       const renamedEmployee = await employeeLabelled(page, "Zulu");
       await hoverEmployee(page, renamedEmployee);

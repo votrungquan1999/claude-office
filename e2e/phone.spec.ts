@@ -428,7 +428,7 @@ test.describe("the office on an iPad: canvas touch gestures and room signs", () 
       }
       return { hits, signs: signs.length };
     });
-    expect(overlaps.signs).toBe(4);
+    expect(overlaps.signs).toBe(5);
     expect(overlaps.hits).toEqual([]);
   });
 

@@ -51,24 +51,31 @@ test.describe("the stacked rooms on a phone", () => {
     await client.close();
   });
 
-  test("lists the employees in four stacked rooms, the rooms that need the owner first, each with its count and task names, and the tab's badge adds up the two rooms that need the owner, instead of the pixel office", async ({
+  test("lists the employees in five stacked rooms, the rooms that need the owner first, each with its count and task names, and the tab's badge adds up the two rooms that need the owner, instead of the pixel office", async ({
     page,
   }) => {
-    // Given employees in three rooms and none idle
+    // Given employees in four rooms and none idle
     await seed(sessions, [
       ["p1", "needsPermission", "Fix login redirect"],
       ["w1", "waitingForYou", "Review PR comments"],
       ["w2", "waitingForYou", "Plan Q1 dashboard"],
       ["k1", "working", "Build invoice export"],
       ["k2", "thinking", "Sketch the settings page"],
+      ["r1", "review", "Audit signup emails"],
     ]);
 
     // When the owner opens the office on a phone
     await page.goto("/");
     await expect(page.getByTestId("stacked-rooms")).toBeVisible();
 
-    // Then the four rooms are stacked top to bottom: Needs permission, Waiting for you, Working, Idle
-    const names = ["Needs permission", "Waiting for you", "Working", "Idle"];
+    // Then the five rooms are stacked top to bottom: Needs permission, Waiting for you, Review, Working, Idle
+    const names = [
+      "Needs permission",
+      "Waiting for you",
+      "Review",
+      "Working",
+      "Idle",
+    ];
     const tops: number[] = [];
     for (const name of names) {
       const room = page.getByRole("region", { name });
@@ -84,6 +91,7 @@ test.describe("the stacked rooms on a phone", () => {
         .getByRole("button", { expanded: true });
     await expect(header("Needs permission")).toContainText("1");
     await expect(header("Waiting for you")).toContainText("2");
+    await expect(header("Review")).toContainText("1");
     await expect(header("Working")).toContainText("2");
 
     // And the tab's badge is the sum of the two rooms that need the owner
@@ -480,10 +488,14 @@ test.describe("the stacked rooms on a phone", () => {
 
       // And scrolled to the end, the last room ends above the bar, and the rooms start below the company strip
       const rooms = page.getByTestId("stacked-rooms");
+      // The rooms keep growing until every tile is in, so the end moves until then
+      await expect(
+        page.getByRole("button", { name: /^Task \d+, Working$/ }),
+      ).toHaveCount(12);
       await rooms.evaluate((el) => el.scrollTo(0, el.scrollHeight));
-      expect(
-        await bottomOf(page.getByRole("region", { name: "Idle" })),
-      ).toBeLessThanOrEqual(barBox?.y ?? 0);
+      await expect
+        .poll(async () => bottomOf(page.getByRole("region", { name: "Idle" })))
+        .toBeLessThanOrEqual(barBox?.y ?? 0);
       expect((await rooms.boundingBox())?.y ?? 0).toBeGreaterThanOrEqual(
         await bottomOf(page.getByTestId("company-strip")),
       );

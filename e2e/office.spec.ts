@@ -14,15 +14,16 @@ keepOneCompany("m1", "/Users/q");
 // The canvas and its labels are not drawn on a phone, which shows stacked rooms.
 test.use({ viewport: { width: 1600, height: 1200 }, hasTouch: false });
 
-const ROOMS = ["working", "needsPermission", "waitingForYou", "idle"];
+const ROOMS = ["working", "needsPermission", "waitingForYou", "review", "idle"];
 const SEATS: Record<string, number> = {
   working: 24,
   needsPermission: 12,
-  waitingForYou: 18,
-  idle: 18,
+  waitingForYou: 12,
+  review: 12,
+  idle: 12,
 };
 
-test("the owner sees an office with four labelled rooms", async ({
+test("the owner sees an office with five labelled rooms", async ({
   context,
   page,
 }) => {
@@ -33,7 +34,7 @@ test("the owner sees an office with four labelled rooms", async ({
   await page.goto("/");
 
   // Then each room has a sign
-  await expect(page.getByTestId("room-sign")).toHaveCount(4);
+  await expect(page.getByTestId("room-sign")).toHaveCount(5);
   const rooms = await page
     .getByTestId("room-sign")
     .evaluateAll((signs) =>
@@ -45,7 +46,7 @@ test("the owner sees an office with four labelled rooms", async ({
     "Waiting for you",
   );
 
-  // And the scene has the four areas, each with seats an employee can take
+  // And the scene has the five areas, each with seats an employee can take
   const areas = await page.evaluate(() =>
     window.__officeTestHooks?.getAreas().map((area) => area.label),
   );

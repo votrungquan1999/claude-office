@@ -16,6 +16,7 @@ describe("where each room's sign hangs", () => {
     expect(signRow(Room.Working)).toBe(1);
     expect(signRow(Room.NeedsPermission)).toBe(1);
     expect(signRow(Room.WaitingForYou)).toBe(11);
+    expect(signRow(Room.Review)).toBe(11);
     expect(signRow(Room.Idle)).toBe(11);
   });
 });

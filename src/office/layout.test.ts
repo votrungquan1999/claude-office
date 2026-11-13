@@ -9,12 +9,13 @@ import { Direction } from "./types";
 const SEATS_PER_ROOM: Record<string, number> = {
   working: 24,
   needsPermission: 12,
-  waitingForYou: 18,
-  idle: 18,
+  waitingForYou: 12,
+  review: 12,
+  idle: 12,
 };
 
 describe("the office layout", () => {
-  it("has the four rooms in screen order, each with its own number of seats and a 34 by 22 map", () => {
+  it("has the five rooms in screen order, each with its own number of seats and a 34 by 22 map", () => {
     // Given the generated layout with the real furniture loaded
     const office = loadOffice();
 
@@ -26,12 +27,13 @@ describe("the office layout", () => {
       seatsByRoom.set(room, (seatsByRoom.get(room) ?? 0) + 1);
     }
 
-    // Then the four rooms exist, hold their seats, and no seat is left outside a room
+    // Then the five rooms exist, hold their seats, and no seat is left outside a room
     expect(labels).toEqual(ROOM_ORDER);
     expect(labels).toEqual([
       "working",
       "needsPermission",
       "waitingForYou",
+      "review",
       "idle",
     ]);
     expect(Object.fromEntries(seatsByRoom)).toEqual(SEATS_PER_ROOM);

@@ -6,6 +6,7 @@ describe("the stacked room order", () => {
     expect(STACKED_ROOM_ORDER).toEqual([
       Room.NeedsPermission,
       Room.WaitingForYou,
+      Room.Review,
       Room.Working,
       Room.Idle,
     ]);

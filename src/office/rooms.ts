@@ -1,10 +1,11 @@
 import type { SessionState } from "@/shared/session-state";
 
-/** The four rooms of the office; the values are the Area labels stored in the layout. */
+/** The five rooms of the office; the values are the Area labels stored in the layout. */
 export enum Room {
   Working = "working",
   NeedsPermission = "needsPermission",
   WaitingForYou = "waitingForYou",
+  Review = "review",
   Idle = "idle",
 }
 
@@ -13,6 +14,7 @@ export const ROOM_ORDER: Room[] = [
   Room.Working,
   Room.NeedsPermission,
   Room.WaitingForYou,
+  Room.Review,
   Room.Idle,
 ];
 
@@ -20,6 +22,7 @@ export const ROOM_ORDER: Room[] = [
 export const STACKED_ROOM_ORDER: Room[] = [
   Room.NeedsPermission,
   Room.WaitingForYou,
+  Room.Review,
   Room.Working,
   Room.Idle,
 ];
@@ -29,6 +32,7 @@ export const ROOM_COLORS: Record<Room, string> = {
   [Room.Working]: "var(--color-room-working)",
   [Room.NeedsPermission]: "var(--color-room-permission)",
   [Room.WaitingForYou]: "var(--color-room-waiting-for-you)",
+  [Room.Review]: "var(--color-room-review)",
   [Room.Idle]: "var(--color-room-idle)",
 };
 
@@ -37,6 +41,7 @@ export const ROOM_DISPLAY_NAMES: Record<Room, string> = {
   [Room.Working]: "Working",
   [Room.NeedsPermission]: "Needs permission",
   [Room.WaitingForYou]: "Waiting for you",
+  [Room.Review]: "Review",
   [Room.Idle]: "Idle",
 };
 
@@ -46,8 +51,7 @@ export const ROOM_OF_STATE: Record<SessionState, Room | null> = {
   thinking: Room.Working,
   needsPermission: Room.NeedsPermission,
   waitingForYou: Room.WaitingForYou,
-  // Shares the Idle room until the Review room exists.
-  review: Room.Idle,
+  review: Room.Review,
   idle: Room.Idle,
   wentHome: null,
 };

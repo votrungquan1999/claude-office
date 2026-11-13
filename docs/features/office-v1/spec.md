@@ -24,7 +24,7 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 
 ## What it is
 
-- **Office view:** one pixel-art office, 34 by 22 tiles, with four labelled rooms: Working, Needs permission, Waiting for you, Idle. A real phone shows the same four rooms stacked as lists instead (see [Phone](#phone)).
+- **Office view:** one pixel-art office, 34 by 22 tiles, with five labelled rooms: Working, Needs permission, Waiting for you, Review, Idle. A real phone shows the same five rooms stacked as lists instead (see [Phone](#phone)).
 - **Employees:** each session is a character that sits in the room matching its state and moves when the state changes.
 - **Labels:** an employee's label is `desk name · Mac / project`, or `Mac / company name` when the session started at its company folder, followed by its repo tags as `#name`. It is shown only while the mouse is over the employee or it is selected (tap or click); permission and waiting bubbles are always shown.
 - **Companies:** the folders sessions start in group into companies. A bar above the office has a group per Mac with one tab per company, and an "All companies" button pinned at its right edge; a drawer lists every Mac and company, and is where a company is renamed.
@@ -44,11 +44,11 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 
 ### Office and rooms
 
-- The pixel office (desktop, iPad and narrow windows; a real phone shows [stacked rooms](#phone) instead) has four named rooms joined by doorways, 72 seats in all: Working 24, Needs permission 12, Waiting for you 18, Idle 18. Working and Needs permission are on top, Waiting for you and Idle below.
+- The pixel office (desktop, iPad and narrow windows; a real phone shows [stacked rooms](#phone) instead) has five named rooms joined by doorways, 72 seats in all: Working 24, Needs permission 12, Waiting for you 12, Review 12, Idle 12. Working (wide, left) and Needs permission are on top; Waiting for you, Review and Idle are below, left to right. Review has a purple sign and floor.
 - Working: a tool is running, or the session is between steps (thinking); both live in the same room, so an employee does not walk between the two. After the turn ended, a background sub-agent that is still running also keeps the desk here (see [Waiting for you, Review or Idle](#waiting-for-you-review-or-idle)).
 - Needs permission: a dialog waits for the owner. Other waits for the owner (questions, MCP forms) also go here.
 - Waiting for you: the turn ended and the last answer asked the owner something.
-- Review: the turn ended with a result to look at (any answer text that does not ask). Until its own room exists it shows in the Idle room, with the Review colour and word. The owner clears it by hand.
+- Review: the turn ended with a result to look at (any answer text that does not ask). It has its own purple Review room, where the employee sits calm (not busy, no bubble). The owner clears it by hand.
 - Idle: the turn ended with nothing to show (no answer text, an Esc, an error) or Haiku found nothing to look at. A session first seen after its turn ended with an unreadable transcript also shows Idle.
 - Several open dialogs keep the employee in Needs permission until the last one is answered.
 - A dialog raised by a subagent moves the parent session to Needs permission.
@@ -260,11 +260,11 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 ### Phone
 
 - A real phone is a touch screen whose short side is at most 500 CSS px, in either orientation (a coarse pointer with a width or a height of at most 500 px). An iPad and any window driven by a mouse never count, however narrow. Turning the phone keeps the same view and the same open sheets; there is no special sideways mode, and a sideways phone shows the same bar and rooms with more columns.
-- Instead of the pixel office and the card strip, the phone shows the viewed company's employees in four full-width rooms stacked in the order Needs permission, Waiting for you, Working, Idle. The rooms follow the company tab and the repo filter and scroll on their own.
-- Each room has a header with the room's colour, its name and its head count, then a grid of tiles (as many columns as fit). A tile shows a small desk, the employee's character (the same look as on the canvas), and its task name cut at two lines (the desk name, else the folder name); Needs permission tiles carry a `!` bubble and Waiting for you tiles a `…` bubble. A tile of an offline Mac is greyed. An empty room shows its header and "Nobody here right now".
+- Instead of the pixel office and the card strip, the phone shows the viewed company's employees in five full-width rooms stacked in the order Needs permission, Waiting for you, Review, Working, Idle (a check mark bubble marks Review employees; a Review arrival reopens a folded Review room). The rooms follow the company tab and the repo filter and scroll on their own.
+- Each room has a header with the room's colour, its name and its head count, then a grid of tiles (as many columns as fit). A tile shows a small desk, the employee's character (the same look as on the canvas), and its task name cut at two lines (the desk name, else the folder name); Needs permission tiles carry a `!` bubble, Waiting for you tiles a `…` bubble and Review tiles a `✓` bubble. A tile of an offline Mac is greyed. An empty room shows its header and "Nobody here right now".
 - Tiles sit in the room that matches the session's state at once (no walking delay), so the room counts match the bar's counts; went-home employees are not shown. Inside a room the employee who has been in its state longest comes first, ties by session.
 - Tapping a tile opens the details card as a bottom sheet and marks the tile; tapping another tile moves the sheet and the mark; closing the sheet puts focus back on the tile.
-- Tapping a room header with employees folds or opens the room; its count stays. An empty room has nothing to fold. Folds are kept when the company changes but not across a reload. A folded Needs permission or Waiting for you room opens again when an employee newly arrives in it, so a new request is never hidden; people brought in by switching company or repo filter count as arrivals too.
+- Tapping a room header with employees folds or opens the room; its count stays. An empty room has nothing to fold. Folds are kept when the company changes but not across a reload. A folded Needs permission, Waiting for you or Review room opens again when an employee newly arrives in it, so a new request is never hidden; people brought in by switching company or repo filter count as arrivals too.
 - A row above the rooms holds the repo pill on the left and the status line ("Updated N min ago", "Connection lost") on the right, in the layout's flow, so neither covers a room header.
 - A bottom bar stays below the rooms with "Went home N" (opens the went-home sheet) and "+ Hire" (opens the hire dialog). It is hidden while any sheet is open (All companies, Went home, the details card, the repo chips) and keeps clear of the phone's home indicator.
 - The company bar on a phone shows each company's name and needs-you badge only, tap targets at least 44 px, and "All companies" as a grid icon.

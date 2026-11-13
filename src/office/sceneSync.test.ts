@@ -296,6 +296,7 @@ describe("scene sync", () => {
         "thinking",
         "needsPermission",
         "waitingForYou",
+        "review",
         "idle",
       ] as const;
       const sessions = states.flatMap((state) =>
@@ -527,6 +528,32 @@ describe("scene sync", () => {
       sync.apply([at("idle", 4)]);
       expect(employee().bubbleType).toBeNull();
       expect(employee().isActive).toBe(false);
+    });
+
+    it("sits a Review employee in the Review room, calm: not busy and with no bubble", () => {
+      // Given a working employee
+      const office = loadOffice();
+      const sync = createSceneSync(office, { smoothMs: 0 });
+      const at = (state: SessionDto["state"], second: number) =>
+        session(
+          "m1",
+          "Mac",
+          "a",
+          "/w",
+          `2026-11-08T10:00:0${second}.000Z`,
+          state,
+        );
+      sync.apply([at("working", 0)], { firstLoad: true });
+      const employee = () => office.getCharacters()[0];
+      expect(employee().isActive).toBe(true);
+
+      // When its turn ends with a result to look at
+      sync.apply([at("review", 1)]);
+
+      // Then it sits in the Review room and is not busy
+      expect(office.seatZone(employee().seatId ?? "")).toBe("review");
+      expect(employee().isActive).toBe(false);
+      expect(employee().bubbleType).toBeNull();
     });
 
     it("finishes a delayed move on a later tick even when the poll sends nothing new for that session", () => {

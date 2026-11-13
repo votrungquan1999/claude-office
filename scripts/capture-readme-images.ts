@@ -282,6 +282,15 @@ function madeUpOffice() {
     employee("h15", STUDIO, `${HARBOR}/web`, "Tidy the footer", "idle", 61),
     employee("h16", STUDIO, HARBOR, "Plan the Q3 roadmap", "idle", 75),
     employee(
+      "h17",
+      STUDIO,
+      `${HARBOR}/api`,
+      "Audit the signup emails",
+      "review",
+      15,
+      { tags: [API] },
+    ),
+    employee(
       "l1",
       STUDIO,
       `${LUMEN}/site`,
@@ -405,7 +414,7 @@ async function capture() {
     await signInAsOwner(desktop);
     const page = await desktop.newPage();
     await page.goto(E2E_BASE_URL);
-    await waitForEmployees(page, 16);
+    await waitForEmployees(page, 17);
     await page.waitForTimeout(4000);
     await page.screenshot({ path: `${OUT}/office-desktop.png` });
     const id = await employeeLabelled(page, "Migrate users table");
@@ -426,7 +435,7 @@ async function capture() {
     await signInAsOwner(phone);
     const phonePage = await phone.newPage();
     await phonePage.goto(E2E_BASE_URL);
-    await waitForEmployees(phonePage, 16);
+    await waitForEmployees(phonePage, 17);
     await phonePage.waitForTimeout(4000);
     await phonePage.screenshot({ path: `${OUT}/office-phone.png` });
     await phone.close();
@@ -441,7 +450,7 @@ async function capture() {
     await signInAsOwner(video);
     const videoPage = await video.newPage();
     await videoPage.goto(E2E_BASE_URL);
-    await waitForEmployees(videoPage, 16);
+    await waitForEmployees(videoPage, 17);
     await videoPage.waitForTimeout(11_000);
     const webm = await videoPage.video()?.path();
     await video.close();

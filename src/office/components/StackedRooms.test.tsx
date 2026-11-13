@@ -88,6 +88,38 @@ describe("the stacked rooms", () => {
     );
   });
 
+  it("stacks a Review room between Waiting for you and Working and shows ✓ on its employees", () => {
+    // Given one employee in each of the five rooms
+    const tiles = [
+      tile("p", { room: Room.NeedsPermission, state: "needsPermission" }),
+      tile("w", { room: Room.WaitingForYou, state: "waitingForYou" }),
+      tile("r", { room: Room.Review, state: "review", task: "look" }),
+      tile("k"),
+      tile("i", { room: Room.Idle, state: "idle" }),
+    ];
+
+    // When the rooms render
+    render(
+      <StackedRooms tiles={tiles} selectedKey={null} onSelect={vi.fn()} />,
+    );
+
+    // Then the rooms stack in the order the owner approved, and the Review employee shows a check mark
+    expect(
+      screen
+        .getAllByRole("region")
+        .map((room) => room.getAttribute("aria-label")),
+    ).toEqual([
+      "Needs permission",
+      "Waiting for you",
+      "Review",
+      "Working",
+      "Idle",
+    ]);
+    expect(
+      screen.getByRole("button", { name: /^look,/ }).textContent,
+    ).toContain("✓");
+  });
+
   it("folds a room to its header when the owner taps it, keeps the count, and opens it on the next tap", () => {
     // Given two employees in Working and one in Idle
     const tiles = [
@@ -232,6 +264,25 @@ describe("the stacked rooms", () => {
 
     // When a new employee arrives there
     rerender(<StackedRooms tiles={[wait("q1"), wait("q2")]} {...props} />);
+
+    // Then the room opens with both
+    expect(screen.getByRole("button", { name: /^q2,/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^q1,/ })).toBeTruthy();
+  });
+
+  it("opens a folded Review room when someone new arrives", () => {
+    // Given a folded Review room with one employee
+    const review = (key: string) =>
+      tile(key, { room: Room.Review, state: "review", task: key });
+    const props = { selectedKey: null, onSelect: vi.fn() };
+    const { rerender } = render(
+      <StackedRooms tiles={[review("q1")]} {...props} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Review, 1" }));
+    expect(screen.queryByRole("button", { name: /^q1,/ })).toBeNull();
+
+    // When a new employee arrives there
+    rerender(<StackedRooms tiles={[review("q1"), review("q2")]} {...props} />);
 
     // Then the room opens with both
     expect(screen.getByRole("button", { name: /^q2,/ })).toBeTruthy();

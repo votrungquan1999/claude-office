@@ -30,11 +30,13 @@ interface StackedRoomsProps {
 const REOPENS_ON_ARRIVAL: ReadonlySet<Room> = new Set([
   Room.NeedsPermission,
   Room.WaitingForYou,
+  Room.Review,
 ]);
 
 const BUBBLE: Partial<Record<SessionState, string>> = {
   needsPermission: "!",
   waitingForYou: "…",
+  review: "✓",
 };
 
 /**
