@@ -18,7 +18,7 @@ const ROOMS = ["working", "needsPermission", "waitingForYou", "review", "idle"];
 const SEATS: Record<string, number> = {
   working: 24,
   needsPermission: 12,
-  waitingForYou: 12,
+  waitingForYou: 8,
   review: 12,
   idle: 6,
 };

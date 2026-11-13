@@ -112,7 +112,7 @@ export function ToolOverlay({
           !(ch.bubbleType === "waiting" && ch.waitingAwaitingInput)
         ) {
           const cachedBubble = getCachedSprite(
-            ch.bubbleType === "permission"
+            ch.bubbleType === "permission" || ch.bubbleType === "asks"
               ? BUBBLE_PERMISSION_SPRITE
               : BUBBLE_WAITING_SPRITE,
             zoom,

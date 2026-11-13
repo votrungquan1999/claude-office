@@ -4,12 +4,12 @@ import { getCatalogEntry } from "./layout/furnitureCatalog";
 import { getBlockedTiles, getSeatTiles } from "./layout/layoutSerializer";
 import { findPath } from "./layout/tileMap";
 import { ROOM_ORDER } from "./rooms";
-import { Direction } from "./types";
+import { Direction, TileType } from "./types";
 
 const SEATS_PER_ROOM: Record<string, number> = {
   working: 24,
   needsPermission: 12,
-  waitingForYou: 12,
+  waitingForYou: 8,
   review: 12,
   idle: 6,
 };
@@ -173,5 +173,131 @@ describe("the Idle lounge", () => {
       ["sit", false, Direction.UP],
       ["stand", true, Direction.UP],
     ]);
+  });
+});
+
+describe("the Idle lounge's placing", () => {
+  /** Tiles a piece of furniture covers. */
+  const tilesOf = (item: { type: string; col: number; row: number }) => {
+    const entry = getCatalogEntry(item.type);
+    const w = entry?.footprintW ?? 1;
+    const h = entry?.footprintH ?? 1;
+    return Array.from({ length: w * h }, (_, n) => ({
+      col: item.col + (n % w),
+      row: item.row + Math.floor(n / w),
+    }));
+  };
+
+  it("keeps every employee's sprite below the wall row, puts the mugs on the front row of their tables, and keeps the sofa sitter facing a table clear of it", () => {
+    // Given the generated office and the Idle room
+    const office = loadOffice();
+    const { cols, areaTiles, furniture } = office.getLayout();
+    const roomAt = (col: number, row: number) =>
+      areaTiles?.[row * cols + col] ?? null;
+    const idleTiles = (areaTiles ?? []).flatMap((label, at) =>
+      label === "idle" ? [Math.floor(at / cols)] : [],
+    );
+    // The wall row has only the doorways as room tiles, so the first floor row is the first with a run of them
+    const firstFloorRow = Math.min(
+      ...idleTiles.filter(
+        (row) => idleTiles.filter((r) => r === row).length > 1,
+      ),
+    );
+    const places = [...office.seats.entries()]
+      .filter(([uid]) => office.seatZone(uid) === "idle")
+      .map(([, seat]) => seat);
+    const tables = furniture.filter(
+      (item) =>
+        getCatalogEntry(item.type)?.isDesk &&
+        roomAt(item.col, item.row) === "idle",
+    );
+    const tableTiles = new Set(
+      tables.flatMap((table) =>
+        tilesOf(table).map(({ col, row }) => `${col},${row}`),
+      ),
+    );
+    const mugs = furniture.filter(
+      (item) => item.type === "COFFEE" && roomAt(item.col, item.row) === "idle",
+    );
+
+    // Then no employee's sprite (its own tile and the one above) reaches the wall row
+    expect(places.filter((seat) => seat.seatRow - 1 < firstFloorRow)).toEqual(
+      [],
+    );
+
+    // And every mug lies on the front row of the table under it
+    expect(mugs.length).toBeGreaterThan(0);
+    expect(
+      mugs.map((mug) =>
+        tables.some(
+          (table) =>
+            mug.col >= table.col &&
+            mug.col < table.col + 2 &&
+            mug.row === table.row + 1,
+        ),
+      ),
+    ).toEqual(mugs.map(() => true));
+
+    // And no sitter's sprite overlaps a table tile
+    expect(
+      places
+        .filter((seat) => seat.pose === "sit")
+        .filter(
+          (seat) =>
+            tableTiles.has(`${seat.seatCol},${seat.seatRow}`) ||
+            tableTiles.has(`${seat.seatCol},${seat.seatRow - 1}`),
+        ),
+    ).toEqual([]);
+  });
+});
+
+describe("the Waiting for you room", () => {
+  it("seats eight on benches in two rows that face up at a clock on the wall, with a door on the north wall beside it", () => {
+    // Given the generated office
+    const office = loadOffice();
+    const { cols, areaTiles, tiles, furniture } = office.getLayout();
+    const waitingTiles = (areaTiles ?? []).flatMap((label, at) =>
+      label === "waitingForYou"
+        ? [{ col: at % cols, row: Math.floor(at / cols) }]
+        : [],
+    );
+    // A doorway in the wall row has one tile of the room, so the first floor row is the first with a run of them
+    const firstFloorRow = Math.min(
+      ...waitingTiles
+        .map((t) => t.row)
+        .filter((row) => waitingTiles.filter((t) => t.row === row).length > 1),
+    );
+    const northWallRow = firstFloorRow - 1;
+
+    // When we read its places and the wall pieces
+    const places = [...office.seats.entries()]
+      .filter(([uid]) => office.seatZone(uid) === "waitingForYou")
+      .map(([, seat]) => seat);
+    const benchCols = places.map((seat) => seat.seatCol);
+    const benchRows = [...new Set(places.map((seat) => seat.seatRow))];
+    const clock = furniture.find((item) => item.type === "CLOCK");
+    const door = furniture.find((item) => item.type === "DOOR");
+
+    // Then eight places, every one seated with the typing frame held, facing up, in two rows with a walkway between
+    expect(
+      places.map((seat) => [seat.pose, seat.standing, seat.facingDir]),
+    ).toEqual(Array(8).fill(["sit", false, Direction.UP]));
+    expect(benchRows).toHaveLength(2);
+    expect(benchRows[1] - benchRows[0]).toBeGreaterThanOrEqual(3);
+
+    // And the clock hangs on the wall above the benches, over one of their columns
+    expect(clock).toBeDefined();
+    expect(benchCols).toContain(clock?.col);
+    expect(clock?.row).toBeLessThan(benchRows[0]);
+
+    // And the door stands on the north wall, on a wall tile, clear of the clock and of every other wall piece
+    expect(door).toBeDefined();
+    expect(door?.row).toBe(northWallRow - 1);
+    expect(tiles[northWallRow * cols + (door?.col ?? 0)]).toBe(TileType.WALL);
+    expect(waitingTiles.some((t) => t.col === door?.col)).toBe(true);
+    const wallPieces = furniture.filter(
+      (item) => item !== door && item.row === door?.row,
+    );
+    expect(wallPieces.map((item) => item.col)).not.toContain(door?.col);
   });
 });

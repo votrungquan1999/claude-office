@@ -176,11 +176,33 @@ function furnishAsLounge({ c0, width, top }: RoomBox): void {
   );
 }
 
+/**
+ * The waiting area: two rows of four benches facing a clock, a door on the north wall beside it and a plant.
+ * @param box - The room to furnish.
+ */
+function furnishAsWaitingArea({ c0, width, top }: RoomBox): void {
+  const wallRow = wallRowOf(top);
+  const benchCol = c0 + 3;
+  // The clock is a wall piece two tiles tall, so it starts one row above the wall row
+  place("CLOCK", benchCol, wallRow - 1);
+  // The door hangs on the north wall like the clock, clear of the doorway at column 5
+  place("DOOR", c0 + 8, wallRow - 1);
+  place("PLANT", c0 + width - 2, wallRow + 8);
+  // The first bench row sits low enough that the room sign and a sitter's bubble stay apart
+  for (const row of [wallRow + 4, wallRow + 7]) {
+    for (let col = benchCol; col < benchCol + 4; col++) {
+      place("CUSHIONED_BENCH", col, row);
+      spots.push({ col, row, facing: "up", pose: "sit" });
+    }
+  }
+  stayPutRooms.push(Room.WaitingForYou);
+}
+
 /** How each room is furnished; one entry per room. */
 const FURNISH: Record<Room, (box: RoomBox) => void> = {
   [Room.Working]: furnishWithDesks,
   [Room.NeedsPermission]: furnishWithDesks,
-  [Room.WaitingForYou]: furnishWithDesks,
+  [Room.WaitingForYou]: furnishAsWaitingArea,
   [Room.Review]: furnishWithDesks,
   [Room.Idle]: furnishAsLounge,
 };

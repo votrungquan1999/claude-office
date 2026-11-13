@@ -154,7 +154,7 @@ export function createSceneSync(
     character.y = tile.row * TILE_SIZE + TILE_SIZE / 2;
   }
 
-  /** Busy look and permission bubble follow the state at once; only the walk between rooms is smoothed. */
+  /** Busy look and bubbles follow the state at once; only the walk between rooms is smoothed. */
   function showState(id: number, state: SessionDto["state"]): void {
     const busy =
       state !== "idle" &&
@@ -167,6 +167,8 @@ export function createSceneSync(
     // Re-asserted on every sync: other renderer paths can clear the bubble.
     if (state === "needsPermission") office.showPermissionBubble(id);
     else office.clearPermissionBubble(id);
+    if (state === "waitingForYou") office.showAsksBubble(id);
+    else office.clearAsksBubble(id);
   }
 
   /** Sends the employee to its pending room once the state has held for the smoothing window. */

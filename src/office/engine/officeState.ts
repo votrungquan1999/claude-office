@@ -1059,6 +1059,23 @@ export class OfficeState {
     }
   }
 
+  /** Puts the persistent "…" bubble of a Waiting for you employee over its head. */
+  showAsksBubble(id: number): void {
+    const ch = this.characters.get(id);
+    if (ch) {
+      ch.bubbleType = "asks";
+      ch.bubbleTimer = 0;
+    }
+  }
+
+  clearAsksBubble(id: number): void {
+    const ch = this.characters.get(id);
+    if (ch && ch.bubbleType === "asks") {
+      ch.bubbleType = null;
+      ch.bubbleTimer = 0;
+    }
+  }
+
   showWaitingBubble(id: number, awaitingInput = false): void {
     const ch = this.characters.get(id);
     if (ch) {

@@ -559,6 +559,37 @@ describe("scene sync", () => {
       expect(employee().isActive).toBe(false);
     });
 
+    it("keeps a dots bubble over a Waiting for you employee for as long as it waits, and takes it away when it leaves", () => {
+      // Given a working employee
+      const office = loadOffice();
+      const sync = createSceneSync(office, { smoothMs: 0 });
+      const at = (state: SessionDto["state"], second: number) =>
+        session(
+          "m1",
+          "Mac",
+          "a",
+          "/w",
+          `2026-11-08T10:00:0${second}.000Z`,
+          state,
+        );
+      sync.apply([at("working", 0)], { firstLoad: true });
+      const employee = () => office.getCharacters()[0];
+
+      // When its turn ends with a question for the owner and a minute passes
+      sync.apply([at("waitingForYou", 1)]);
+      for (let step = 0; step < 600; step++) office.update(0.1);
+
+      // Then the bubble is still there, and a poll puts it back if something cleared it
+      expect(employee().bubbleType).toBe("asks");
+      employee().bubbleType = null;
+      sync.apply([at("waitingForYou", 1)]);
+      expect(employee().bubbleType).toBe("asks");
+
+      // And when the owner answers and it works again, the bubble goes
+      sync.apply([at("working", 2)]);
+      expect(employee().bubbleType).toBeNull();
+    });
+
     it("sits a Review employee in the Review room, calm: not busy and with no bubble", () => {
       // Given a working employee
       const office = loadOffice();
