@@ -1,6 +1,7 @@
 import { asks } from "../src/shared/asks";
 import type { HookEvent } from "../src/shared/hook-events";
 import type { SessionState } from "../src/shared/session-state";
+import { strongerResult, type TurnResult } from "./turn-result";
 
 /** What the reducer remembers about a session between events. */
 export interface StateMemory {
@@ -8,8 +9,8 @@ export interface StateMemory {
   state: SessionState;
   /** Between tools: thinking during a turn, waiting otherwise. */
   base: "thinking" | "waiting";
-  /** The turn that just ended asked the owner something; kept until the next prompt. */
-  asked: boolean;
+  /** What the turn that just ended left for the owner; kept until the next prompt. */
+  result: TurnResult;
   /** `tool_use_id`s of tools that started and have not finished. */
   inFlight: string[];
   /** Recently finished ids, so a Pre delivered after its own Post is ignored. */
@@ -30,6 +31,12 @@ const OWNER_DIALOGS = new Set([
   "agent_needs_input",
 ]);
 
+/** What a Stop's last message leaves: a question, any other text as a result, or nothing without text. */
+function stopResult(message: string | undefined): TurnResult {
+  if (asks(message)) return "asks";
+  return message?.trim() ? "reports" : "nothing";
+}
+
 function derive(memory: Omit<StateMemory, "state">): StateMemory {
   const state: SessionState =
     memory.dialogs.length > 0
@@ -38,22 +45,26 @@ function derive(memory: Omit<StateMemory, "state">): StateMemory {
           (memory.base === "waiting" && memory.subagents.length > 0)
         ? "working"
         : memory.base === "waiting"
-          ? memory.asked
+          ? memory.result === "asks"
             ? "waitingForYou"
-            : "idle"
+            : memory.result === "reports"
+              ? "review"
+              : "idle"
           : memory.base;
   return { ...memory, state };
 }
 
 /**
  * The memory of a session whose turn has ended.
- * @param asked - Whether that turn asked the owner something.
- * @returns The memory, in Waiting for you or Idle.
+ * @param result - What that turn left for the owner.
+ * @returns The memory, in Waiting for you, Review or Idle.
  */
-export function initialStateMemory(asked = false): StateMemory {
+export function initialStateMemory(
+  result: TurnResult = "nothing",
+): StateMemory {
   return derive({
     base: "waiting",
-    asked,
+    result,
     inFlight: [],
     closed: [],
     dialogs: [],
@@ -63,13 +74,16 @@ export function initialStateMemory(asked = false): StateMemory {
 }
 
 /**
- * Replaces whether the ended turn asked the owner something.
+ * Replaces what the ended turn left for the owner.
  * @param memory - The memory of a session whose turn has ended.
- * @param asked - The new answer.
- * @returns The memory in Waiting for you or Idle; a session still in a turn is returned as it was.
+ * @param result - The new result.
+ * @returns The memory in Waiting for you, Review or Idle; a session still in a turn is returned as it was.
  */
-export function setAsked(memory: StateMemory, asked: boolean): StateMemory {
-  return memory.base === "waiting" ? derive({ ...memory, asked }) : memory;
+export function setTurnResult(
+  memory: StateMemory,
+  result: TurnResult,
+): StateMemory {
+  return memory.base === "waiting" ? derive({ ...memory, result }) : memory;
 }
 
 /**
@@ -89,19 +103,20 @@ export function reduceState(
       // Auto-compaction happens mid-turn; the turn carries on as it was.
       return event.source === "compact" ? memory : initialStateMemory();
     case "Stop":
-      // A follow-up Stop (a Stop hook ran another turn) keeps a question the earlier Stop asked.
+      // A follow-up Stop (a Stop hook ran another turn) keeps the stronger result of the earlier Stop.
       return derive({
         ...endedTurn(memory),
-        asked:
-          asks(event.last_assistant_message) ||
-          (event.stop_hook_active === true && memory.asked),
+        result: strongerResult(
+          stopResult(event.last_assistant_message),
+          event.stop_hook_active === true ? memory.result : "nothing",
+        ),
       });
     case "StopFailure":
       return endedTurn(memory);
     case "UserPromptSubmit":
       return derive({
         base: "thinking",
-        asked: false,
+        result: "nothing",
         inFlight: [],
         closed: [],
         dialogs: [],
@@ -111,7 +126,7 @@ export function reduceState(
     case "PreToolUse":
       return derive({
         base: "thinking",
-        asked: memory.asked,
+        result: memory.result,
         closed: memory.closed,
         subagents: memory.subagents,
         stoppedAgents: memory.stoppedAgents,
@@ -207,7 +222,7 @@ function finishTool(
 function reduceFinished(memory: StateMemory, event: HookEvent): StateMemory {
   return derive({
     base: "thinking",
-    asked: memory.asked,
+    result: memory.result,
     subagents: memory.subagents,
     stoppedAgents: memory.stoppedAgents,
     ...finishTool(memory, event.tool_use_id),
@@ -336,7 +351,7 @@ export function applyRegistryStatus(
 ): StateMemory {
   switch (status) {
     case "idle":
-      // After a turn ended, idle closes any dialog but keeps the question the turn asked.
+      // After a turn ended, idle closes any dialog but keeps what the turn left for the owner.
       return memory.base === "waiting"
         ? derive({ ...memory, dialogs: [], subagents: [] })
         : initialStateMemory();

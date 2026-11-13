@@ -162,6 +162,7 @@ const STATUS_LINES = {
   thinking: "Thinking",
   needsPermission: "Needs permission",
   waitingForYou: "Waiting for you",
+  review: "Review",
   idle: "Idle",
   wentHome: "Went home",
 } as const;

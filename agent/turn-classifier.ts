@@ -1,12 +1,13 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import type { TurnResult } from "./turn-result";
 
 const MODEL = "claude-haiku-5-5";
 const DEFAULT_TIMEOUT_MS = 10_000;
 const TEXT_MAX = 1000;
 const MAX_CACHED = 500;
 const SYSTEM_PROMPT =
-  "You read the last part of an AI coding assistant's final message. Decide whether it asks the user to answer a question, choose between options, approve something or provide something before the work can go on. Reply with one word: YES or NO.";
+  "You read the last part of an AI coding assistant's final message. Decide what it leaves for the user. ASKS: it asks the user to answer a question, choose between options, approve something or provide something before the work can go on. REPORTS: it reports a result, a finding or a summary of finished work for the user to look at. NOTHING: there is nothing for the user to act on or look at. Reply with one word: ASKS, REPORTS or NOTHING.";
 
 /** The parts of a Messages API answer the classifier reads. */
 const messageSchema = z.object({
@@ -26,23 +27,23 @@ export interface TurnClassifierOptions {
 }
 
 /**
- * Asks Haiku whether a finished answer asks the owner to reply, and remembers each answer in memory.
+ * Asks Haiku what a finished answer leaves for the owner, and remembers each answer in memory.
  */
 export class TurnClassifier {
-  /** Verdicts by session and message hash, oldest first; only YES and NO are kept. */
-  private readonly cache = new Map<string, boolean>();
-  private readonly running = new Map<string, Promise<boolean | undefined>>();
+  /** Verdicts by session and message hash, oldest first; only answers Haiku gave are kept. */
+  private readonly cache = new Map<string, TurnResult>();
+  private readonly running = new Map<string, Promise<TurnResult | undefined>>();
   private readonly abort = new AbortController();
 
   constructor(private readonly options: TurnClassifierOptions) {}
 
   /**
-   * Whether the answer asks the owner to answer, choose, approve or provide something.
+   * What the answer leaves for the owner: a question, a result to look at, or nothing.
    * @param sessionId - The session the answer belongs to.
    * @param text - The answer; only its last 1,000 characters are sent.
-   * @returns True or false, or undefined when no answer could be had.
+   * @returns The result, or undefined when no answer could be had.
    */
-  asksOwner(sessionId: string, text: string): Promise<boolean | undefined> {
+  classify(sessionId: string, text: string): Promise<TurnResult | undefined> {
     const tail = Array.from(text).slice(-TEXT_MAX).join("");
     const key = `${sessionId}:${createHash("sha256").update(tail).digest("hex")}`;
     const known = this.cache.get(key);
@@ -65,7 +66,7 @@ export class TurnClassifier {
   }
 
   /** One call to the Messages API; never logs the key, the headers or the text. */
-  private async request(tail: string): Promise<boolean | undefined> {
+  private async request(tail: string): Promise<TurnResult | undefined> {
     if (this.abort.signal.aborted) return undefined;
     const send = this.options.fetchFn ?? fetch;
     let response: Response;
@@ -79,7 +80,7 @@ export class TurnClassifier {
         },
         body: JSON.stringify({
           model: MODEL,
-          max_tokens: 8,
+          max_tokens: 16,
           system: SYSTEM_PROMPT,
           // Haiku 5.5 thinks by default, and thinking would eat the small token budget.
           thinking: { type: "disabled" },
@@ -112,13 +113,14 @@ export class TurnClassifier {
       .find((block) => block.type === "text")
       ?.text?.trim()
       .toUpperCase();
-    if (word?.startsWith("YES")) return true;
-    if (word?.startsWith("NO")) return false;
+    if (word?.startsWith("ASKS")) return "asks";
+    if (word?.startsWith("REPORTS")) return "reports";
+    if (word?.startsWith("NOTHING")) return "nothing";
     return undefined;
   }
 
   /** Stores a verdict and keeps only the newest entries. */
-  private remember(key: string, verdict: boolean): void {
+  private remember(key: string, verdict: TurnResult): void {
     this.cache.delete(key);
     this.cache.set(key, verdict);
     while (this.cache.size > MAX_CACHED) {

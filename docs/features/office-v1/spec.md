@@ -45,10 +45,11 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 ### Office and rooms
 
 - The pixel office (desktop, iPad and narrow windows; a real phone shows [stacked rooms](#phone) instead) has four named rooms joined by doorways, 72 seats in all: Working 24, Needs permission 12, Waiting for you 18, Idle 18. Working and Needs permission are on top, Waiting for you and Idle below.
-- Working: a tool is running, or the session is between steps (thinking); both live in the same room, so an employee does not walk between the two. After the turn ended, a background sub-agent that is still running also keeps the desk here (see [Waiting for you or Idle](#waiting-for-you-or-idle)).
+- Working: a tool is running, or the session is between steps (thinking); both live in the same room, so an employee does not walk between the two. After the turn ended, a background sub-agent that is still running also keeps the desk here (see [Waiting for you, Review or Idle](#waiting-for-you-review-or-idle)).
 - Needs permission: a dialog waits for the owner. Other waits for the owner (questions, MCP forms) also go here.
 - Waiting for you: the turn ended and the last answer asked the owner something.
-- Idle: the turn ended without asking. A session first seen after its turn ended with an unreadable transcript also shows Idle.
+- Review: the turn ended with a result to look at (any answer text that does not ask). Until its own room exists it shows in the Idle room, with the Review colour and word. The owner clears it by hand.
+- Idle: the turn ended with nothing to show (no answer text, an Esc, an error) or Haiku found nothing to look at. A session first seen after its turn ended with an unreadable transcript also shows Idle.
 - Several open dialogs keep the employee in Needs permission until the last one is answered.
 - A dialog raised by a subagent moves the parent session to Needs permission.
 - When the session's own status reports it busy again after a dialog, the dialog counts as approved and the employee leaves Needs permission.
@@ -60,20 +61,20 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 - Each session keeps the same character look wherever the office is loaded.
 - The camera zoom is at least 2 on a 1280x800 desktop. Below about 544 CSS px at 2x pixel density (360 px at 3x) the zoom falls to 1. A real phone does not draw the canvas, so its screen size no longer affects the zoom.
 
-### Waiting for you or Idle
+### Waiting for you, Review or Idle
 
-- When a turn ends (the Stop hook), the agent decides whether the last answer asked the owner something: it reads the last three non-empty lines with fenced code removed, and the answer asks when a line ends in `?` (a closing quote, bracket, `*` or `_` may follow) or a sentence starts with "tell me", "let me know", "say the word", "want me to", "should I", "do you want", or "which one / option / approach / of / do you / would you / should we". A bare "which" does not count.
-- With an Anthropic key set, the agent also asks Haiku (`claude-haiku-5-5`, the same plain `fetch` client style as the task names) whether the last answer asks the owner to answer, choose, approve or provide something, with a one-word YES or NO reply, from at most the last 1,000 characters of the answer. The desk is published at once with the rule's result; when Haiku answers it is corrected to Waiting for you (YES) or Idle (NO). Haiku's answer wins over the rule when both answered.
+- When a turn ends (the Stop hook), the agent sorts the last answer three ways: asks (Waiting for you), reports a result (Review) or nothing (Idle). The plain rule first decides whether it asked the owner something: it reads the last three non-empty lines with fenced code removed, and the answer asks when a line ends in `?` (a closing quote, bracket, `*` or `_` may follow) or a sentence starts with "tell me", "let me know", "say the word", "want me to", "should I", "do you want", or "which one / option / approach / of / do you / would you / should we". A bare "which" does not count.
+- With an Anthropic key set, the agent also asks Haiku (`claude-haiku-5-5`, the same plain `fetch` client style as the task names) whether the last answer asks the owner to answer, choose, approve or provide something (ASKS), reports a result or finished work to look at (REPORTS), or leaves nothing to act on (NOTHING), with a one-word reply, from at most the last 1,000 characters of the answer. The desk is published at once with the rule's result, except that a plain answer shows Idle first so a turn with nothing to show never flashes Review; when Haiku answers it is corrected to Waiting for you (ASKS), Review (REPORTS) or Idle (NOTHING). Haiku's answer wins over the rule when both answered.
 - The correction applies only while the session is still in that same ended turn: a newer prompt, Stop, restart of the session or registry status change discards a late answer.
-- With no key, or when the call fails, times out (10 s) or answers something else, the rule's result stands. A follow-up Stop that a Stop hook started keeps a question the earlier Stop asked, whatever Haiku says about the follow-up. Answers are cached in memory per session and message, so the same tail is never sent twice; the registry-idle and restart paths use the same check on the transcript's last answer.
+- With no key, the rule decides: a question goes to Waiting for you, any other answer text to Review, no text to Idle. When the call fails, times out (10 s) or answers something else, the rule's result stands as with no key: a plain answer that showed Idle first goes to Review, so a broken key or an outage never hides finished work (an answer only Haiku reads as asking then shows Review, not Waiting for you). A follow-up Stop that a Stop hook started keeps the stronger result of the earlier Stop (asks, then reports, then nothing), whatever Haiku says about the follow-up. Answers are cached in memory per session and message, so the same tail is never sent twice; the registry-idle and restart paths use the same check on the transcript's last answer.
 - The hook sends the agent the end of the answer (about the last 1000 characters, with a cut code fence dropped) and a `stop_hook_active` flag; the answer text is used for the decision and never stored.
-- A follow-up turn that a Stop hook started keeps a question the earlier Stop asked; a new prompt clears it.
+- A follow-up turn that a Stop hook started keeps the stronger earlier result; a new prompt clears it.
 - The state lasts until the owner answers; nothing times it out.
-- A session already finished when the agent starts (or first seen later) gets the same decision from its transcript. A turn starts at the last user record that is not a tool result, not meta and not a compaction summary, whatever its origin, so a background-task turn after a question reads as Idle. An API-error record after the text ends the turn without a question. A transcript with only garbled lines is Idle.
-- The registry's `idle` status ends a working or thinking turn; if the Stop was missed, the transcript tail decides Waiting for you or Idle. A registry `idle` also clears a stale dialog.
+- A session already finished when the agent starts (or first seen later) gets the same decision from its transcript, unless an earlier run stored a finished state (Idle, Waiting for you or Review) for it: that state is kept, so conversations finished before this version first ran do not move into Review. A turn starts at the last user record that is not a tool result, not meta and not a compaction summary, whatever its origin, so a background-task turn after a question reads as Review (it ended on text without asking). An API-error record after the text ends the turn without a question. A transcript with only garbled lines is Idle.
+- The registry's `idle` status ends a working or thinking turn; if the Stop was missed, the transcript tail decides Waiting for you, Review or Idle. A registry `idle` also clears a stale dialog.
 - Registry timestamps are compared with the last state-changing hook event only; a neutral event (an idle notification) does not advance that stamp.
 - A stored `waiting` state from before 0.2.0 reads as Idle.
-- Sub-agents: each sub-agent is tracked from its first event (or SubagentStart) until its SubagentStop. After the parent's turn ended, a running sub-agent moves the desk back to Working until the last one stops; the desk then returns to the state the turn end decided (Waiting for you or Idle). Only sub-agents a SubagentStart announced survive the turn end; ones seen only through tool events are dropped at Stop, so a missing SubagentStop hook cannot leave a desk working. A late event of a sub-agent that already stopped changes nothing, and a new prompt or a registry `idle` clears the running sub-agents. Sub-agent tools and dialogs after the turn ended change nothing else.
+- Sub-agents: each sub-agent is tracked from its first event (or SubagentStart) until its SubagentStop. After the parent's turn ended, a running sub-agent moves the desk back to Working until the last one stops; the desk then returns to the state the turn end decided (Waiting for you, Review or Idle). Only sub-agents a SubagentStart announced survive the turn end; ones seen only through tool events are dropped at Stop, so a missing SubagentStop hook cannot leave a desk working. A late event of a sub-agent that already stopped changes nothing, and a new prompt or a registry `idle` clears the running sub-agents. Sub-agent tools and dialogs after the turn ended change nothing else.
 - Setups made before the SubagentStart and SubagentStop hooks were added need `npm run setup` again to register them.
 
 ### Companies
@@ -241,6 +242,7 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 ### Staying right when hooks miss things
 
 - The agent re-reads the session registry about every 5 seconds: a dead or reused process goes home, a fresher registry status corrects a stale state, and a changed registry folder updates the start folder. A process counts as the same one when its `ps` start time, read in UTC, equals the registry's `procStart` (Claude Code writes it in UTC).
+- After an agent restart, a session whose turn already ended keeps the state stored for it; a session that was still working is sorted from its transcript tail into Waiting for you, Review or Idle.
 - A session may have several registry entries and counts as running while any of them is live; a wake is refused while any is live.
 - If the registry is unreadable or its format changed, the agent runs on hook events alone and sends nothing home.
 - Late or out-of-order events do not move a session backwards; writes per session are serialized and steps are deduplicated by id.
@@ -251,7 +253,7 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 ### Live updates
 
 - The office page polls for changes about every 3 seconds only while the tab is visible, checks at once when the tab returns, and backs off on failures.
-- It shows "Updated N min ago" and a "Connection lost" banner when polling fails; on a 401 it stops and sends the owner to sign-in.
+- It shows "Updated N min ago" and a "Connection lost" banner when polling fails; on a 401 it stops and sends the owner to sign-in. A row whose state the page does not know (one a newer server added) shows as Idle; the answer is still accepted.
 - The changes API returns what changed since the browser's cursor, with a 5-second overlap, plus every folder record (with the owner's name for the company, when set) and the server's clock; the browser merges sessions by (machine, session).
 
 ### Phone
@@ -306,7 +308,7 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 
 - The text of a shell command never leaves the Mac: the hook keeps only an allowlist of `tool_input` keys, and the agent's schema drops anything else again.
 - Tool output, error text and notification text are never stored.
-- The end of the assistant's last answer reaches only the local agent and is never stored or published. The original request (pasted parts included, up to 2,000 characters) is stored on the session row. The only other things that leave the Mac are the optional Haiku calls, which only happen when the owner set a key: the first 1,000 characters of every session's first message go to Anthropic to write the task name, and the last 1,000 characters of each finished answer go to Anthropic to decide Waiting for you or Idle. Nothing from the answer is stored.
+- The end of the assistant's last answer reaches only the local agent and is never stored or published. The original request (pasted parts included, up to 2,000 characters) is stored on the session row. The only other things that leave the Mac are the optional Haiku calls, which only happen when the owner set a key: the first 1,000 characters of every session's first message go to Anthropic to write the task name, and the last 1,000 characters of each finished answer go to Anthropic to sort the turn as Waiting for you, Review or Idle. Nothing from the answer is stored.
 - Free text that is stored: the first message (60 characters), the original request (up to 2,000 characters, kept on the session row and removed with it when the row expires), the Haiku task name, Bash and Agent descriptions, search patterns, web queries and domains, file names, the session's name, folder paths and the company names the owner types (up to 100 characters, on the folder record).
 - The folder of each step (`file_dir`) stays on the Mac; only each repo tag's name, key and parent folder name are stored and sent.
 - The agent's config, address and desk-name cache files are created readable only by the user.
@@ -336,7 +338,7 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 
 - The owner clones the repo and tells Claude to follow `SETUP.md`.
 - It checks Node 24+, runs `npm install`, runs `npm run setup` (connect, hooks, LaunchAgent) and gives checks for each step.
-- Optional: an `anthropicApiKey` in `~/.claude-office/config.json` turns on Haiku task names for every session and the Haiku check of whether a finished answer asks the owner something.
+- Optional: an `anthropicApiKey` in `~/.claude-office/config.json` turns on Haiku task names for every session and the Haiku sort of a finished answer into Waiting for you, Review or Idle.
 - Removal is by hand and documented in `SETUP.md`; there is no uninstall command.
 - Macs only; Windows is out of scope.
 

@@ -64,6 +64,7 @@ const BAND_STYLES = {
     background: "bg-room-waiting-for-you",
     text: "text-bg-dark",
   },
+  review: { background: "bg-room-review", text: "text-bg-dark" },
   idle: { background: "bg-room-idle", text: "text-bg-dark" },
   wentHome: { background: "bg-pill-offline", text: "text-text" },
   offline: { background: "bg-pill-offline", text: "text-text" },
@@ -100,6 +101,7 @@ function bandOf(
   // The band is short, so the permission room reads "Needs you" here.
   if (session.state === "needsPermission")
     return { text: "Needs you", key: "needsPermission" };
+  if (session.state === "review") return { text: "Review", key: "review" };
   const room = ROOM_OF_STATE[session.state];
   return {
     text: room ? ROOM_DISPLAY_NAMES[room] : "",

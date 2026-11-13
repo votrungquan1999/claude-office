@@ -157,7 +157,10 @@ export function createSceneSync(
   /** Busy look and permission bubble follow the state at once; only the walk between rooms is smoothed. */
   function showState(id: number, state: SessionDto["state"]): void {
     const busy =
-      state !== "idle" && state !== "waitingForYou" && state !== "wentHome";
+      state !== "idle" &&
+      state !== "waitingForYou" &&
+      state !== "review" &&
+      state !== "wentHome";
     if (office.characters.get(id)?.isActive !== busy) {
       office.setAgentActive(id, busy);
     }

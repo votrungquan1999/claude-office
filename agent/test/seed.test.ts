@@ -21,7 +21,7 @@ function user(text: string | Array<{ type: string; text: string }>, more = {}) {
 }
 
 describe("an agent that starts while sessions are already running", () => {
-  const { setUpMac, officeSessions } = useMacHarness();
+  const { setUpMac, officeSessions, startFakeAnthropic } = useMacHarness();
   const processes = useLiveProcesses();
 
   it("shows the running interactive sessions with name, folder and Remote Control id from their transcripts, and sends stored sessions the registry no longer lists home", async () => {
@@ -212,7 +212,101 @@ describe("an agent that starts while sessions are already running", () => {
     );
   }, 60_000);
 
-  it("shows a session that had already finished when the agent started in Waiting for you or Idle, read from its transcript tail, and keeps it after the first registry check", async () => {
+  /** Stores `states` for sessions that run again with a finished-turn transcript, starts the agent and returns each session's state. */
+  async function restartWith(
+    states: Record<string, { stored: string; ending: string }>,
+    anthropic?: { baseUrl: string; apiKey: string },
+  ) {
+    const db = await getDb();
+    for (const [sessionId, { stored }] of Object.entries(states)) {
+      await db.collection("sessions").insertOne({
+        machineId: "machine-air",
+        machineName: "Quan's MacBook Air",
+        sessionId,
+        cwd: "/work/a",
+        state: stored,
+        startedAt: new Date(STARTED_AT),
+        changedAt: new Date(),
+      });
+    }
+    const live = await Promise.all(
+      Object.keys(states).map(() => processes.live()),
+    );
+    await setUpMac("machine-air", "Quan's MacBook Air", {
+      anthropic,
+      beforeStart(fake) {
+        for (const [index, [sessionId, { ending }]] of Object.entries(
+          states,
+        ).entries()) {
+          fake.addSession({
+            sessionId,
+            cwd: "/work/a",
+            pid: live[index].pid,
+            procStart: live[index].procStart,
+            status: "idle",
+          });
+          fake.addTranscript(sessionId, [
+            user("do it"),
+            {
+              type: "assistant",
+              cwd: "/work/a",
+              message: { content: [{ type: "text", text: ending }] },
+            },
+          ]);
+        }
+      },
+    });
+    return Object.fromEntries(
+      (await officeSessions()).map((s) => [s.sessionId, s.state]),
+    );
+  }
+
+  it("keeps the stored state of a conversation that had already finished, even when its transcript ends on a question, and sorts one that was still going when the agent stopped", async () => {
+    // Given sessions whose transcripts end on a question or a result, with the states an earlier run stored for them
+    // When the agent starts with all of them registered as idle
+    const states = await restartWith({
+      "was-idle": { stored: "idle", ending: "Want me to push?" },
+      "was-review": { stored: "review", ending: "Want me to push?" },
+      "was-working": { stored: "working", ending: "All done." },
+    });
+
+    // Then the finished ones keep their stored state and the one that was working is sorted into Review
+    expect(states).toEqual({
+      "was-idle": "idle",
+      "was-review": "review",
+      "was-working": "review",
+    });
+  }, 60_000);
+
+  it("keeps a finished conversation's stored state and sends only the one that was still working to Haiku", async () => {
+    // Given a key and a Haiku that answers REPORTS to every ending it is asked about
+    const anthropic = await startFakeAnthropic(() => ({
+      status: 200,
+      body: {
+        stop_reason: "end_turn",
+        content: [{ type: "text", text: "REPORTS" }],
+      },
+    }));
+
+    // When the agent starts with a Review, an Idle and a working session whose transcripts all end on a result
+    const states = await restartWith(
+      {
+        "was-idle": { stored: "idle", ending: "All done." },
+        "was-review": { stored: "review", ending: "All done." },
+        "was-working": { stored: "working", ending: "All done." },
+      },
+      { baseUrl: anthropic.baseUrl, apiKey: "sk-test-fake-key" },
+    );
+
+    // Then the finished ones keep their stored state and only the one that was working is sorted by Haiku, into Review
+    expect(states).toEqual({
+      "was-idle": "idle",
+      "was-review": "review",
+      "was-working": "review",
+    });
+  }, 60_000);
+
+  it("shows a session that had already finished when the agent started in Waiting for you, Review or Idle, read from its transcript tail, and keeps it after the first registry check", async () => {
     // Given a transcript line for each kind of record a finished turn leaves behind
     const text = (words: string) => ({
       type: "assistant",
@@ -323,7 +417,7 @@ describe("an agent that starts while sessions are already running", () => {
     const expected = {
       "asked-then-plain-follow-up": "waitingForYou",
       "plain-then-asking-follow-up": "waitingForYou",
-      "plain-ending": "idle",
+      "plain-ending": "review",
       garbled: "idle",
       "oversized-last-record": "idle",
       "asked-then-interrupted": "idle",
@@ -331,7 +425,7 @@ describe("an agent that starts while sessions are already running", () => {
       "asked-no-hooks": "waitingForYou",
       "asked-then-tool": "idle",
       "asked-then-tool-result": "idle",
-      "asked-then-background-turn-without-question": "idle",
+      "asked-then-background-turn-without-question": "review",
       "asked-then-api-error": "idle",
     };
 

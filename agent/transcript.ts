@@ -14,6 +14,7 @@ import {
   pasteHeadOf,
   requestOf,
 } from "../src/shared/desk-name";
+import type { TurnResult } from "./turn-result";
 
 /** Transcripts reach hundreds of MB, so only their two ends are ever read. */
 const HEAD_BYTES = 256 * 1024;
@@ -70,8 +71,8 @@ export interface TranscriptSeed {
   /** The folder of the newest record. */
   cwd?: string;
   bridgeSessionId?: string;
-  /** The newest turn ended by asking the owner something. */
-  asked: boolean;
+  /** What the newest ended turn left for the owner. */
+  result: TurnResult;
   /** The newest ended turn's last answer, for the Haiku check; empty when the turn did not end on text. */
   answer: string;
   /** Folders its tool calls and records worked in; kept only to find their repos. */
@@ -229,15 +230,17 @@ function endedSegments(tail: TranscriptRecord[]): TranscriptRecord[][] {
 }
 
 /**
- * Whether the newest ended turn asked the owner something, by the same rule and segments as the live Stop path.
+ * What the newest ended turn left for the owner, by the same rule and segments as the live Stop path.
  * @param tail - The records of the transcript's last bytes.
- * @returns True when any segment of the turn ends in a question.
+ * @returns Asks when any segment of the turn ends in a question, else reports when the turn ended on text, else nothing.
  */
-function turnAsked(tail: TranscriptRecord[]): boolean {
-  return endedSegments(tail).some((segment) => {
+function turnResult(tail: TranscriptRecord[]): TurnResult {
+  const asked = endedSegments(tail).some((segment) => {
     const last = segment.findLast((record) => assistantText(record) !== "");
     return last ? asks(assistantText(last)) : false;
   });
+  if (asked) return "asks";
+  return turnAnswer(tail).trim() ? "reports" : "nothing";
 }
 
 /**
@@ -284,7 +287,7 @@ export function readTranscriptSeed(
 ): TranscriptSeed {
   const path = transcriptPath(home, sessionId);
   if (!path)
-    return { hadPrompt: false, asked: false, answer: "", stepDirs: [] };
+    return { hadPrompt: false, result: "nothing", answer: "", stepDirs: [] };
   let head: TranscriptRecord[];
   let tail: TranscriptRecord[];
   try {
@@ -292,14 +295,14 @@ export function readTranscriptSeed(
     tail = readRecords(path, true);
   } catch {
     // Error boundary: an unreadable transcript only costs the desk name and folder hints, never the session.
-    return { hadPrompt: false, asked: false, answer: "", stepDirs: [] };
+    return { hadPrompt: false, result: "nothing", answer: "", stepDirs: [] };
   }
   const prompts = head.flatMap(humanTexts);
   const firstPrompt = prompts.find(
     (text) => firstRealMessage(text) !== undefined,
   );
   return {
-    asked: turnAsked(tail),
+    result: turnResult(tail),
     answer: turnAnswer(tail),
     stepDirs: stepDirsOf([...head, ...tail]),
     firstMessage: prompts

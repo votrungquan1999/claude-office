@@ -46,6 +46,8 @@ export const ROOM_OF_STATE: Record<SessionState, Room | null> = {
   thinking: Room.Working,
   needsPermission: Room.NeedsPermission,
   waitingForYou: Room.WaitingForYou,
+  // Shares the Idle room until the Review room exists.
+  review: Room.Idle,
   idle: Room.Idle,
   wentHome: null,
 };

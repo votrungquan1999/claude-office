@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { type ChangesResponse, changesResponseSchema } from "@/shared/session";
+import {
+  type ChangesResponse,
+  pageChangesResponseSchema,
+} from "@/shared/session";
 
 const MAX_BACKOFF_MS = 30_000;
 /** A poll that has not answered by then counts as failed, so a stalled connection cannot freeze the chain. */
@@ -67,7 +70,7 @@ export function useOfficeChanges(
       });
       if (response.status === 401) throw new SessionExpiredError();
       if (!response.ok) throw new Error(`changes answered ${response.status}`);
-      const body = changesResponseSchema.parse(await response.json());
+      const body = pageChangesResponseSchema.parse(await response.json());
       latest.current.onAnswer(body, cursor === undefined, number);
       cursor = body.cursor;
     };

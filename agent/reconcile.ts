@@ -165,7 +165,7 @@ export async function seedRunningSessions(options: SeedOptions): Promise<void> {
         pasteHead: transcript.pasteHead,
         request: transcript.request,
         hadPrompt: transcript.hadPrompt,
-        asked: transcript.asked,
+        result: transcript.result,
         answer: transcript.answer,
         stepDirs: transcript.stepDirs,
         tags: stored

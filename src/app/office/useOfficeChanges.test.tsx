@@ -91,6 +91,29 @@ describe("the office polls for changes", () => {
     ]);
   });
 
+  it("shows an employee in a state this page does not know as idle, instead of rejecting the whole answer", async () => {
+    // Given an answer with one row in a state a newer server invented
+    const row = {
+      machineId: "m1",
+      machineName: "Mac",
+      sessionId: "s1",
+      cwd: "/w",
+      state: "some-future-state",
+      startedAt: "2026-11-08T09:00:00.000Z",
+      changedAt: "2026-11-08T09:30:00.000Z",
+    };
+    fetchMock.mockImplementation(async () =>
+      json({ ...answer("c1"), sessions: [row] }),
+    );
+
+    // When the office polls
+    const { onAnswer } = mount();
+    await act(() => vi.advanceTimersByTimeAsync(0));
+
+    // Then the answer arrives and the row is idle
+    expect(onAnswer.mock.calls[0]?.[0].sessions[0]?.state).toBe("idle");
+  });
+
   it("numbers each poll as it starts and hands the number to its answer, so a caller can tell polls started before an event from those after", async () => {
     // Given a server whose second answer is held until released
     let release: () => void = () => {};

@@ -38,6 +38,7 @@ describe("the company overview", () => {
       working: 0,
       needsPermission: 0,
       waitingForYou: 0,
+      review: 0,
       idle: 0,
     });
   });
@@ -78,7 +79,13 @@ describe("the company overview", () => {
     ).toEqual([
       [
         "p",
-        { working: 2, needsPermission: 1, waitingForYou: 1, idle: 1 },
+        {
+          working: 2,
+          needsPermission: 1,
+          waitingForYou: 1,
+          review: 0,
+          idle: 1,
+        },
         true,
       ],
     ]);

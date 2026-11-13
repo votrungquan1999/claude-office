@@ -30,7 +30,7 @@ describe("a background sub-agent keeps the desk working after the turn ended", (
   const sub = { agent_id: "sub1", agent_type: "general-purpose" };
 
   it("shows Working while the sub-agent runs and returns to the state the turn ended in when it stops", async () => {
-    // Given a turn that ended idle
+    // Given a turn that ended with a result to look at
     const { send } = await endedTurn("Started it in the background.");
 
     // When a background sub-agent runs a tool
@@ -58,12 +58,12 @@ describe("a background sub-agent keeps the desk working after the turn ended", (
     // When the sub-agent stops
     const done = await send({ ...sub, hook_event_name: "SubagentStop" });
 
-    // Then the desk is idle again
-    expect(done).toBe("idle");
+    // Then the desk is back in Review
+    expect(done).toBe("review");
   });
 
   it("ignores a stray event of a sub-agent that already stopped", async () => {
-    // Given a turn that ended idle and a sub-agent that ran and stopped
+    // Given a turn that ended in Review and a sub-agent that ran and stopped
     const { send } = await endedTurn("Started it in the background.");
     await send({
       ...sub,
@@ -81,8 +81,8 @@ describe("a background sub-agent keeps the desk working after the turn ended", (
       tool_use_id: "t2",
     });
 
-    // Then the desk stays idle
-    expect(state).toBe("idle");
+    // Then the desk stays in Review
+    expect(state).toBe("review");
   });
 
   it("returns to Waiting for you when the turn asked the owner something", async () => {
@@ -112,7 +112,7 @@ describe("a background sub-agent keeps the desk working after the turn ended", (
       last_assistant_message: "Done.",
     });
 
-    // Then the prompt reset the desk to thinking and the new turn ended idle
-    expect([thinking, ended]).toEqual(["thinking", "idle"]);
+    // Then the prompt reset the desk to thinking and the new turn ended in Review
+    expect([thinking, ended]).toEqual(["thinking", "review"]);
   });
 });

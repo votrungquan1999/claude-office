@@ -280,8 +280,8 @@ describe("a session whose process is gone goes home", () => {
     await agent.reconcile();
     await agent.flush();
 
-    // Then the session is idle, not stuck on Needs permission
-    expect(await stored()).toBe("idle");
+    // Then the session is back in Review, not stuck on Needs permission
+    expect(await stored()).toBe("review");
   }, 60_000);
 
   it("shows a session whose registry entry only appeared after its hooks, on the next periodic check", async () => {

@@ -99,6 +99,13 @@ export const changesResponseSchema = z.object({
 
 export type ChangesResponse = z.infer<typeof changesResponseSchema>;
 
+/** What the page reads: a state it does not know shows as idle, so a newer server never freezes an open tab. */
+export const pageChangesResponseSchema = changesResponseSchema.extend({
+  sessions: z.array(
+    sessionDtoSchema.extend({ state: z.enum(SESSION_STATES).catch("idle") }),
+  ),
+});
+
 /** Overlap re-read on every poll: writes from several Macs can become visible out of stamp order. */
 export const CHANGES_OVERLAP_MS = 5000;
 

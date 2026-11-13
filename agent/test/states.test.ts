@@ -75,7 +75,7 @@ describe("an employee moves to the room matching its session", () => {
       return { send };
     }
 
-    it("moves to Waiting for you when the last answer asks the owner, and to Idle when it does not", async () => {
+    it("moves to Waiting for you when the last answer asks the owner, and to Review when it reports a result", async () => {
       // Given a session in the middle of a turn
       const { send } = await startSession();
 
@@ -91,15 +91,15 @@ describe("an employee moves to the room matching its session", () => {
 
       // When the next turn ends with a plain summary
       await send({ hook_event_name: "UserPromptSubmit", prompt: "yes" });
-      // A follow-up Stop keeps an earlier question, so idle here proves the prompt reset it
+      // A follow-up Stop keeps an earlier question, so Review here proves the prompt reset it
       const plain = await send({
         hook_event_name: "Stop",
         stop_hook_active: true,
         last_assistant_message: "Pushed the branch.",
       });
 
-      // Then it is idle
-      expect(plain).toBe("idle");
+      // Then it is in Review
+      expect(plain).toBe("review");
     });
 
     it("moves to Waiting for you when the question follows a code block that the hook's text cut in the middle", async () => {

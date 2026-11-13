@@ -27,6 +27,7 @@ const company = (
     working: counts[0],
     needsPermission: counts[1],
     waitingForYou: counts[2],
+    review: 0,
     idle: counts[3],
   },
   needsYou: options.needsYou ?? false,

@@ -55,9 +55,43 @@ describe("a finished turn is checked with Haiku", () => {
     return { send, agent, officeSessions };
   }
 
+  it("shows Idle at once and then Review when Haiku says the ending reports a result", async () => {
+    // Given a key and a Haiku that holds its REPORTS answer until released
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const anthropic = await startFakeAnthropic(
+      fakeHaiku(() => gate.then(() => answer("REPORTS"))),
+    );
+    const { send, agent, officeSessions } = await startSession({
+      baseUrl: anthropic.baseUrl,
+      apiKey: KEY,
+    });
+
+    // When a turn ends with a result and Haiku has not answered yet
+    const first = await send(
+      {
+        hook_event_name: "Stop",
+        last_assistant_message: "Done, all tests pass.",
+      },
+      false,
+    );
+
+    // Then the desk shows Idle, not a flash of Review
+    expect(first).toBe("idle");
+
+    // When Haiku's answer arrives
+    release();
+    await agent.flush();
+
+    // Then the desk goes to Review
+    expect((await officeSessions())[0]?.state).toBe("review");
+  });
+
   it("shows Waiting for you when Haiku says the ending asks the owner to choose, though no rule matches it", async () => {
-    // Given a key and a Haiku that says YES
-    const anthropic = await startFakeAnthropic(fakeHaiku(() => answer("YES")));
+    // Given a key and a Haiku that says ASKS
+    const anthropic = await startFakeAnthropic(fakeHaiku(() => answer("ASKS")));
     const { send } = await startSession({
       baseUrl: anthropic.baseUrl,
       apiKey: KEY,
@@ -74,9 +108,11 @@ describe("a finished turn is checked with Haiku", () => {
     expect(state).toBe("waitingForYou");
   });
 
-  it("shows Idle for a plain summary when Haiku says NO, and when it overrules a question-mark ending", async () => {
-    // Given a Haiku that says NO
-    const anthropic = await startFakeAnthropic(fakeHaiku(() => answer("NO")));
+  it("shows Idle for a plain summary when Haiku says NOTHING, and when it overrules a question-mark ending", async () => {
+    // Given a Haiku that says NOTHING
+    const anthropic = await startFakeAnthropic(
+      fakeHaiku(() => answer("NOTHING")),
+    );
     const { send } = await startSession({
       baseUrl: anthropic.baseUrl,
       apiKey: KEY,
@@ -98,7 +134,7 @@ describe("a finished turn is checked with Haiku", () => {
       last_assistant_message: "All green. Who knew it would be this easy?",
     });
 
-    // Then Haiku's NO wins
+    // Then Haiku's NOTHING wins
     expect(rhetorical).toBe("idle");
   });
 
@@ -117,12 +153,110 @@ describe("a finished turn is checked with Haiku", () => {
       last_assistant_message: ASKING,
     });
 
-    // Then the rule decides: Waiting for you for the first, Idle for the second
+    // Then the rule decides: Waiting for you for the first, Review for the second
     expect(question).toBe("waitingForYou");
-    expect(choice).toBe("idle");
+    expect(choice).toBe("review");
   });
 
-  it("uses the plain rule when Haiku does not answer in time", async () => {
+  it("shows Idle for a turn that ends with no message when the owner set no key", async () => {
+    // Given an agent with no key
+    const { send } = await startSession();
+
+    // When a turn ends with an empty message
+    const state = await send({
+      hook_event_name: "Stop",
+      last_assistant_message: "",
+    });
+
+    // Then there is nothing to show, so it is Idle
+    expect(state).toBe("idle");
+  });
+
+  it("keeps Review through a follow-up Stop of the same turn that has nothing to show, while Haiku has not answered it", async () => {
+    // Given a key, a Haiku that says REPORTS for the result and never answers the follow-up within the timeout
+    const anthropic = await startFakeAnthropic((request) => {
+      if (String(request.body.system).includes("task title")) {
+        return answer("Plan it");
+      }
+      const message = (request.body.messages as Array<{ content: string }>)[0];
+      return message.content.includes("Done")
+        ? answer("REPORTS")
+        : new Promise<FakeAnthropicReply>(() => {});
+    });
+    const { send } = await startSession({
+      baseUrl: anthropic.baseUrl,
+      apiKey: KEY,
+      timeoutMs: 100,
+    });
+    expect(
+      await send({
+        hook_event_name: "Stop",
+        last_assistant_message: "Done, all tests pass.",
+      }),
+    ).toBe("review");
+
+    // When a Stop hook runs another turn that ends with a bare acknowledgement
+    const at = await send(
+      {
+        hook_event_name: "Stop",
+        stop_hook_active: true,
+        last_assistant_message: "Ok.",
+      },
+      false,
+    );
+
+    // Then the earlier result stands at once and after Haiku's timeout
+    expect(at).toBe("review");
+    await pause(300);
+    expect((await officeSessions())[0]?.state).toBe("review");
+  });
+
+  it("ends in Review when a follow-up Stop arrives before Haiku has answered the first Stop", async () => {
+    // Given a key and a Haiku that holds the first answer's REPORTS until released
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const anthropic = await startFakeAnthropic((request) => {
+      if (String(request.body.system).includes("task title")) {
+        return answer("Plan it");
+      }
+      const message = (request.body.messages as Array<{ content: string }>)[0];
+      return message.content.includes("Done")
+        ? gate.then(() => answer("REPORTS"))
+        : answer("NOTHING");
+    });
+    const { send, agent, officeSessions } = await startSession({
+      baseUrl: anthropic.baseUrl,
+      apiKey: KEY,
+    });
+    await send(
+      {
+        hook_event_name: "Stop",
+        last_assistant_message: "Done, all tests pass.",
+      },
+      false,
+    );
+
+    // When a Stop hook runs a follow-up turn that ends with nothing to show, then Haiku answers the first Stop
+    await send({ hook_event_name: "PreToolUse", tool_name: "Bash" }, false);
+    await send({ hook_event_name: "PostToolUse", tool_name: "Bash" }, false);
+    await send(
+      {
+        hook_event_name: "Stop",
+        stop_hook_active: true,
+        last_assistant_message: "Spec check passed.",
+      },
+      false,
+    );
+    release();
+    await agent.flush();
+
+    // Then the report is not lost: the desk ends in Review
+    expect((await officeSessions())[0]?.state).toBe("review");
+  });
+
+  it("falls back to the plain rule when Haiku does not answer in time: a question waits, a report goes to Review as with no key", async () => {
     // Given a Haiku that never answers within the timeout
     const anthropic = await startFakeAnthropic(
       fakeHaiku(() => new Promise(() => {})),
@@ -144,13 +278,13 @@ describe("a finished turn is checked with Haiku", () => {
       last_assistant_message: ASKING,
     });
 
-    // Then the rule decides both
+    // Then the question waits and the choice, which the plain rule reads as a report, goes to Review
     expect(question).toBe("waitingForYou");
-    expect(choice).toBe("idle");
+    expect(choice).toBe("review");
   });
 
   it("ignores a late Haiku answer once a newer prompt started, even after that turn ended", async () => {
-    // Given a Haiku that holds its answer about the choice and answers NO to anything else at once
+    // Given a Haiku that holds its answer about the choice and answers NOTHING to anything else at once
     let release: () => void = () => {};
     const gate = new Promise<void>((resolve) => {
       release = resolve;
@@ -161,8 +295,8 @@ describe("a finished turn is checked with Haiku", () => {
       }
       const message = (request.body.messages as Array<{ content: string }>)[0];
       return message.content.includes("Reply")
-        ? gate.then(() => answer("YES"))
-        : answer("NO");
+        ? gate.then(() => answer("ASKS"))
+        : answer("NOTHING");
     });
     const { send, agent } = await startSession({
       baseUrl: anthropic.baseUrl,
@@ -176,7 +310,7 @@ describe("a finished turn is checked with Haiku", () => {
     );
     expect(ended).toBe("idle");
 
-    // And the owner sends a new prompt, whose turn ends with a plain summary Haiku answers NO to
+    // And the owner sends a new prompt, whose turn ends with a plain summary Haiku answers NOTHING to
     await send({ hook_event_name: "UserPromptSubmit", prompt: "B" }, false);
     await send(
       {
@@ -197,8 +331,8 @@ describe("a finished turn is checked with Haiku", () => {
   });
 
   it("checks the transcript's last answer when the registry says a turn ended that no hook reported", async () => {
-    // Given a Haiku that says YES and a running session whose Stop never arrived
-    const anthropic = await startFakeAnthropic(fakeHaiku(() => answer("YES")));
+    // Given a Haiku that says ASKS and a running session whose Stop never arrived
+    const anthropic = await startFakeAnthropic(fakeHaiku(() => answer("ASKS")));
     const { fake, agent } = await setUpMac("machine-air", "Air", {
       anthropic: { baseUrl: anthropic.baseUrl, apiKey: KEY },
     });

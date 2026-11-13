@@ -12,6 +12,7 @@ export interface CompanyCounts {
   working: number;
   needsPermission: number;
   waitingForYou: number;
+  review: number;
   idle: number;
 }
 
@@ -70,7 +71,13 @@ export function buildOverview(input: OverviewInput): Overview {
       company.key,
       {
         company,
-        counts: { working: 0, needsPermission: 0, waitingForYou: 0, idle: 0 },
+        counts: {
+          working: 0,
+          needsPermission: 0,
+          waitingForYou: 0,
+          review: 0,
+          idle: 0,
+        },
         needsYou: false,
         active: false,
       },

@@ -41,6 +41,23 @@ const post = (
 });
 
 describe("session state rules", () => {
+  it("ends a turn whose last message is only whitespace in Idle, whether or not it is a Stop-hook follow-up", () => {
+    // Given a turn, then a Stop with a blank message, then another turn ended by a follow-up Stop with a blank message
+    const blank = "  \n\t ";
+    const turn = { hook_event_name: "UserPromptSubmit" };
+
+    // When each turn ends
+    const plain = states([turn, { last_assistant_message: blank }]);
+    const followUp = states([
+      turn,
+      { last_assistant_message: blank, stop_hook_active: true },
+    ]);
+
+    // Then neither has a result to review
+    expect(plain).toEqual(["thinking", "idle"]);
+    expect(followUp).toEqual(["thinking", "idle"]);
+  });
+
   it("stays working until the last of several parallel tools finishes", () => {
     expect(
       states([
