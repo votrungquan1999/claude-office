@@ -13,8 +13,10 @@ import { MatchWhy } from "./MatchWhy";
 
 export interface ListRowProps {
   session: SessionDto;
-  /** Whether a mouse can drag this row to a new place. */
+  /** Whether the owner can drag this row to a new place. */
   draggable: boolean;
+  /** Whether only the grip drags it, after a hold (touch screens), so the rest of the row still taps and scrolls. */
+  touchGrip?: boolean;
   /** Whether this conversation arrived after this device first showed the list and has not been opened yet. */
   isNew: boolean;
   /** Whether this is the employee whose card is open. */
@@ -80,6 +82,7 @@ const SHOWN_TAGS = 1;
 export function ListRow({
   session,
   draggable,
+  touchGrip = false,
   isNew,
   selected,
   revealToken,
@@ -121,6 +124,7 @@ export function ListRow({
   // The phone's square button has room only for the arrow.
   const labelled = approving && !phone;
   const tags = session.tags ?? [];
+  const grip = touchGrip ? "Hold and drag to reorder" : "Drag to reorder";
   // A positioned row with its own background paints over the rows it passes; without them its neighbours show through.
   const rowLook = sortable.isDragging
     ? "relative z-10 bg-btn-bg outline-2 outline-accent-bright shadow-[6px_6px_0_var(--color-bg-dark)]"
@@ -139,7 +143,7 @@ export function ListRow({
           : undefined,
         transition: sortable.transition,
       }}
-      {...sortable.listeners}
+      {...(touchGrip ? {} : sortable.listeners)}
       data-testid="list-row"
       data-key={key}
       aria-current={selected ? "true" : undefined}
@@ -147,12 +151,18 @@ export function ListRow({
     >
       {(draggable || phone) && !why && (
         <span
+          ref={sortable.setActivatorNodeRef}
+          {...(touchGrip ? sortable.listeners : {})}
           role="img"
           data-testid="row-grip"
-          aria-label="Drag to reorder"
+          aria-label={grip}
           aria-describedby={sortable.attributes["aria-describedby"]}
-          title="Drag to reorder"
-          className={`flex shrink-0 items-center justify-center text-text-muted ${phone ? "w-28" : "w-18 cursor-grab"}`}
+          title={grip}
+          // A long press on the grip must not open a callout or a context menu, and a swipe on it must not scroll.
+          onContextMenu={
+            touchGrip ? (event) => event.preventDefault() : undefined
+          }
+          className={`flex shrink-0 items-center justify-center text-text-muted ${touchGrip ? "w-30 touch-none select-none [-webkit-touch-callout:none]" : phone ? "w-28" : "w-18 cursor-grab"}`}
         >
           <svg
             aria-hidden="true"

@@ -808,6 +808,12 @@ export function OfficeView() {
     serverOffsetMs,
     onSelect: (key: string) => selectEmployee(key, "list"),
     onMoveToIdle: (key: string) => void moveToIdle(key),
+    onMove: (key: string, overKey: string) => void moveRow(key, overKey),
+    moveError: rankError,
+    onDragHover: (key: string | null) => {
+      officeState.hoveredAgentId =
+        key === null ? null : (sceneSync.agentIdOf(key) ?? null);
+    },
   };
 
   return (
@@ -1044,13 +1050,7 @@ export function OfficeView() {
             seenKeys={seen.seenKeys}
             reveal={reveal}
             onSearch={palette.openPalette}
-            canDrag={hasMouse}
-            onMove={(key, overKey) => void moveRow(key, overKey)}
-            moveError={rankError}
-            onDragHover={(key) => {
-              officeState.hoveredAgentId =
-                key === null ? null : (sceneSync.agentIdOf(key) ?? null);
-            }}
+            touch={!hasMouse}
             onRename={renameEmployee}
           />
         )}

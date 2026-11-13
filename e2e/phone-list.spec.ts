@@ -1,11 +1,15 @@
 import { expect, type Page, test } from "@playwright/test";
+import { E2E_BASE_URL } from "./constants";
 import {
+  centerOf,
+  countRankRequests,
   type SeedSession,
   seedFolders,
   seedOnlineMachine,
   seedSessions,
   showRooms,
   signInAsOwner,
+  touchDrag,
   withE2eDb,
 } from "./helpers";
 
@@ -585,7 +589,7 @@ test.describe("searching on the phone", () => {
 
     // Then the sections are back with Everyone still folded
     await expect(field).toHaveValue("");
-    await expect(list.getByRole("status")).toHaveCount(0);
+    await expect(list.getByText(/kept in your order/)).toHaveCount(0);
     await expect(everyone).toHaveAttribute("aria-expanded", "false");
     await expect(
       list.getByRole("button", { name: /^Went home today/ }),
@@ -623,5 +627,279 @@ test.describe("searching on the phone", () => {
     await expect(
       list.getByRole("button", { name: "Search all companies" }),
     ).toBeVisible();
+  });
+});
+
+test.describe("holding a row's grip", () => {
+  /** Fourteen placed idle employees, so the list is taller than the screen. */
+  const placed = () =>
+    seed(
+      Array.from({ length: 14 }, (_, i) => ({
+        sessionId: `t${i}`,
+        cwd: PERSONAL,
+        startCwd: PERSONAL,
+        deskName: `Task ${String(i + 1).padStart(2, "0")}`,
+        state: "idle",
+        rank: String.fromCharCode(98 + i),
+      })),
+    );
+  const row = (page: Page, n: number) =>
+    page.getByTestId("list-row").nth(n - 1);
+
+  test("lifts the row, and letting go three rows down moves it there with one request that holds after a reload and on the Mac", async ({
+    browser,
+    context,
+    page,
+  }) => {
+    // Given fourteen placed employees, a Mac that shows the same list, and a request counter
+    await placed();
+    await signInAsOwner(context);
+    const requests = countRankRequests(page);
+    let answered = 0;
+
+    page.on("response", (response) => {
+      if (response.url().includes("/api/office/sessions/rank")) answered++;
+    });
+    await page.goto("/");
+    const names = page.getByTestId("list-row-name");
+    await expect(names).toHaveCount(14);
+    const scroller = page.getByTestId("phone-list-scroll");
+    const scrolledBefore = await scroller.evaluate((el) => el.scrollTop);
+
+    // When the owner holds the first row's grip, sees it lift with the gap marked, drags it three rows down and lets go
+    await touchDrag(
+      page,
+      await centerOf(row(page, 1).getByTestId("row-grip")),
+      await centerOf(row(page, 4)),
+      {
+        holdMs: 400,
+        onHeld: async () => {
+          await expect(page.getByTestId("drag-chip")).toHaveText(
+            "Moving Task 01 to position 1 of 14",
+          );
+          await expect(page.getByText("Drops here")).toBeVisible();
+        },
+      },
+    );
+
+    // Then it sits fourth at once, with one request, and the list did not scroll
+    await expect(names.nth(3)).toHaveText("Task 01");
+    await expect(names.first()).toHaveText("Task 02");
+    await expect.poll(() => answered).toBe(1);
+    expect(requests.count).toBe(1);
+    expect(await scroller.evaluate((el) => el.scrollTop)).toBe(scrolledBefore);
+
+    // And the order holds after a reload
+    await page.reload();
+    await expect(names).toHaveCount(14);
+    await expect(names.nth(3)).toHaveText("Task 01");
+
+    // And a Mac shows the same order
+    const mac = await browser.newContext({
+      baseURL: E2E_BASE_URL,
+      viewport: { width: 1280, height: 800 },
+      hasTouch: false,
+    });
+    try {
+      await signInAsOwner(mac);
+      const macPage = await mac.newPage();
+      await macPage.goto("/");
+      await expect(macPage.getByTestId("list-row-name").nth(3)).toHaveText(
+        "Task 01",
+      );
+    } finally {
+      await mac.close();
+    }
+  });
+
+  test("a swipe on the rest of a row scrolls the list and moves nothing", async ({
+    context,
+    page,
+  }) => {
+    // Given fourteen placed employees and a request counter
+    await placed();
+    await signInAsOwner(context);
+    const requests = countRankRequests(page);
+    await page.goto("/");
+    const names = page.getByTestId("list-row-name");
+    await expect(names).toHaveCount(14);
+    const scroller = page.getByTestId("phone-list-scroll");
+    expect(await scroller.evaluate((el) => el.scrollTop)).toBe(0);
+
+    // When the owner swipes up from the name of the second row
+    const from = await centerOf(names.nth(1));
+    await touchDrag(page, from, { x: from.x, y: from.y - 200 });
+
+    // Then the list scrolled, nothing was sent and the order is the same
+    await expect
+      .poll(() => scroller.evaluate((el) => el.scrollTop))
+      .toBeGreaterThan(0);
+    expect(requests.count).toBe(0);
+    await expect(names.first()).toHaveText("Task 01");
+    await expect(names.nth(1)).toHaveText("Task 02");
+  });
+
+  test("holding the name of a row and dragging lifts nothing and sends nothing", async ({
+    context,
+    page,
+  }) => {
+    // Given fourteen placed employees and a request counter
+    await placed();
+    await signInAsOwner(context);
+    const requests = countRankRequests(page);
+    await page.goto("/");
+    const names = page.getByTestId("list-row-name");
+    await expect(names).toHaveCount(14);
+
+    // When the owner holds the middle of a row's name for longer than the grip needs and drags to the fourth row
+    await touchDrag(
+      page,
+      await centerOf(names.nth(1)),
+      await centerOf(row(page, 4)),
+      { holdMs: 400 },
+    );
+
+    // Then no row lifted, nothing was sent and the order is the same
+    await expect(page.getByTestId("drag-chip")).toHaveCount(0);
+    expect(requests.count).toBe(0);
+    await expect(names.nth(1)).toHaveText("Task 02");
+    await expect(names.nth(3)).toHaveText("Task 04");
+  });
+
+  test("a finger that moves before the hold ends lifts nothing and sends nothing", async ({
+    context,
+    page,
+  }) => {
+    // Given fourteen placed employees and a request counter
+    await placed();
+    await signInAsOwner(context);
+    const requests = countRankRequests(page);
+    await page.goto("/");
+    const names = page.getByTestId("list-row-name");
+    await expect(names).toHaveCount(14);
+
+    // When the owner puts a finger on a grip and drags it away at once
+    await touchDrag(
+      page,
+      await centerOf(row(page, 1).getByTestId("row-grip")),
+      await centerOf(row(page, 4)),
+    );
+
+    // Then no row lifted, nothing was sent and the order is the same
+    await expect(page.getByTestId("drag-chip")).toHaveCount(0);
+    expect(requests.count).toBe(0);
+    await expect(names.first()).toHaveText("Task 01");
+    await expect(names.nth(3)).toHaveText("Task 04");
+  });
+
+  test("a tap on a row opens its card, and holding the grip then letting go on the same place sends nothing", async ({
+    context,
+    page,
+  }) => {
+    // Given fourteen placed employees and a request counter
+    await placed();
+    await signInAsOwner(context);
+    const requests = countRankRequests(page);
+    await page.goto("/");
+    const names = page.getByTestId("list-row-name");
+    await expect(names).toHaveCount(14);
+
+    // When the owner holds the third row's grip, moves a little and lets go over its own place
+    const grip = await centerOf(row(page, 3).getByTestId("row-grip"));
+    await touchDrag(
+      page,
+      grip,
+      { x: grip.x, y: grip.y + 6 },
+      {
+        holdMs: 400,
+        onHeld: () =>
+          expect(page.getByTestId("drag-chip")).toContainText(
+            "Moving Task 03 to position 3 of 14",
+          ),
+      },
+    );
+
+    // Then nothing was sent and the order is the same
+    await page.waitForTimeout(300);
+    expect(requests.count).toBe(0);
+    await expect(names.nth(2)).toHaveText("Task 03");
+
+    // When the owner taps a row's name
+    await names.nth(2).tap();
+
+    // Then its card opens
+    await expect(page.getByTestId("details-panel")).toContainText("Task 03");
+  });
+
+  test("a refused save puts the row back and says so above the list", async ({
+    context,
+    page,
+  }) => {
+    // Given fourteen placed employees and a server that refuses the move
+    await placed();
+    await signInAsOwner(context);
+    await page.route("**/api/office/sessions/rank", (route) =>
+      route.fulfill({ status: 500, body: "{}" }),
+    );
+    await page.goto("/");
+    const names = page.getByTestId("list-row-name");
+    await expect(names).toHaveCount(14);
+
+    // When the owner drags the first row three rows down
+    await touchDrag(
+      page,
+      await centerOf(row(page, 1).getByTestId("row-grip")),
+      await centerOf(row(page, 4)),
+      { holdMs: 400 },
+    );
+
+    // Then the row is back first and the alert says it could not move
+    await expect(
+      page.getByTestId("phone-list").getByRole("alert"),
+    ).toContainText("Could not move");
+    await expect(names.first()).toHaveText("Task 01");
+  });
+});
+
+test.describe("holding a grip on an iPad", () => {
+  test.use({
+    viewport: { width: 834, height: 1194 },
+    hasTouch: true,
+    isMobile: true,
+  });
+
+  test("moves a row in the list beside the office with one request", async ({
+    context,
+    page,
+  }) => {
+    // Given four placed employees in the Mac's list, shown to a touch screen
+    await seed(
+      ["A", "B", "C", "D"].map((name, i) => ({
+        sessionId: name.toLowerCase(),
+        cwd: PERSONAL,
+        startCwd: PERSONAL,
+        deskName: `Task ${name}`,
+        state: "idle",
+        rank: "bdfh"[i],
+      })),
+    );
+    await signInAsOwner(context);
+    const requests = countRankRequests(page);
+    await page.goto("/");
+    const names = page.getByTestId("list-row-name");
+    await expect(names).toHaveCount(4);
+    const rows = page.getByTestId("list-row");
+
+    // When the owner holds the last row's grip and drags it to the top
+    await touchDrag(
+      page,
+      await centerOf(rows.nth(3).getByTestId("row-grip")),
+      await centerOf(rows.first()),
+      { holdMs: 400 },
+    );
+
+    // Then it is first, with one request
+    await expect(names).toHaveText(["Task D", "Task A", "Task B", "Task C"]);
+    await expect.poll(() => requests.count).toBe(1);
   });
 });

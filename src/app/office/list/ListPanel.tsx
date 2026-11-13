@@ -1,26 +1,19 @@
-import {
-  type Announcements,
-  DndContext,
-  type DragEndEvent,
-  type DragOverEvent,
-  PointerSensor,
-  type UniqueIdentifier,
-  useSensor,
-  useSensors,
-} from "@dnd-kit/core";
+import { DndContext } from "@dnd-kit/core";
 import {
   SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { employeeName } from "@/shared/employee-name";
 import type { SessionDto } from "@/shared/session";
 import { sessionKey } from "@/shared/session";
 import { RenameEmployeeDialog } from "../RenameEmployeeDialog";
+import { DropsHereGap } from "./DropsHereGap";
 import { FoldedStrip } from "./FoldedStrip";
 import { ListRow } from "./ListRow";
 import { NeedsYouSection, type NeedsYouSectionProps } from "./NeedsYouSection";
 import type { ListFoldState } from "./useListFolds";
+import { useRowDrag } from "./useRowDrag";
 import type { DepartureRow } from "./WentHomeSection";
 import { WentHomeSection } from "./WentHomeSection";
 
@@ -52,8 +45,8 @@ interface ListPanelProps {
   onSelectDeparture: (key: string) => void;
   /** Opens the Cmd+K search. */
   onSearch: () => void;
-  /** Whether a mouse can drag rows to new places. */
-  canDrag: boolean;
+  /** Whether rows drag by their grip after a hold (touch screens) rather than from anywhere on the row (mouse). */
+  touch: boolean;
   /** Lights up the employee of the row being dragged; null when the drag ends. */
   onDragHover: (key: string | null) => void;
   /** Why the last move was refused; absent when it was not. */
@@ -87,7 +80,7 @@ export function ListPanel({
   departures,
   onSelectDeparture,
   onSearch,
-  canDrag,
+  touch,
   moveError,
   onDragHover,
   onMove,
@@ -99,72 +92,17 @@ export function ListPanel({
   onRename,
 }: ListPanelProps) {
   const wentHomeOpen = fold.folds.wentHome;
-  // A small move starts a drag, so a plain click still selects the row.
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-  );
-  // The order the rows had when the drag began, so a poll cannot re-sort them under the pointer.
-  const [frozen, setFrozen] = useState<SessionDto[] | null>(null);
-  const shown = frozen ?? employees;
-  // Where the dragged row will land, in the list's own coordinates; null when nothing is dragged.
-  const [gap, setGap] = useState<{ top: number; height: number } | null>(null);
-  const listRef = useRef<HTMLUListElement>(null);
+  const drag = useRowDrag({
+    employees,
+    touch,
+    onDragHover,
+    onMove,
+  });
   // The employee being renamed, picked from a row's pencil; the dialog lives here, outside the rows and the drag.
   const [renamingKey, setRenamingKey] = useState<string | null>(null);
   const renaming = employees.find(
     (session) => sessionKey(session) === renamingKey,
   );
-  const place = (id: UniqueIdentifier | undefined) =>
-    shown.findIndex((session) => sessionKey(session) === id);
-  const nameAt = (id: UniqueIdentifier | undefined) => {
-    const session = shown[place(id)];
-    return session ? employeeName(session) : "";
-  };
-  // The status chip's text while a row is dragged; null when nothing is.
-  const [chip, setChip] = useState<string | null>(null);
-  const announceStart = (id: UniqueIdentifier) =>
-    `Moving ${nameAt(id)} to position ${place(id) + 1} of ${shown.length}`;
-  const announceMove = (
-    verb: string,
-    event: Pick<DragOverEvent, "active" | "over">,
-  ) =>
-    `${verb} ${nameAt(event.active.id)} to position ${place(event.over?.id ?? event.active.id) + 1} of ${shown.length}`;
-  // Keyboard dragging is off, so the instructions say only what a mouse can do.
-  const accessibility: {
-    announcements: Announcements;
-    screenReaderInstructions: { draggable: string };
-  } = {
-    announcements: {
-      onDragStart: ({ active }) => announceStart(active.id),
-      onDragOver: (event) => announceMove("Moving", event),
-      onDragEnd: (event) => announceMove("Moved", event),
-      onDragCancel: ({ active }) => `Moving ${nameAt(active.id)} cancelled`,
-    },
-    screenReaderInstructions: {
-      draggable: "Drag with the mouse to move this employee in the list.",
-    },
-  };
-  /** Marks the slot the dragged row would take, from where the row it is over sits. */
-  const showGap = (event: DragOverEvent) => {
-    const { active, over } = event;
-    setChip(announceMove("Moving", event));
-    const list = listRef.current;
-    const initial = active.rect.current.initial;
-    if (!list || !over || !initial) return setGap(null);
-    setGap({
-      top: over.rect.top - list.getBoundingClientRect().top + list.scrollTop,
-      height: initial.height,
-    });
-  };
-  /** Ends the drag and moves the row once, when it was dropped on a row. */
-  const drop = (event: DragEndEvent) => {
-    setFrozen(null);
-    setGap(null);
-    setChip(null);
-    onDragHover(null);
-    const { active, over } = event;
-    if (over) onMove(String(active.id), String(over.id));
-  };
   if (!fold.listOpen) {
     const total = needsYou.needsYou.total;
     return (
@@ -239,39 +177,24 @@ export function ListPanel({
           <span className="font-bold">Everyone</span>
           <span className="bg-border px-6 text-xs">{employees.length}</span>
         </button>
-        <DndContext
-          sensors={sensors}
-          accessibility={accessibility}
-          onDragOver={showGap}
-          onDragStart={({ active }) => {
-            setFrozen(employees);
-            setChip(announceStart(active.id));
-            onDragHover(String(active.id));
-          }}
-          onDragEnd={drop}
-          onDragCancel={() => {
-            setFrozen(null);
-            setGap(null);
-            setChip(null);
-            onDragHover(null);
-          }}
-        >
+        <DndContext {...drag.dndProps}>
           <SortableContext
-            items={shown.map(sessionKey)}
+            items={drag.shown.map(sessionKey)}
             strategy={verticalListSortingStrategy}
           >
             <ul
-              ref={listRef}
+              ref={drag.listRef}
               id="list-everyone"
               hidden={!fold.folds.everyone}
               data-testid="list-everyone"
               className="relative min-h-0 flex-1 overflow-y-auto"
             >
-              {shown.map((session) => (
+              {drag.shown.map((session) => (
                 <ListRow
                   key={sessionKey(session)}
                   session={session}
-                  draggable={canDrag}
+                  draggable
+                  touchGrip={touch}
                   isNew={
                     seenKeys !== null && !seenKeys.has(sessionKey(session))
                   }
@@ -287,26 +210,18 @@ export function ListPanel({
                   onRequestRename={setRenamingKey}
                 />
               ))}
-              {gap && (
-                <li
-                  aria-hidden="true"
-                  style={{ top: gap.top, height: gap.height }}
-                  className="pointer-events-none absolute right-8 left-20 flex items-center justify-center border-2 border-dashed border-accent-bright bg-accent-bright/10 text-xs"
-                >
-                  Drops here
-                </li>
-              )}
+              {drag.gap && <DropsHereGap {...drag.gap} />}
             </ul>
           </SortableContext>
         </DndContext>
       </section>
-      {chip && (
+      {drag.chip && (
         <span
           role="status"
           data-testid="drag-chip"
           className="pointer-events-none absolute bottom-56 left-18 z-5 border-2 border-accent-bright bg-[#2c2b6d] px-8 py-4 text-xs"
         >
-          {chip}
+          {drag.chip}
         </span>
       )}
       {renaming && (

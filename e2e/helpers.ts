@@ -402,3 +402,79 @@ export async function openWentHome(page: Page): Promise<Locator> {
   await expect(list).toBeVisible();
   return list;
 }
+
+/** A point on the page in CSS pixels. */
+export interface Point {
+  x: number;
+  y: number;
+}
+
+/**
+ * The middle of an element on screen.
+ * @param locator - The element, which must be rendered.
+ * @returns Its centre in CSS pixels.
+ */
+export async function centerOf(locator: Locator): Promise<Point> {
+  const box = await locator.boundingBox();
+  if (!box) throw new Error("centerOf: the element is not rendered");
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+}
+
+/**
+ * Sends one finger down at `from`, optionally holds, moves it to `to` in small steps and lifts it; Playwright's touchscreen can only tap.
+ * @param page - The page to touch.
+ * @param from - Where the finger lands.
+ * @param to - Where it ends.
+ * @param options - `holdMs`: how long it rests before moving; `onHeld`: runs after the hold, before the move; `release: false` keeps the finger down.
+ */
+export async function touchDrag(
+  page: Page,
+  from: Point,
+  to: Point,
+  {
+    holdMs = 0,
+    onHeld,
+    release = true,
+  }: { holdMs?: number; onHeld?: () => Promise<void>; release?: boolean } = {},
+) {
+  const cdp = await page.context().newCDPSession(page);
+  const touch = (
+    type: "touchStart" | "touchMove" | "touchEnd",
+    point?: Point,
+  ) =>
+    cdp.send("Input.dispatchTouchEvent", {
+      type,
+      touchPoints: point ? [point] : [],
+    });
+  await touch("touchStart", from);
+  if (holdMs > 0) await page.waitForTimeout(holdMs);
+  await onHeld?.();
+  const steps = 15;
+  for (let step = 1; step <= steps; step++) {
+    await touch("touchMove", {
+      x: from.x + ((to.x - from.x) * step) / steps,
+      y: from.y + ((to.y - from.y) * step) / steps,
+    });
+    await page.waitForTimeout(16);
+  }
+  if (release) await touch("touchEnd");
+}
+
+/**
+ * Records every move-a-row request the page sends.
+ * @param page - The page to watch.
+ * @returns The posted bodies, one per request, and how many were sent.
+ */
+export function countRankRequests(page: Page) {
+  const bodies: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/api/office/sessions/rank"))
+      bodies.push(request.postData() ?? "");
+  });
+  return {
+    bodies,
+    get count() {
+      return bodies.length;
+    },
+  };
+}

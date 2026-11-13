@@ -2,6 +2,7 @@ import { expect, type Locator, type Page, test } from "@playwright/test";
 import { E2E_BASE_URL } from "./constants";
 import {
   clickEmployee,
+  countRankRequests,
   employeeLabelled,
   keepOneCompany,
   type SeedSession,
@@ -605,12 +606,9 @@ test.describe("dragging a row", () => {
     // Given four placed conversations and a second device that has the office open
     await placed();
     await signInAsOwner(context);
-    const requests: string[] = [];
+    const requests = countRankRequests(page);
     let answered = 0;
-    page.on("request", (request) => {
-      if (request.url().includes("/api/office/sessions/rank"))
-        requests.push(request.postData() ?? "");
-    });
+
     page.on("response", (response) => {
       if (response.url().includes("/api/office/sessions/rank")) answered++;
     });
@@ -643,7 +641,7 @@ test.describe("dragging a row", () => {
         "Task C",
       ]);
       await expect.poll(() => answered).toBe(1);
-      expect(requests).toHaveLength(1);
+      expect(requests.count).toBe(1);
       await expect(page.getByTestId("details-panel")).toHaveCount(0);
 
       // And it is still first after a reload
@@ -661,7 +659,7 @@ test.describe("dragging a row", () => {
         ["Task D", "Task A", "Task B", "Task C"],
         { timeout: 20_000 },
       );
-      expect(requests).toHaveLength(1);
+      expect(requests.count).toBe(1);
     } finally {
       await second.close();
     }
@@ -850,11 +848,7 @@ test.describe("a row that is not dropped somewhere new", () => {
       })),
     );
     await signInAsOwner(context);
-    const requests: string[] = [];
-    page.on("request", (request) => {
-      if (request.url().includes("/api/office/sessions/rank"))
-        requests.push(request.url());
-    });
+    const requests = countRankRequests(page);
     await page.goto("/");
     await waitForEmployees(page, 4);
     const names = page.getByTestId("list-row-name");
@@ -891,7 +885,7 @@ test.describe("a row that is not dropped somewhere new", () => {
     // Then the order is as before, and no request was ever sent
     await expect(names).toHaveText(original);
     await page.waitForTimeout(500);
-    expect(requests).toEqual([]);
+    expect(requests.count).toBe(0);
   });
 });
 
@@ -911,11 +905,7 @@ test.describe("the rename dialog opened from a row", () => {
       })),
     );
     await signInAsOwner(context);
-    const requests: string[] = [];
-    page.on("request", (request) => {
-      if (request.url().includes("/api/office/sessions/rank"))
-        requests.push(request.url());
-    });
+    const requests = countRankRequests(page);
     await page.goto("/");
     await waitForEmployees(page, 4);
     await page.getByRole("button", { name: "Rename Task D" }).click();
@@ -942,7 +932,7 @@ test.describe("the rename dialog opened from a row", () => {
       "Task D",
     ]);
     await page.waitForTimeout(500);
-    expect(requests).toEqual([]);
+    expect(requests.count).toBe(0);
   });
 });
 
@@ -1165,11 +1155,7 @@ test.describe("Move to top and Move to bottom on the card", () => {
       })),
     );
     await signInAsOwner(context);
-    const requests: string[] = [];
-    page.on("request", (request) => {
-      if (request.url().includes("/api/office/sessions/rank"))
-        requests.push(request.postData() ?? "");
-    });
+    const requests = countRankRequests(page);
     await page.goto("/");
     await waitForEmployees(page, 4);
     await page.getByTestId("list-row").filter({ hasText: "Task C" }).click();
@@ -1190,7 +1176,7 @@ test.describe("Move to top and Move to bottom on the card", () => {
     await expect(
       place.getByRole("button", { name: "Move to top" }),
     ).toHaveAttribute("aria-disabled", "true");
-    expect(requests).toHaveLength(1);
+    expect(requests.count).toBe(1);
   });
 
   test("Move to bottom puts the row last with one request", async ({
@@ -1207,11 +1193,7 @@ test.describe("Move to top and Move to bottom on the card", () => {
       })),
     );
     await signInAsOwner(context);
-    const requests: string[] = [];
-    page.on("request", (request) => {
-      if (request.url().includes("/api/office/sessions/rank"))
-        requests.push(request.postData() ?? "");
-    });
+    const requests = countRankRequests(page);
     await page.goto("/");
     await waitForEmployees(page, 4);
     await page.getByTestId("list-row").filter({ hasText: "Task B" }).click();
@@ -1229,7 +1211,7 @@ test.describe("Move to top and Move to bottom on the card", () => {
       "Task B",
     ]);
     await expect(place).toContainText("now 4th of 4");
-    expect(requests).toHaveLength(1);
+    expect(requests.count).toBe(1);
   });
 
   test("the place counts the whole company while a repo filter hides rows", async ({

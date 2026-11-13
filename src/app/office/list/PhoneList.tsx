@@ -1,10 +1,17 @@
+import { DndContext } from "@dnd-kit/core";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import type { Ref } from "react";
 import { type SessionDto, sessionKey } from "@/shared/session";
+import { DropsHereGap } from "./DropsHereGap";
 import { ListRow } from "./ListRow";
 import { NeedsYouSection, type NeedsYouSectionProps } from "./NeedsYouSection";
 import { PhoneSearchResults } from "./PhoneSearchResults";
 import type { ListFoldState } from "./useListFolds";
 import { type PhoneSearchPool, usePhoneSearch } from "./usePhoneSearch";
+import { useRowDrag } from "./useRowDrag";
 import { type DepartureRow, WentHomeSection } from "./WentHomeSection";
 
 interface PhoneListProps {
@@ -34,6 +41,12 @@ interface PhoneListProps {
   serverOffsetMs: number;
   onSelect: (key: string) => void;
   onMoveToIdle: (key: string) => void;
+  /** Lights up the employee of the row being dragged; null when the drag ends. */
+  onDragHover: (key: string | null) => void;
+  /** Moves a row to the place of the row it was dropped on; called once per drop. */
+  onMove: (key: string, overKey: string) => void;
+  /** Why the last move was refused; null when it was not. */
+  moveError: string | null;
   /** Gives the bottom bar's Search button the field to focus. */
   searchRef: Ref<HTMLInputElement>;
   /** The viewed company's shown name. */
@@ -59,13 +72,21 @@ export function PhoneList({
   serverOffsetMs,
   onSelect,
   onMoveToIdle,
+  onDragHover,
+  onMove,
+  moveError,
   searchRef,
   companyName,
   search: pool,
 }: PhoneListProps) {
   const search = usePhoneSearch(pool);
+  // Only the grip drags, after a hold, so a swipe anywhere else scrolls the list.
+  const drag = useRowDrag({ employees, touch: true, onDragHover, onMove });
   return (
-    <div data-testid="phone-list" className="flex h-full min-h-0 flex-col">
+    <div
+      data-testid="phone-list"
+      className="relative flex h-full min-h-0 flex-col"
+    >
       {/* Above the scrolling list, so a long list never carries it away */}
       <div className="relative shrink-0 px-10 pb-6">
         <input
@@ -88,7 +109,18 @@ export function PhoneList({
           </button>
         )}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      {moveError && (
+        <p
+          role="alert"
+          className="shrink-0 border-y-2 border-warning px-12 py-6 text-xs font-bold text-warning"
+        >
+          {moveError}
+        </p>
+      )}
+      <div
+        data-testid="phone-list-scroll"
+        className="min-h-0 flex-1 overflow-y-auto"
+      >
         {search.result ? (
           <PhoneSearchResults
             result={search.result}
@@ -131,30 +163,44 @@ export function PhoneList({
                   {employees.length}
                 </span>
               </button>
-              <ul id="phone-everyone" hidden={!fold.folds.everyone}>
-                {employees.map((session) => (
-                  <ListRow
-                    key={sessionKey(session)}
-                    phone
-                    session={session}
-                    draggable={false}
-                    isNew={false}
-                    selected={sessionKey(session) === selectedKey}
-                    revealToken={null}
-                    offline={offlineMachineIds.has(session.machineId)}
-                    tagLabels={tagLabels}
-                    serverOffsetMs={serverOffsetMs}
-                    onSelect={onSelect}
-                    onMoveToIdle={onMoveToIdle}
-                    onRequestRename={() => {}}
-                  />
-                ))}
-                {employees.length === 0 && (
-                  <li className="px-12 pb-10 text-text-muted">
-                    Nobody here yet
-                  </li>
-                )}
-              </ul>
+              <DndContext {...drag.dndProps}>
+                <SortableContext
+                  items={drag.shown.map(sessionKey)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <ul
+                    ref={drag.listRef}
+                    id="phone-everyone"
+                    hidden={!fold.folds.everyone}
+                    className="relative"
+                  >
+                    {drag.shown.map((session) => (
+                      <ListRow
+                        key={sessionKey(session)}
+                        phone
+                        draggable
+                        touchGrip
+                        session={session}
+                        isNew={false}
+                        selected={sessionKey(session) === selectedKey}
+                        revealToken={null}
+                        offline={offlineMachineIds.has(session.machineId)}
+                        tagLabels={tagLabels}
+                        serverOffsetMs={serverOffsetMs}
+                        onSelect={onSelect}
+                        onMoveToIdle={onMoveToIdle}
+                        onRequestRename={() => {}}
+                      />
+                    ))}
+                    {employees.length === 0 && (
+                      <li className="px-12 pb-10 text-text-muted">
+                        Nobody here yet
+                      </li>
+                    )}
+                    {drag.gap && <DropsHereGap {...drag.gap} />}
+                  </ul>
+                </SortableContext>
+              </DndContext>
             </section>
             <WentHomeSection
               flat
@@ -166,6 +212,15 @@ export function PhoneList({
           </>
         )}
       </div>
+      {drag.chip && (
+        <span
+          role="status"
+          data-testid="drag-chip"
+          className="pointer-events-none absolute inset-x-10 bottom-12 z-5 border-2 border-accent-bright bg-[#2c2b6d] px-8 py-6 text-sm"
+        >
+          {drag.chip}
+        </span>
+      )}
     </div>
   );
 }
