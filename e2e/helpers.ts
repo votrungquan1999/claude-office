@@ -312,6 +312,19 @@ export function updateCommand(
 }
 
 /**
+ * Makes a phone show the stacked Rooms view instead of the list, as its stored device setting would.
+ * @param context - The browser context of the phone.
+ */
+export async function showRooms(context: BrowserContext): Promise<void> {
+  await context.addInitScript(() =>
+    window.localStorage.setItem(
+      "claude-office.settings",
+      JSON.stringify({ phoneView: "rooms" }),
+    ),
+  );
+}
+
+/**
  * Gives a Mac a fresh record, so the office counts it online; a Mac with no record counts as offline.
  * @param machineId - The Mac.
  * @param machineName - Its label.
@@ -365,7 +378,16 @@ export async function bottomOf(locator: Locator): Promise<number> {
  * @returns The list of today's departures.
  */
 export async function openWentHome(page: Page): Promise<Locator> {
-  const panel = page.getByTestId("list-panel");
+  // Whichever of the Mac list, the phone's list and the Rooms view's button the layout shows
+  await page
+    .locator(
+      '[data-testid="list-panel"], [data-testid="phone-list"], [data-testid="went-home-button"]',
+    )
+    .first()
+    .waitFor();
+  const panel = page.locator(
+    '[data-testid="list-panel"], [data-testid="phone-list"]',
+  );
   if ((await panel.count()) > 0) {
     const toggle = panel.getByRole("button", { name: /^Went home today/ });
     if ((await toggle.getAttribute("aria-expanded")) !== "true")

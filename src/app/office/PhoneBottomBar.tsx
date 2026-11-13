@@ -1,24 +1,30 @@
 import type { Ref } from "react";
 import { WentHomeButton } from "./WentHomeButton";
 
-export interface PhoneBottomBarProps {
+interface RoomsBarProps {
   /** How many employees of the viewed company went home today. */
   wentHomeCount: number;
   onWentHome: () => void;
   /** Gets focus back when the went-home sheet closes. */
   wentHomeRef: Ref<HTMLButtonElement>;
+}
+
+export interface PhoneBottomBarProps {
+  /** The Rooms view's went-home button; the list view has Search instead. */
+  rooms?: RoomsBarProps;
+  /** Focuses the list's search field. */
+  onSearch?: () => void;
   onHire: () => void;
 }
 
 /**
- * The phone's bottom bar: today's went-home list on the left, Hire on the right.
- * @param props - The went-home count and the two handlers.
- * @returns A bar that takes its own row below the rooms.
+ * The phone's bottom bar: Search (the list) or today's went-home list (the Rooms view) on the left, Hire on the right.
+ * @param props - The view's left button and the Hire handler.
+ * @returns A bar that takes its own row below the list or rooms.
  */
 export function PhoneBottomBar({
-  wentHomeCount,
-  onWentHome,
-  wentHomeRef,
+  rooms,
+  onSearch,
   onHire,
 }: PhoneBottomBarProps) {
   return (
@@ -28,14 +34,24 @@ export function PhoneBottomBar({
       // The home indicator must not sit on the buttons.
       style={{ paddingBottom: "max(8px, env(safe-area-inset-bottom))" }}
     >
-      <WentHomeButton
-        label="Went home"
-        count={wentHomeCount}
-        open={false}
-        onClick={onWentHome}
-        buttonRef={wentHomeRef}
-        inFlow
-      />
+      {rooms ? (
+        <WentHomeButton
+          label="Went home"
+          count={rooms.wentHomeCount}
+          open={false}
+          onClick={rooms.onWentHome}
+          buttonRef={rooms.wentHomeRef}
+          inFlow
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={onSearch}
+          className="flex min-h-[44px] min-w-[44px] items-center gap-6 border-2 border-border bg-btn-bg px-12 text-sm font-bold hover:bg-btn-hover"
+        >
+          Search
+        </button>
+      )}
       <button
         type="button"
         data-testid="hire-button"

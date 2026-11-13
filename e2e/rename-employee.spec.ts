@@ -52,9 +52,7 @@ test.describe("renaming an employee", () => {
     await signInAsOwner(phoneContext);
     const phone = await phoneContext.newPage();
     const phoneTile = (name: string) =>
-      phone
-        .getByRole("region", { name: "Idle" })
-        .getByRole("button", { name: new RegExp(name) });
+      phone.getByTestId("list-row-name").filter({ hasText: name });
 
     try {
       await phone.goto("/");

@@ -30,6 +30,8 @@ export interface NeedsYouSectionProps {
   /** Whether the rows show; the header and Move all stay either way. */
   open: boolean;
   onToggle: () => void;
+  /** On a phone: touch-sized buttons, and the section never scrolls on its own because the list around it does. */
+  phone?: boolean;
 }
 
 /** The badge on a copy's picture, by state. */
@@ -55,6 +57,7 @@ export function NeedsYouSection({
   moveAllError,
   open: sectionOpen,
   onToggle,
+  phone = false,
 }: NeedsYouSectionProps) {
   // Groups whose "and N more" the owner opened; "own" is the viewed company.
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
@@ -86,6 +89,7 @@ export function NeedsYouSection({
             selected={sessionKey(session) === selectedKey}
             companyName={"companyName" in group ? group.companyName : undefined}
             serverOffsetMs={serverOffsetMs}
+            phone={phone}
             onMoveToIdle={onMoveToIdle}
             onSelect={() =>
               onSelect(
@@ -100,7 +104,7 @@ export function NeedsYouSection({
             <button
               type="button"
               onClick={() => setExpanded(new Set(expanded).add(group.key))}
-              className="w-full px-12 py-6 text-left text-xs text-text-muted hover:bg-btn-hover"
+              className={`w-full px-12 text-left text-xs text-text-muted hover:bg-btn-hover ${phone ? "min-h-44" : "py-6"}`}
             >
               and {hidden} more
             </button>
@@ -113,15 +117,17 @@ export function NeedsYouSection({
     <section
       aria-label="Needs you"
       data-testid="needs-you"
-      className="flex max-h-[45%] shrink-0 flex-col border-b-2 border-border"
+      className={`flex shrink-0 flex-col border-b-2 border-border ${phone ? "" : "max-h-[45%]"}`}
     >
-      <div className="flex h-40 shrink-0 items-center gap-8 px-12">
+      <div
+        className={`flex shrink-0 items-center gap-8 px-12 ${phone ? "min-h-44" : "h-40"}`}
+      >
         <button
           type="button"
           aria-expanded={sectionOpen}
           aria-controls="needs-you-rows"
           onClick={onToggle}
-          className="flex items-center gap-8"
+          className={`flex items-center gap-8 ${phone ? "self-stretch" : ""}`}
         >
           <span aria-hidden="true" className="text-xs">
             {sectionOpen ? "▼" : "▶"}
@@ -138,7 +144,7 @@ export function NeedsYouSection({
           <button
             type="button"
             onClick={() => onMoveAllToIdle(needsYou.reviewItems)}
-            className="ml-auto border-2 border-room-review px-8 text-xs hover:bg-btn-hover"
+            className={`ml-auto border-2 border-room-review px-8 text-xs hover:bg-btn-hover ${phone ? "min-h-44" : ""}`}
           >
             Move all {needsYou.reviewItems.length} Review to Idle
           </button>
@@ -152,7 +158,7 @@ export function NeedsYouSection({
       <ul
         id="needs-you-rows"
         hidden={!sectionOpen}
-        className="min-h-0 overflow-y-auto"
+        className={phone ? "" : "min-h-0 overflow-y-auto"}
       >
         {renderGroup(groups[0])}
         {groups.length > 1 && (
@@ -176,6 +182,7 @@ interface NeedsYouRowProps {
   /** The company's name, shown as a chip for an employee of another company. */
   companyName?: string;
   serverOffsetMs: number;
+  phone: boolean;
   onSelect: () => void;
   onMoveToIdle: (key: string) => void;
 }
@@ -190,6 +197,7 @@ function NeedsYouRow({
   selected,
   companyName,
   serverOffsetMs,
+  phone,
   onSelect,
   onMoveToIdle,
 }: NeedsYouRowProps) {
@@ -221,7 +229,7 @@ function NeedsYouRow({
       <button
         type="button"
         onClick={onSelect}
-        className="flex min-w-0 flex-1 flex-col gap-2 text-left"
+        className={`flex min-w-0 flex-1 flex-col justify-center gap-2 text-left ${phone ? "min-h-44" : ""}`}
       >
         <span
           data-testid="needs-row-name"
@@ -245,7 +253,7 @@ function NeedsYouRow({
           type="button"
           aria-label="Move to Idle"
           onClick={() => onMoveToIdle(key)}
-          className="h-30 shrink-0 border-2 border-room-review px-8 text-xs hover:bg-btn-hover"
+          className={`shrink-0 border-2 border-room-review px-8 text-xs hover:bg-btn-hover ${phone ? "h-44 min-w-44" : "h-30"}`}
         >
           Idle
         </button>
@@ -258,7 +266,7 @@ function NeedsYouRow({
           aria-label={
             approving ? "Approve in Remote Control" : "Open Remote Control"
           }
-          className={`flex h-30 shrink-0 items-center justify-center border-2 border-border px-8 text-xs font-bold ${
+          className={`flex shrink-0 items-center justify-center border-2 border-border px-8 text-xs font-bold ${phone ? "h-44 min-w-44" : "h-30"} ${
             approving
               ? "bg-approve text-bg-dark hover:brightness-110"
               : "bg-btn-bg hover:bg-btn-hover"

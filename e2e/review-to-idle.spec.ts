@@ -52,11 +52,11 @@ test.describe("moving a Review employee to Idle", () => {
 
     try {
       await phone.goto("/");
-      await expect(
-        phone
-          .getByRole("region", { name: "Review" })
-          .getByRole("button", { name: /Audit signup emails/ }),
-      ).toBeVisible();
+      // The Mac is offline, so the row's state word says so; its Idle button marks the Review
+      const phoneIdle = phone
+        .getByTestId("list-row")
+        .getByRole("button", { name: "Move to Idle" });
+      await expect(phoneIdle).toBeVisible();
       await page.goto("/");
       await waitForEmployees(page, 1);
       const id = await page.evaluate(
@@ -78,16 +78,7 @@ test.describe("moving a Review employee to Idle", () => {
       expect(requests).toHaveLength(1);
 
       // And the phone shows it in Idle after its next poll
-      await expect(
-        phone
-          .getByRole("region", { name: "Idle" })
-          .getByRole("button", { name: /Audit signup emails/ }),
-      ).toBeVisible({ timeout: 15_000 });
-      await expect(
-        phone.getByRole("region", { name: "Review" }).getByRole("button", {
-          name: /Audit signup emails/,
-        }),
-      ).toHaveCount(0);
+      await expect(phoneIdle).toHaveCount(0, { timeout: 15_000 });
 
       // And after a reload this device still shows it Idle, as every device does
       await page.reload();

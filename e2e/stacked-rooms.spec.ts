@@ -7,6 +7,7 @@ import {
   keepOneCompany,
   overlaps,
   seedOnlineMachine,
+  showRooms,
   signInAsOwner,
   withE2eDb,
 } from "./helpers";
@@ -45,6 +46,7 @@ test.describe("the stacked rooms on a phone", () => {
     await client.connect();
     sessions = client.db(E2E_DB).collection("sessions");
     await signInAsOwner(context);
+    await showRooms(context);
   });
   test.afterEach(async () => {
     await sessions.deleteMany({});

@@ -105,6 +105,12 @@ const zoomOf = (page: Page) =>
 const panOf = (page: Page) =>
   page.evaluate(() => window.__officeTestHooks?.getPan());
 
+/** The list row of one of the seeded sessions, by the start of its desk name; the Needs you copy of the same employee is not it. */
+const rowOf = (page: Page, id: string) =>
+  page
+    .getByTestId("list-row")
+    .getByRole("button", { name: new RegExp(`^${id}:`) });
+
 async function openOffice(page: Page) {
   await page.goto("/");
   await waitForEmployees(page, 3);
@@ -147,7 +153,7 @@ async function makeCardBusy(sessions: Collection) {
  * @param sideways - True on a short screen, where the sheet scrolls as a whole and every step is reachable.
  */
 async function expectSheetFits(page: Page, sideways = false) {
-  await page.getByRole("button", { name: /^one:/ }).tap();
+  await rowOf(page, "one").tap();
   const panel = page.getByTestId("details-panel");
   await expect(panel.getByTestId("wants-to-run")).toBeVisible();
   const screen = page.viewportSize();
@@ -239,7 +245,7 @@ test.describe("the office on a phone", () => {
     // When it closes and a details sheet opens, the button stays hidden
     await drawer.getByRole("button", { name: /close/i }).tap();
     await expect(hire).toBeVisible();
-    await page.getByRole("button", { name: /^one:/ }).tap();
+    await rowOf(page, "one").tap();
     await expect(page.getByTestId("details-panel")).toBeVisible();
     await expect(hire).toBeHidden();
   });
@@ -252,7 +258,7 @@ test.describe("the office on a phone", () => {
     await openOffice(page);
 
     // When the owner opens the session's details sheet
-    await page.getByRole("button", { name: /^one:/ }).tap();
+    await rowOf(page, "one").tap();
     const link = page
       .getByTestId("details-panel")
       .getByTestId("remote-control-link");
@@ -265,28 +271,36 @@ test.describe("the office on a phone", () => {
     await expect(link).not.toHaveAttribute("target");
   });
 
-  test("fits the screen with long names and lists every session as a tile", async ({
+  test("fits the screen with long names and lists every session as a row", async ({
     page,
   }) => {
     // When the owner opens the office on a phone
     await openOffice(page);
 
-    // Then the rooms do not scroll sideways
-    const rooms = page.getByTestId("stacked-rooms");
+    // Then the list does not scroll sideways
+    const list = page.getByTestId("phone-list");
     expect(
-      await rooms.evaluate((el) => el.scrollWidth - el.clientWidth),
+      await list.evaluate((el) =>
+        Math.max(
+          ...[el, ...el.querySelectorAll("*")].map(
+            (node) => node.scrollWidth - node.clientWidth,
+          ),
+        ),
+      ),
     ).toBeLessThanOrEqual(0);
 
-    // And every session has a tile with its desk name
-    const tiles = page.getByRole("button", { name: /^(one|two|three):/ });
-    await expect(tiles).toHaveCount(3);
-    await expect(tiles.first()).toContainText("one:");
+    // And every session has a row with its desk name
+    const rows = page.getByTestId("list-row").getByRole("button", {
+      name: /^(one|two|three):/,
+    });
+    await expect(rows).toHaveCount(3);
+    await expect(rows.first()).toContainText("one:");
   });
 
-  test("tapping a tile opens that session's details, and tapping another switches to it", async ({
+  test("tapping a row opens that session's details, and tapping another switches to it", async ({
     page,
   }) => {
-    // Given the office on a phone with three sessions, the third waiting for the owner in a room above the sheet
+    // Given the office on a phone with three sessions, the third waiting for the owner in Needs you above the sheet
     await sessions.updateOne(
       { sessionId: "three" },
       { $set: { state: "waitingForYou" } },
@@ -295,8 +309,8 @@ test.describe("the office on a phone", () => {
     const panel = page.getByTestId("details-panel");
     await expect(panel).toHaveCount(0);
 
-    // When the owner taps the second tile
-    await page.getByRole("button", { name: /^two:/ }).tap();
+    // When the owner taps the second row
+    await rowOf(page, "two").tap();
 
     // Then the details panel shows that session's desk name and folder
     await expect(panel).toContainText(`two: ${LONG_NAME}`);
@@ -304,8 +318,12 @@ test.describe("the office on a phone", () => {
       "a-really-long-folder-name-for-session-two",
     );
 
-    // When the owner taps the third tile
-    await page.getByRole("button", { name: /^three:/ }).tap();
+    // When the owner taps the third row
+    // Its Needs you copy sits above the sheet; the row in Everyone is under it
+    await page
+      .getByTestId("needs-row")
+      .getByRole("button", { name: /^three:/ })
+      .tap();
 
     // Then the panel switches to it, and the page still does not scroll sideways
     await expect(panel).toContainText(`three: ${LONG_NAME}`);
@@ -315,7 +333,7 @@ test.describe("the office on a phone", () => {
     expect(overflow).toBeLessThanOrEqual(0);
   });
 
-  test("keeps the went-home list behind its button until it is tapped, so it does not cover the office", async ({
+  test("keeps the went-home list folded at the bottom of the list until its header is tapped, so it does not crowd the sessions", async ({
     page,
   }) => {
     // Given a session that ended a moment ago
@@ -336,13 +354,15 @@ test.describe("the office on a phone", () => {
     await openOffice(page);
     const entry = page.getByRole("button", { name: /Closed task/ });
 
-    // Then only the button shows, with the count
-    const button = page.getByTestId("went-home-button");
-    await expect(button).toHaveText(/^Went home\s*1$/);
+    // Then only the folded header shows, with the count, and the bar has no Went home button
+    const header = page.getByRole("button", { name: /Went home today/ });
+    await expect(header).toHaveText(/Went home today\s*1$/);
+    await expect(header).toHaveAttribute("aria-expanded", "false");
     await expect(entry).toBeHidden();
+    await expect(page.getByTestId("went-home-button")).toHaveCount(0);
 
-    // When the owner taps the button
-    await button.tap();
+    // When the owner taps the header
+    await header.tap();
 
     // Then the departure is listed, and tapping it opens its details
     await expect(entry).toBeVisible();
@@ -555,7 +575,7 @@ test.describe("the office on a sideways phone", () => {
     await expectSheetFits(page, true);
   });
 
-  test("shows the same company bar and stacked rooms as upright, and its drawer opens as a sheet that survives turning the phone upright", async ({
+  test("shows the same company bar and list sections as upright, and its drawer opens as a sheet that survives turning the phone upright", async ({
     page,
   }) => {
     // When the owner opens the office sideways
@@ -566,15 +586,10 @@ test.describe("the office on a sideways phone", () => {
     await expect(page.getByTestId("company-tab")).toHaveCount(1);
     await expect(page.getByTestId("compact-company-button")).toHaveCount(0);
 
-    // And the same four rooms as upright are there, and the page itself does not scroll
-    for (const name of [
-      "Needs permission",
-      "Waiting for you",
-      "Working",
-      "Idle",
-    ]) {
-      await expect(page.getByRole("region", { name })).toHaveCount(1);
-    }
+    // And the list and the same bottom bar as upright are there, and the page itself does not scroll
+    await expect(page.getByTestId("phone-list")).toBeVisible();
+    await expect(page.getByRole("region", { name: "Everyone" })).toHaveCount(1);
+    await expect(page.getByTestId("phone-bottom-bar")).toBeVisible();
     expect(
       await page.evaluate(
         () => document.documentElement.scrollHeight - window.innerHeight,

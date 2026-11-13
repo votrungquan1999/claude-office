@@ -14,11 +14,8 @@ import {
 
 const HOUR = 3_600_000;
 
-/** The employee tiles of the stacked rooms, not the room headers. */
-const roomTiles = (page: Page) =>
-  page.getByTestId("stacked-rooms").getByRole("button", {
-    name: /, (Needs permission|Waiting for you|Working|Idle)$/,
-  });
+/** The employees of the viewed company in the list. */
+const listRows = (page: Page) => page.getByTestId("list-row");
 
 test.describe("on a desktop", () => {
   // Reads the tab's five labelled counts at a fixed desktop size.
@@ -224,7 +221,7 @@ test("the browser tab title counts the employees that need you in every company 
   }
 });
 
-test("clicking a company tab shows only that company's employees, went-home list and room tiles, and the first company is shown to begin with", async ({
+test("clicking a company tab shows only that company's employees, went-home list and list rows, and the first company is shown to begin with", async ({
   context,
   page,
 }) => {
@@ -283,29 +280,25 @@ test("clicking a company tab shows only that company's employees, went-home list
     await page.goto("/");
     await openWentHome(page);
 
-    // Then the first company by name, personal, is shown with its two employees, cards and its departure only
+    // Then the first company by name, personal, is shown with its two employees, rows and its departure only
     await expect.poll(employees).toBe(2);
-    await expect(roomTiles(page)).toHaveCount(2);
+    await expect(listRows(page)).toHaveCount(2);
     await expect.poll(async () => (await departures()).length).toBe(1);
     expect((await departures())[0]).toContain("pgone");
     await expect(
       page.locator('[data-company-name="personal"]'),
     ).toHaveAttribute("aria-current", "page");
 
-    // When the owner closes the list, opens a personal employee's details and then clicks the workspace tab
-    await page
-      .getByTestId("went-home-drawer")
-      .getByRole("button", { name: "Close", exact: true })
-      .click();
-    await roomTiles(page).first().click();
+    // When the owner opens a personal employee's details and then clicks the workspace tab
+    await listRows(page).first().getByTestId("list-row-name").click();
     await expect(page.getByTestId("details-panel")).toBeVisible();
     await page.locator('[data-company-name="workspace"]').click();
 
-    // Then the panel closes, and only workspace's employee, card and departure remain
+    // Then the panel closes, and only workspace's employee, row and departure remain
     await expect(page.getByTestId("details-panel")).toHaveCount(0);
     // The switch is immediate, not waiting for the next poll
     await expect.poll(employees, { timeout: 500 }).toBe(1);
-    await expect(roomTiles(page)).toHaveCount(1);
+    await expect(listRows(page)).toHaveCount(1);
     await openWentHome(page);
     await expect.poll(async () => (await departures())[0]).toContain("wgone");
     expect(await departures()).toHaveLength(1);
@@ -393,7 +386,7 @@ test("the drawer lists every Mac and company with five counts, greys the offline
     // Given the office is open on personal with a session's details showing
     await page.goto("/");
     await expect.poll(employees).toBe(1);
-    await roomTiles(page).first().click();
+    await listRows(page).first().getByTestId("list-row-name").click();
     await expect(page.getByTestId("details-panel")).toBeVisible();
 
     // When the owner opens the drawer

@@ -28,6 +28,7 @@ import {
 } from "@/office/wentHome";
 import { employeeName } from "@/shared/employee-name";
 import type { FolderDto } from "@/shared/folders";
+import type { ReviewItem } from "@/shared/needs-you";
 import { resolveSelection } from "@/shared/overview";
 import {
   type ChangesResponse,
@@ -48,6 +49,7 @@ import { postEmployeeName, settleEmployeeNames } from "./employeeName";
 import { HireDialog, type HireMac } from "./HireDialog";
 import { companyRowsOf } from "./list/companyRows";
 import { ListPanel } from "./list/ListPanel";
+import { PhoneList } from "./list/PhoneList";
 import { settleRanks } from "./list/pendingRanks";
 import { SearchPalette } from "./list/SearchPalette";
 import { useListModel } from "./list/useListModel";
@@ -76,6 +78,7 @@ import {
 import { PhoneBottomBar } from "./PhoneBottomBar";
 import { RoomSigns } from "./RoomSigns";
 import { settleReviewMoves } from "./reviewSeen";
+import { useDeviceSettings } from "./settings/deviceSettings";
 import { TagFilter } from "./TagFilter";
 import { useOfficeChanges } from "./useOfficeChanges";
 import { useTabTitle } from "./useTabTitle";
@@ -702,6 +705,8 @@ export function OfficeView() {
   });
   useTabTitle(needsYou.total);
   const palette = useSearchPalette(!isPhone);
+  const { phoneView } = useDeviceSettings();
+  const phoneSearchRef = useRef<HTMLInputElement>(null);
   /**
    * Opens the original of a Needs you copy, switching company first when it lives elsewhere.
    * @param key - The employee to open.
@@ -779,6 +784,30 @@ export function OfficeView() {
     focusWentHomeOnMount.current = true;
   };
 
+  // What the Mac's list panel and the phone's list show alike
+  const sharedList = {
+    fold: listFold,
+    needsYou: {
+      needsYou,
+      viewedCompanyKey: companyKey,
+      onSelect: selectNeedsYouRow,
+      onMoveAllToIdle: (items: ReviewItem[]) =>
+        void moveReviewsToIdle(items.map(sessionKey), true),
+      moveAllError: refused.all
+        ? "Could not move to Idle. Try again."
+        : undefined,
+    },
+    employees: everyone,
+    selectedKey,
+    departures: wentHomeRows,
+    onSelectDeparture: (key: string) => selectEmployee(key, "list"),
+    offlineMachineIds: offlineIds,
+    tagLabels: tagFilterView.labels,
+    serverOffsetMs,
+    onSelect: (key: string) => selectEmployee(key, "list"),
+    onMoveToIdle: (key: string) => void moveToIdle(key),
+  };
+
   return (
     <div className="flex h-full w-full flex-col">
       <CompanyStrip
@@ -821,7 +850,15 @@ export function OfficeView() {
                 </div>
               </div>
               <div className="min-h-0 flex-1">
-                {loaded && (
+                {/* The list needs no assets, so it shows with the first answer and its search field is there when Search is pressed. */}
+                {phoneView === "list" && lastUpdatedAt !== null && (
+                  <PhoneList
+                    {...sharedList}
+                    onSelect={openDetails}
+                    searchRef={phoneSearchRef}
+                  />
+                )}
+                {phoneView === "rooms" && loaded && (
                   <StackedRooms
                     tiles={tiles}
                     selectedKey={selectedKey}
@@ -998,28 +1035,10 @@ export function OfficeView() {
         </div>
         {!isPhone && (
           <ListPanel
-            fold={listFold}
-            needsYou={{
-              needsYou,
-              viewedCompanyKey: companyKey,
-              onSelect: selectNeedsYouRow,
-              onMoveAllToIdle: (items) =>
-                void moveReviewsToIdle(items.map(sessionKey), true),
-              moveAllError: refused.all
-                ? "Could not move to Idle. Try again."
-                : undefined,
-            }}
+            {...sharedList}
             companyName={viewedCompany?.name ?? ""}
-            employees={everyone}
             seenKeys={seen.seenKeys}
-            selectedKey={selectedKey}
             reveal={reveal}
-            departures={wentHomeRows}
-            onSelectDeparture={(key) => selectEmployee(key, "list")}
-            offlineMachineIds={offlineIds}
-            tagLabels={tagFilterView.labels}
-            serverOffsetMs={serverOffsetMs}
-            onSelect={(key) => selectEmployee(key, "list")}
             onSearch={palette.openPalette}
             canDrag={hasMouse}
             onMove={(key, overKey) => void moveRow(key, overKey)}
@@ -1028,7 +1047,6 @@ export function OfficeView() {
               officeState.hoveredAgentId =
                 key === null ? null : (sceneSync.agentIdOf(key) ?? null);
             }}
-            onMoveToIdle={(key) => void moveToIdle(key)}
             onRename={renameEmployee}
           />
         )}
@@ -1057,9 +1075,17 @@ export function OfficeView() {
         !selectedSession &&
         !tagSheetOpen && (
           <PhoneBottomBar
-            wentHomeCount={departures.length}
-            onWentHome={openWentHome}
-            wentHomeRef={phoneWentHomeRef}
+            rooms={
+              phoneView === "rooms"
+                ? {
+                    wentHomeCount: departures.length,
+                    onWentHome: openWentHome,
+                    wentHomeRef: phoneWentHomeRef,
+                  }
+                : undefined
+            }
+            // Inside the click so iOS opens the keyboard
+            onSearch={() => phoneSearchRef.current?.focus()}
             onHire={() => setHireOpen(true)}
           />
         )}

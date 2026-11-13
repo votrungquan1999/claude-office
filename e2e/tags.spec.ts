@@ -10,6 +10,7 @@ import {
   overlaps,
   type SeedSession,
   seedSessions,
+  showRooms,
   signInAsOwner,
   waitForEmployees,
 } from "./helpers";
@@ -345,6 +346,7 @@ test.describe("repo tag filter on a phone", () => {
       })),
     ]);
     await signInAsOwner(context);
+    await showRooms(context);
   });
 
   test.afterEach(async () => {

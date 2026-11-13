@@ -128,6 +128,18 @@ test.describe("the list beside the office on a desktop", () => {
     );
     await expect(status("Fourth placed")).toHaveText(/^Review · 18m \d\ds$/);
 
+    // And a Needs permission row's link reads "Approve ↗" where the others show only the arrow
+    await expect(
+      rows
+        .filter({ hasText: "Second placed" })
+        .getByRole("link", { name: "Approve in Remote Control" }),
+    ).toHaveText("Approve ↗");
+    await expect(
+      rows
+        .filter({ hasText: "First placed" })
+        .getByRole("link", { name: /Remote Control/ }),
+    ).toHaveText("↗");
+
     // And a row with Remote Control links to it, one without has no link
     await expect(
       rows
@@ -1350,8 +1362,11 @@ test.describe("the place on a phone's card", () => {
     await page.goto("/");
     await waitForEmployees(page, 4);
 
-    // When the owner taps Task C's tile in the stacked rooms
-    await page.getByRole("button", { name: "Task C, Working" }).click();
+    // When the owner taps Task C's row in the phone's list
+    await page
+      .getByTestId("list-row")
+      .getByRole("button", { name: /Task C/ })
+      .click();
 
     // Then the card reads "now 3rd of 4", sits below Open Remote Control, and both buttons are inside the screen
     const place = page.getByTestId("list-place");

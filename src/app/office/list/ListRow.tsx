@@ -1,7 +1,7 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { useEffect, useRef } from "react";
 import { CharacterMugShot } from "@/office/components/CharacterMugShot";
-import { remoteControlUrl } from "@/office/remoteControl";
+import { remoteControlOf } from "@/office/remoteControl";
 import { lookOf } from "@/office/sceneSync";
 import { employeeName } from "@/shared/employee-name";
 import { type SessionDto, sessionKey } from "@/shared/session";
@@ -31,6 +31,8 @@ export interface ListRowProps {
   onMoveToIdle: (key: string) => void;
   /** Asks for the rename dialog of this employee. */
   onRequestRename: (key: string) => void;
+  /** On a phone: touch-sized buttons, a grip that only shows, and no new dot, repo tags or rename button. */
+  phone?: boolean;
 }
 
 /** The colours of a row's state bar and word. */
@@ -83,6 +85,7 @@ export function ListRow({
   onSelect,
   onMoveToIdle,
   onRequestRename,
+  phone = false,
 }: ListRowProps) {
   // The clock lives in the row, so only the rows re-render every second.
   const nowMs = useNow() + serverOffsetMs;
@@ -108,15 +111,10 @@ export function ListRow({
       : formatElapsed(nowMs - Date.parse(session.stateSince));
   const rest = [inState, context].filter(Boolean).join(" · ");
   // A window with no process, or still opening, has nothing to link to.
-  const linkable = !(
-    session.notRunning ||
-    session.waitingAtMac ||
-    session.starting
-  );
-  const remoteControl = linkable
-    ? remoteControlUrl(session.bridgeSessionId)
-    : null;
+  const remoteControl = remoteControlOf(session);
   const approving = session.state === "needsPermission" && !offline;
+  // The phone's square button has room only for the arrow.
+  const labelled = approving && !phone;
   const tags = session.tags ?? [];
   // A positioned row with its own background paints over the rows it passes; without them its neighbours show through.
   const rowLook = sortable.isDragging
@@ -140,15 +138,16 @@ export function ListRow({
       data-testid="list-row"
       data-key={key}
       aria-current={selected ? "true" : undefined}
-      className={`flex items-stretch gap-8 border-b border-bg-thumb px-8 py-8 ${offline ? "opacity-60" : ""} ${rowLook}`}
+      className={`flex items-stretch gap-8 border-b border-bg-thumb px-8 py-8 ${phone ? "min-h-56" : ""} ${offline ? "opacity-60" : ""} ${rowLook}`}
     >
-      {draggable && (
+      {(draggable || phone) && (
         <span
           role="img"
+          data-testid="row-grip"
           aria-label="Drag to reorder"
           aria-describedby={sortable.attributes["aria-describedby"]}
           title="Drag to reorder"
-          className="flex w-18 shrink-0 cursor-grab items-center justify-center text-text-muted"
+          className={`flex shrink-0 items-center justify-center text-text-muted ${phone ? "w-28" : "w-18 cursor-grab"}`}
         >
           <svg
             aria-hidden="true"
@@ -183,10 +182,10 @@ export function ListRow({
       <button
         type="button"
         onClick={() => onSelect(key)}
-        className="flex min-w-0 flex-1 flex-col gap-4 text-left"
+        className={`flex min-w-0 flex-1 flex-col justify-center gap-4 text-left ${phone ? "min-h-44" : ""}`}
       >
         <span className="flex w-full items-start gap-6">
-          {isNew && (
+          {isNew && !phone && (
             <span
               role="img"
               aria-label="new"
@@ -200,7 +199,7 @@ export function ListRow({
           >
             {name}
           </span>
-          {tags.length > 0 && (
+          {tags.length > 0 && !phone && (
             <span className="flex shrink-0 gap-4 text-xs">
               {tags.slice(0, SHOWN_TAGS).map((tag) => (
                 <span
@@ -229,19 +228,21 @@ export function ListRow({
           type="button"
           aria-label="Move to Idle"
           onClick={() => onMoveToIdle(key)}
-          className="h-30 shrink-0 self-center border-2 border-room-review px-8 text-xs hover:bg-btn-hover"
+          className={`shrink-0 self-center border-2 border-room-review px-8 text-xs hover:bg-btn-hover ${phone ? "h-44 min-w-44" : "h-30"}`}
         >
           Idle
         </button>
       )}
-      <button
-        type="button"
-        aria-label={`Rename ${name}`}
-        onClick={() => onRequestRename(key)}
-        className="size-30 shrink-0 self-center border-2 border-border bg-btn-bg hover:bg-btn-hover"
-      >
-        ✎
-      </button>
+      {!phone && (
+        <button
+          type="button"
+          aria-label={`Rename ${name}`}
+          onClick={() => onRequestRename(key)}
+          className="size-30 shrink-0 self-center border-2 border-border bg-btn-bg hover:bg-btn-hover"
+        >
+          ✎
+        </button>
+      )}
       {remoteControl && (
         <a
           href={remoteControl}
@@ -250,13 +251,13 @@ export function ListRow({
           aria-label={
             approving ? "Approve in Remote Control" : "Open Remote Control"
           }
-          className={`flex size-30 shrink-0 items-center justify-center self-center border-2 border-border ${
+          className={`flex shrink-0 items-center justify-center self-center border-2 border-border ${phone ? "size-44" : labelled ? "h-30 px-8 text-xs font-bold" : "size-30"} ${
             approving
               ? "bg-approve text-bg-dark hover:brightness-110"
               : "bg-btn-bg hover:bg-btn-hover"
           }`}
         >
-          ↗
+          {labelled ? "Approve ↗" : "↗"}
         </a>
       )}
     </li>
