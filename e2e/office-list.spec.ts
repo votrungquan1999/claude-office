@@ -1592,3 +1592,118 @@ test.describe("a Review copy in Needs you", () => {
     expect(requests).toHaveLength(1);
   });
 });
+
+test.describe("Move all Review to Idle", () => {
+  test.use({ viewport: { width: 1280, height: 800 }, hasTouch: false });
+
+  test("moves every listed Review employee, also beyond the cap and in another company, with one request, and a second device follows", async ({
+    browser,
+    context,
+    page,
+  }) => {
+    // Given five Review employees here (one beyond the cap of four), one in another company, and a waiting one
+    await seedOtherCompanies();
+    const review = (name: string, extra: Record<string, unknown> = {}) => ({
+      sessionId: name,
+      deskName: `Task ${name}`,
+      state: "review",
+      stateSince: new Date(Date.now() - 5 * MIN),
+      ...extra,
+    });
+    await seed([
+      ...["a", "b", "c", "d", "e"].map((name, i) =>
+        review(name, { rank: "bcdef"[i] }),
+      ),
+      review("lab", {
+        machineId: "m2",
+        machineName: "Zed Mac",
+        cwd: "/Users/q/lab/x",
+      }),
+      { sessionId: "w", deskName: "Task W", state: "waitingForYou", rank: "g" },
+    ]);
+    await signInAsOwner(context);
+    const requests: string[] = [];
+    page.on("request", (request) => {
+      if (request.url().includes("/api/office/sessions/review-seen"))
+        requests.push(request.postData() ?? "");
+    });
+    const second = await browser.newContext({
+      baseURL: E2E_BASE_URL,
+      viewport: { width: 1280, height: 800 },
+      hasTouch: false,
+    });
+    await signInAsOwner(second);
+    const otherPage = await second.newPage();
+    try {
+      await otherPage.goto("/");
+      await waitForEmployees(otherPage, 6);
+      await page.goto("/");
+      await waitForEmployees(page, 6);
+      const moveAll = page.getByRole("button", {
+        name: "Move all 6 Review to Idle",
+      });
+
+      // When the owner presses it once
+      await moveAll.click();
+
+      // Then every Review employee reads Idle, the button is gone and one request carried six items
+      await expect(
+        page.getByTestId("list-everyone").getByTestId("list-row-status"),
+      ).toHaveText([/^Idle/, /^Idle/, /^Idle/, /^Idle/, /^Idle/, /^Waiting/]);
+      await expect(moveAll).toHaveCount(0);
+      expect(requests).toHaveLength(1);
+      expect(JSON.parse(requests[0]).items).toHaveLength(6);
+
+      // And a second device shows them Idle after its next poll
+      await expect(
+        otherPage.getByTestId("list-everyone").getByTestId("list-row-status"),
+      ).toHaveText([/^Idle/, /^Idle/, /^Idle/, /^Idle/, /^Idle/, /^Waiting/], {
+        timeout: 20_000,
+      });
+    } finally {
+      await second.close();
+    }
+  });
+});
+
+test.describe("a refused Move all", () => {
+  test.use({ viewport: { width: 1280, height: 800 }, hasTouch: false });
+
+  test("puts every Review back and says so in the Needs you section", async ({
+    context,
+    page,
+  }) => {
+    // Given two Review employees and a server that refuses the move
+    await seed(
+      ["a", "b"].map((name, i) => ({
+        sessionId: name,
+        deskName: `Task ${name}`,
+        state: "review",
+        rank: "bc"[i],
+        stateSince: new Date(Date.now() - 5 * MIN),
+      })),
+    );
+    await signInAsOwner(context);
+    await page.route("**/api/office/sessions/review-seen", (route) =>
+      route.fulfill({ status: 500, body: "{}" }),
+    );
+    await page.goto("/");
+    await waitForEmployees(page, 2);
+
+    // When the owner presses Move all
+    await page
+      .getByRole("button", { name: "Move all 2 Review to Idle" })
+      .click();
+
+    // Then the section says it failed and both stay in Review
+    await expect(page.getByTestId("needs-you").getByRole("alert")).toHaveText(
+      "Could not move to Idle. Try again.",
+    );
+    await expect(
+      page.getByTestId("list-everyone").getByTestId("list-row-status"),
+    ).toHaveText([/^Review/, /^Review/]);
+    await expect(
+      page.getByRole("button", { name: "Move all 2 Review to Idle" }),
+    ).toBeVisible();
+  });
+});

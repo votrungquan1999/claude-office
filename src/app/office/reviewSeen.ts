@@ -61,19 +61,22 @@ export function settleReviewMoves(
 /**
  * Sends the Reviews the owner moved to Idle to the server.
  * @param request - The Reviews, each with the `stateSince` the owner saw.
- * @returns True when the server took the request, false on any refusal or network failure.
+ * @returns How many Reviews the server marked (fewer than sent when some had already moved on), or undefined on any refusal or network failure.
  */
 export async function postReviewSeen(
   request: ReviewSeenRequest,
-): Promise<boolean> {
+): Promise<number | undefined> {
   try {
     const response = await fetch("/api/office/sessions/review-seen", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(request),
     });
-    return response.ok;
+    if (!response.ok) return undefined;
+    const body: unknown = await response.json().catch(() => undefined);
+    const marked = (body as { marked?: unknown } | undefined)?.marked;
+    return typeof marked === "number" ? marked : request.items.length;
   } catch {
-    return false;
+    return undefined;
   }
 }

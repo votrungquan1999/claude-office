@@ -3,7 +3,7 @@ import { CharacterMugShot } from "@/office/components/CharacterMugShot";
 import { remoteControlOf } from "@/office/remoteControl";
 import { lookOf } from "@/office/sceneSync";
 import { employeeName } from "@/shared/employee-name";
-import type { NeedsYou } from "@/shared/needs-you";
+import type { NeedsYou, ReviewItem } from "@/shared/needs-you";
 import { type SessionDto, sessionKey } from "@/shared/session";
 import { formatElapsed } from "../elapsed";
 import { useNow } from "../useNow";
@@ -23,6 +23,10 @@ export interface NeedsYouSectionProps {
   onSelect: (key: string, companyKey: string | null) => void;
   /** Moves a Review employee to Idle. */
   onMoveToIdle: (key: string) => void;
+  /** Moves every listed Review employee to Idle in one request. */
+  onMoveAllToIdle: (items: ReviewItem[]) => void;
+  /** Why the last move of all Reviews was refused; absent when it was not. */
+  moveAllError?: string;
 }
 
 /** The badge on a copy's picture, by state. */
@@ -44,6 +48,8 @@ export function NeedsYouSection({
   serverOffsetMs,
   onSelect,
   onMoveToIdle,
+  onMoveAllToIdle,
+  moveAllError,
 }: NeedsYouSectionProps) {
   // Groups whose "and N more" the owner opened; "own" is the viewed company.
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
@@ -112,7 +118,21 @@ export function NeedsYouSection({
         >
           {needsYou.total}
         </span>
+        {needsYou.reviewItems.length > 0 && (
+          <button
+            type="button"
+            onClick={() => onMoveAllToIdle(needsYou.reviewItems)}
+            className="ml-auto border-2 border-room-review px-8 text-xs hover:bg-btn-hover"
+          >
+            Move all {needsYou.reviewItems.length} Review to Idle
+          </button>
+        )}
       </div>
+      {moveAllError && (
+        <p role="alert" className="px-12 pb-6 text-xs font-bold text-warning">
+          {moveAllError}
+        </p>
+      )}
       <ul className="min-h-0 overflow-y-auto">
         {renderGroup(groups[0])}
         {groups.length > 1 && (

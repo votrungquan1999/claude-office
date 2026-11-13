@@ -60,6 +60,7 @@ import {
   type PendingRanks,
   settleRanks,
 } from "./list/pendingRanks";
+import { useReviewMoves } from "./list/useReviewMoves";
 import { useRowMoves } from "./list/useRowMoves";
 import { useSeenRows } from "./list/useSeenRows";
 import {
@@ -79,7 +80,6 @@ import { PhoneBottomBar } from "./PhoneBottomBar";
 import { RoomSigns } from "./RoomSigns";
 import {
   applyReviewMoves,
-  postReviewSeen,
   type ReviewMoves,
   settleReviewMoves,
 } from "./reviewSeen";
@@ -232,8 +232,6 @@ export function OfficeView() {
   const [overrides, setOverrides] = useState<ModeOverrides>(new Map());
   const [names, setNames] = useState<NameOverrides>(new Map());
   const [switchError, setSwitchError] = useState<string | null>(null);
-  // The session whose last move to Idle was refused.
-  const [moveRefusedKey, setMoveRefusedKey] = useState<string | null>(null);
   // The company whose last rename was refused; its own state so a switch error never wipes it.
   const [renameError, setRenameError] = useState<{
     machineId: string;
@@ -520,33 +518,14 @@ export function OfficeView() {
     });
   };
 
-  /** Shows a Review as Idle at once and sends the move. */
-  const moveToIdle = async (key: string) => {
-    const session = dataRef.current.sessions.get(key);
-    if (session?.state !== "review" || !session.stateSince) return;
-    const { machineId, sessionId, stateSince } = session;
-    setMoveRefusedKey(null);
-    commit(
-      {
-        ...dataRef.current,
-        reviewMoves: new Map(dataRef.current.reviewMoves).set(key, {
-          stateSince,
-          movedAt: new Date(Date.now() + serverOffsetMs).toISOString(),
-        }),
-      },
-      false,
-    );
-    const sent = await postReviewSeen({
-      items: [{ machineId, sessionId, stateSince }],
-    });
-    if (sent) return;
-    // A move the answers already settled has nothing to take back.
-    if (dataRef.current.reviewMoves.get(key)?.stateSince !== stateSince) return;
-    const reverted = new Map(dataRef.current.reviewMoves);
-    reverted.delete(key);
-    commit({ ...dataRef.current, reviewMoves: reverted }, false);
-    setMoveRefusedKey(key);
-  };
+  const { moveReviewsToIdle, refused } = useReviewMoves({
+    getSessions: () => dataRef.current.sessions,
+    getMoves: () => dataRef.current.reviewMoves,
+    setMoves: (reviewMoves) =>
+      commit({ ...dataRef.current, reviewMoves }, false),
+    serverOffsetMs,
+  });
+  const moveToIdle = (key: string) => moveReviewsToIdle([key]);
 
   /** Shows the owner's name for an employee at once and sends it; a refused request puts the old name back. */
   const renameEmployee = async (key: string, name: string) => {
@@ -1115,9 +1094,11 @@ export function OfficeView() {
                 ? renameEmployee(selectedKey, name)
                 : Promise.resolve(false)
             }
-            onMoveToIdle={() => selectedKey && void moveToIdle(selectedKey)}
+            onMoveToIdle={() =>
+              selectedKey ? moveToIdle(selectedKey) : undefined
+            }
             moveToIdleError={
-              selectedKey && selectedKey === moveRefusedKey
+              selectedKey && !refused.all && refused.keys.has(selectedKey)
                 ? "Could not move to Idle. Try again."
                 : undefined
             }
@@ -1139,6 +1120,11 @@ export function OfficeView() {
               needsYou,
               viewedCompanyKey: companyKey,
               onSelect: selectNeedsYouRow,
+              onMoveAllToIdle: (items) =>
+                void moveReviewsToIdle(items.map(sessionKey), true),
+              moveAllError: refused.all
+                ? "Could not move to Idle. Try again."
+                : undefined,
             }}
             companyName={viewedCompany?.name ?? ""}
             employees={everyone}

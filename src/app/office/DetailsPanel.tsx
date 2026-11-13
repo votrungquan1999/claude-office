@@ -52,8 +52,8 @@ interface DetailsPanelProps {
   onDismiss?: (endRunning: boolean) => void;
   /** Sends the owner's name for the employee; resolves true when the server stored it. */
   onRename?: (name: string) => Promise<boolean>;
-  /** Moves the employee's Review to Idle. */
-  onMoveToIdle?: () => void;
+  /** Moves the employee's Review to Idle; the button waits until the returned promise settles. */
+  onMoveToIdle?: () => void | Promise<void>;
   /** Why the last move to Idle was refused; absent when it was not. */
   moveToIdleError?: string;
   /** Where the employee stands in the company's list; absent for one that went home. */
@@ -239,6 +239,7 @@ function Card({
   // The browser's clock moved onto the server's, so a phone clock minutes off still shows right times.
   const nowMs = useNow() + serverOffsetMs;
   const [renaming, setRenaming] = useState(false);
+  const [moving, setMoving] = useState(false);
   const automaticName = employeeName({
     deskName: session.deskName,
     cwd: session.cwd,
@@ -366,7 +367,15 @@ function Card({
           <div className="flex shrink-0 flex-col gap-1">
             <button
               type="button"
-              onClick={onMoveToIdle}
+              disabled={moving}
+              onClick={async () => {
+                setMoving(true);
+                try {
+                  await onMoveToIdle?.();
+                } finally {
+                  setMoving(false);
+                }
+              }}
               className="border-2 border-bg-dark bg-btn-bg px-3 py-3 text-center font-bold uppercase shadow-[3px_3px_0_var(--color-bg-dark)] hover:bg-btn-hover [@media(max-height:500px)]:py-1"
             >
               Move to Idle

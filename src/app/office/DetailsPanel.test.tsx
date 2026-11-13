@@ -954,6 +954,31 @@ describe("the details panel", () => {
     expect(onMoveToIdle).toHaveBeenCalledTimes(1);
   });
 
+  it("sends one request when Move to Idle is clicked twice while the first is in flight", async () => {
+    // Given a Review employee whose move has not been answered yet
+    let answer: () => void = () => {};
+    const onMoveToIdle = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          answer = resolve;
+        }),
+    );
+    openWithWake(session({ state: "review" }), { onMoveToIdle });
+    const button = screen.getByRole("button", { name: "Move to Idle" });
+
+    // When the owner clicks it twice
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    // Then one request is sent and the button waits
+    expect(onMoveToIdle).toHaveBeenCalledTimes(1);
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+
+    // And once the request is answered the button works again
+    await act(async () => answer());
+    expect((button as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it("offers Move to Idle for a Review employee whose Mac is offline, and for no other state", () => {
     // Given a Review employee on an offline Mac
     open(session({ state: "review" }), ["m1"]);

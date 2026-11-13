@@ -39,7 +39,11 @@ interface ListPanelProps {
   /** What the Needs you section lists, and how its rows open employees. */
   needsYou: Pick<
     NeedsYouSectionProps,
-    "needsYou" | "viewedCompanyKey" | "onSelect"
+    | "needsYou"
+    | "viewedCompanyKey"
+    | "onSelect"
+    | "onMoveAllToIdle"
+    | "moveAllError"
   >;
   /** The viewed company's shown name. */
   companyName: string;

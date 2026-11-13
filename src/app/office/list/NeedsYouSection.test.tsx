@@ -46,6 +46,7 @@ function show(
       serverOffsetMs={0}
       onSelect={onSelect}
       onMoveToIdle={() => {}}
+      onMoveAllToIdle={() => {}}
     />,
   );
 }
