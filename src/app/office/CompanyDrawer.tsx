@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { needsYouCount } from "@/shared/needs-you";
 import type { Overview } from "@/shared/overview";
 import { CountRow } from "./CompanyStrip";
 import { renameToSend } from "./renameRule";
@@ -102,11 +103,7 @@ export function CompanyDrawer({
     .filter((mac) => mac.online)
     .flatMap((mac) => mac.companies)
     .filter((entry) => entry.company.key !== selectedKey)
-    .reduce(
-      (total, { counts }) =>
-        total + counts.needsPermission + counts.waitingForYou,
-      0,
-    );
+    .reduce((total, { counts }) => total + needsYouCount(counts), 0);
   return (
     <div
       role="dialog"

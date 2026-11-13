@@ -5,6 +5,7 @@ import {
   type SwitchedOffFolder,
 } from "./companies";
 import type { FolderDto } from "./folders";
+import { needsYouCount } from "./needs-you";
 import type { MachineDto, SessionDto } from "./session";
 
 /** Sessions in a company by room; Thinking counts as Working. */
@@ -19,7 +20,7 @@ export interface CompanyCounts {
 export interface CompanyOverview {
   company: Company;
   counts: CompanyCounts;
-  /** Sessions here need the owner: Needs permission or Waiting for you, on an online Mac. */
+  /** Sessions here need the owner: Needs permission, Waiting for you or Review, on an online Mac. */
   needsYou: boolean;
   /** A live session lives here, or one went home today; only these show in the strip. */
   active: boolean;
@@ -99,7 +100,7 @@ export function buildOverview(input: OverviewInput): Overview {
   for (const entry of overviews.values()) {
     entry.needsYou =
       !input.offlineMachineIds.has(entry.company.machineId) &&
-      entry.counts.needsPermission + entry.counts.waitingForYou > 0;
+      needsYouCount(entry.counts) > 0;
   }
   const macs = [...names]
     .map(([machineId, machineName]) => ({

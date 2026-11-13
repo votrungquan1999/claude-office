@@ -51,10 +51,10 @@ test.describe("the stacked rooms on a phone", () => {
     await client.close();
   });
 
-  test("lists the employees in five stacked rooms, the rooms that need the owner first, each with its count and task names, and the tab's badge adds up the two rooms that need the owner, instead of the pixel office", async ({
+  test("lists the employees in five stacked rooms, the rooms that need the owner first, each with its count and task names, and the tab's badge adds up the three rooms that need the owner, instead of the pixel office", async ({
     page,
   }) => {
-    // Given employees in four rooms and none idle
+    // Given employees in Needs permission, Waiting for you, Review and Working, and none idle
     await seed(sessions, [
       ["p1", "needsPermission", "Fix login redirect"],
       ["w1", "waitingForYou", "Review PR comments"],
@@ -94,10 +94,10 @@ test.describe("the stacked rooms on a phone", () => {
     await expect(header("Review")).toContainText("1");
     await expect(header("Working")).toContainText("2");
 
-    // And the tab's badge is the sum of the two rooms that need the owner
+    // And the tab's badge is the sum of the three rooms that need the owner
     await expect(
       page.getByTestId("company-tab").getByTestId("company-badge"),
-    ).toHaveText("3");
+    ).toHaveText("4");
 
     // And each room shows its employees' task names, an empty room says so
     await expect(

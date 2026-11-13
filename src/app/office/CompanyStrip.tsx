@@ -1,5 +1,6 @@
 import { type Ref, useEffect, useRef, useState } from "react";
 import { ROOM_COLORS, Room } from "@/office/rooms";
+import { needsYouCount } from "@/shared/needs-you";
 import type { CompanyCounts, MacOverview } from "@/shared/overview";
 import { renameToSend } from "./renameRule";
 
@@ -35,7 +36,7 @@ interface CountSpec {
   color: string;
 }
 
-/** The four counts in room order, with the room's own color. */
+/** The five counts in room order, with the room's own color. */
 export const COUNT_SPECS: readonly CountSpec[] = [
   { room: "working", label: "working", color: ROOM_COLORS[Room.Working] },
   {
@@ -48,11 +49,12 @@ export const COUNT_SPECS: readonly CountSpec[] = [
     label: "waiting for you",
     color: ROOM_COLORS[Room.WaitingForYou],
   },
+  { room: "review", label: "review", color: ROOM_COLORS[Room.Review] },
   { room: "idle", label: "idle", color: ROOM_COLORS[Room.Idle] },
 ];
 
 /**
- * The four counts of a company, each readable on its own.
+ * The five counts of a company, each readable on its own.
  * @param props - The counts.
  * @returns A row of colored numbers; a zero is dimmed.
  */
@@ -135,11 +137,7 @@ export function CompanyStrip({
           // Only companies that need the owner on an online Mac add to the badge.
           const hiddenNeeds = hiddenTabs
             .filter((entry) => entry.needsYou)
-            .reduce(
-              (total, { counts }) =>
-                total + counts.needsPermission + counts.waitingForYou,
-              0,
-            );
+            .reduce((total, { counts }) => total + needsYouCount(counts), 0);
           return (
             <div
               key={mac.machineId}
@@ -255,7 +253,7 @@ export function CompanyStrip({
                         className="px-4 text-xs font-bold text-bg-dark"
                         style={{ background: "var(--color-room-permission)" }}
                       >
-                        {counts.needsPermission + counts.waitingForYou}
+                        {needsYouCount(counts)}
                       </span>
                     )}
                   </button>

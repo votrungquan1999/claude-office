@@ -20,10 +20,10 @@ const roomTiles = (page: Page) =>
   });
 
 test.describe("on a desktop", () => {
-  // Reads the tab's four labelled counts at a fixed desktop size.
+  // Reads the tab's five labelled counts at a fixed desktop size.
   test.use({ viewport: { width: 1600, height: 1200 }, hasTouch: false });
 
-  test("the company strip shows each Mac's active companies with four counts and a badge, greys the offline Mac, and leaves out a company that only went home before today", async ({
+  test("the company strip shows each Mac's active companies with five counts and a badge that includes Review, greys the offline Mac, and leaves out a company that only went home before today", async ({
     context,
     page,
   }) => {
@@ -74,6 +74,7 @@ test.describe("on a desktop", () => {
       session("air", "t", `${home}/claude-office`, "thinking"),
       session("air", "f", `${home}/other-app`, "waitingForYou"),
       session("air", "i", home, "idle"),
+      session("air", "r", `${home}/other-app`, "review"),
       session("air", "p", "/Users/q/ubet-devenv/workspace", "needsPermission"),
       session("air", "gone", "/Users/q/ubet-devenv/workspace", "wentHome", {
         hadPrompt: true,
@@ -84,6 +85,7 @@ test.describe("on a desktop", () => {
         endedAt: new Date(now - 30 * HOUR),
       }),
       session("mini", "m", "/Users/q/lab", "needsPermission"),
+      session("mini", "mr", "/Users/q/lab", "review"),
     ]);
     await signInAsOwner(context);
 
@@ -100,13 +102,14 @@ test.describe("on a desktop", () => {
         ),
       ).resolves.toEqual(["personal", "workspace", "lab"]);
 
-      // And personal counts Thinking as Working and shows a badge for the one waiting for the owner
+      // And personal counts Thinking as Working and shows a badge for the one waiting and the one in Review
       const personal = page.locator('[data-company-name="personal"]');
       await expect(personal.getByLabel("2 working")).toBeVisible();
       await expect(personal.getByLabel("0 needs permission")).toBeVisible();
       await expect(personal.getByLabel("1 waiting for you")).toBeVisible();
+      await expect(personal.getByLabel("1 review")).toBeVisible();
       await expect(personal.getByLabel("1 idle")).toBeVisible();
-      await expect(personal.getByTestId("company-badge")).toHaveText("1");
+      await expect(personal.getByTestId("company-badge")).toHaveText("2");
 
       // And the company with a departure today keeps its live count, with a badge for the permission request
       const workspace = page.locator('[data-company-name="workspace"]');
@@ -117,6 +120,7 @@ test.describe("on a desktop", () => {
       const mini = page.getByTestId("mac-group-mini");
       await expect(mini).toHaveAttribute("data-offline", "true");
       await expect(mini.getByLabel("1 needs permission")).toBeVisible();
+      await expect(mini.getByLabel("1 review")).toBeVisible();
       await expect(mini.getByTestId("company-badge")).toHaveCount(0);
     } finally {
       await seedFolders(db.collection("folders"), []);
@@ -236,7 +240,7 @@ test("clicking a company tab shows only that company's employees, went-home list
   }
 });
 
-test("the drawer lists every Mac and company with four counts, greys the offline Mac, picks a company, and closes with Escape returning focus to its button", async ({
+test("the drawer lists every Mac and company with five counts, greys the offline Mac, picks a company, and closes with Escape returning focus to its button", async ({
   context,
   page,
 }) => {
@@ -284,7 +288,9 @@ test("the drawer lists every Mac and company with four counts, greys the offline
     row("air", "p1", "/Users/q/personal/a", "idle"),
     row("air", "w1", "/Users/q/workspace", "needsPermission"),
     row("air", "w2", "/Users/q/workspace/x", "idle"),
+    row("air", "w3", "/Users/q/workspace/x", "review"),
     row("mini", "l1", "/Users/q/lab", "needsPermission"),
+    row("mini", "l2", "/Users/q/lab", "review"),
   ]);
   await signInAsOwner(context);
   const employees = () =>
@@ -307,14 +313,16 @@ test("the drawer lists every Mac and company with four counts, greys the offline
     await expect(page.getByTestId("details-panel")).toHaveCount(0);
     const unused = drawer.getByTestId("drawer-company-unused");
     await expect(unused.getByLabel("0 working")).toBeVisible();
+    await expect(unused.getByLabel("0 review")).toBeVisible();
     await expect(unused.getByLabel("0 idle")).toBeVisible();
 
-    // And the offline Mac is greyed with its four counts, and the header counts what waits elsewhere
+    // And the offline Mac is greyed with its five counts, and the header counts what waits elsewhere, Review included
     const mini = drawer.getByTestId("drawer-mac-mini");
     await expect(mini).toHaveAttribute("data-offline", "true");
     await expect(mini.getByLabel("1 needs permission")).toBeVisible();
+    await expect(mini.getByLabel("1 review")).toBeVisible();
     await expect(drawer.getByTestId("elsewhere-need-you")).toHaveText(
-      "1 elsewhere need you",
+      "2 elsewhere need you",
     );
 
     // When the owner picks workspace
@@ -328,8 +336,8 @@ test("the drawer lists every Mac and company with four counts, greys the offline
     await expect(
       page.locator('[data-company-name="workspace"]'),
     ).toHaveAttribute("aria-current", "page");
-    // Workspace has two employees against personal's one, so the office really switched
-    await expect.poll(employees).toBe(2);
+    // Workspace has three employees against personal's one, so the office really switched
+    await expect.poll(employees).toBe(3);
     await expect(trigger).toBeFocused();
 
     // When the owner reopens it and presses Escape

@@ -36,7 +36,9 @@ function fixture() {
     live("m1", "c", "/p/x", "idle"),
     live("m1", "d", "/q/y", "needsPermission"),
     live("m1", "e", "/q/y", "waitingForYou"),
+    live("m1", "g", "/q/y", "review"),
     live("m2", "f", "/p/x", "needsPermission"),
+    live("m2", "h", "/p/x", "review"),
   ];
   const folders = [
     { machineId: "m1", path: "/p", companyMode: true },
@@ -60,7 +62,7 @@ function fixture() {
 describe("the company drawer", () => {
   afterEach(cleanup);
 
-  it("lists every Mac and company with four counts including zeros, greys the offline Mac, says when a Mac has no companies, and counts what needs the owner elsewhere", () => {
+  it("lists every Mac and company with five counts including zeros, greys the offline Mac, says when a Mac has no companies, and counts what needs the owner elsewhere", () => {
     // Given the viewed company is p on the first Studio
     const overview = fixture();
     const viewed = overview.macs[0].companies.find(
@@ -89,10 +91,14 @@ describe("the company drawer", () => {
     // And a company with nothing live is listed with zero counts
     const empty = within(screen.getByTestId("drawer-company-empty"));
     expect(
-      ["0 working", "0 needs permission", "0 waiting for you", "0 idle"].map(
-        (label) => empty.getByLabelText(label).textContent,
-      ),
-    ).toEqual(["0", "0", "0", "0"]);
+      [
+        "0 working",
+        "0 needs permission",
+        "0 waiting for you",
+        "0 review",
+        "0 idle",
+      ].map((label) => empty.getByLabelText(label).textContent),
+    ).toEqual(["0", "0", "0", "0", "0"]);
 
     // And a company folds Thinking into Working
     const p = within(screen.getByTestId("drawer-mac-m1")).getByTestId(
@@ -100,17 +106,18 @@ describe("the company drawer", () => {
     );
     expect(within(p).getByLabelText("2 working")).toBeTruthy();
 
-    // And the offline Mac is greyed but keeps its four counts
+    // And the offline Mac is greyed but keeps its five counts
     const offline = screen.getByTestId("drawer-mac-m2");
     expect(offline.getAttribute("data-offline")).toBe("true");
     expect(within(offline).getByLabelText("1 needs permission")).toBeTruthy();
+    expect(within(offline).getByLabelText("1 review")).toBeTruthy();
     // And the greying is visible: the offline Mac is half opaque, the online one fully
     expect(offline.style.opacity).toBe("0.5");
     expect(screen.getByTestId("drawer-mac-m1").style.opacity).toBe("1");
 
-    // And the header counts what needs the owner in other companies on online Macs only
+    // And the header counts what needs the owner in other companies on online Macs only, Review included
     expect(screen.getByTestId("elsewhere-need-you").textContent).toBe(
-      "2 elsewhere need you",
+      "3 elsewhere need you",
     );
   });
 

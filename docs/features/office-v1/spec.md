@@ -83,7 +83,7 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 - A session's company comes from its start folder (the folder it was started in, which does not follow `cd`). Nested known start folders group under the outermost one. The project is the start folder's sub-path below the company folder, and is empty when the session started at the company folder.
 - Companies are worked out in the browser from per-Mac folder records plus the start folders of the sessions it has; a company key is the Mac plus the folder, so the same folder on two Macs is two companies with their own switches and names.
 - The agent records each start folder once in a `folders` collection (`machineId`, `path`, `companyMode`); records have no expiry, so a Mac left off for a week keeps its switches and names, and a Mac with no machine record and no session stays hidden until it reports. A record may also carry the owner's name for the company (`displayName`); the agent never writes it.
-- The bar shows, per Mac, a group: the Mac's name with a fold toggle, then a tab for each company that has a live session or one that went home today (and always the viewed company). On a desktop, an iPad and a narrow window each tab has four counts (Working including Thinking, Needs permission, Waiting for you, Idle) and a badge when sessions there need the owner (Needs permission or Waiting for you). On a real phone a tab shows only the name and that badge. An offline Mac is greyed: counts shown, no badge.
+- The bar shows, per Mac, a group: the Mac's name with a fold toggle, then a tab for each company that has a live session or one that went home today (and always the viewed company). On a desktop, an iPad and a narrow window each tab has five counts (Working including Thinking, Needs permission, Waiting for you, Review, Idle) and a badge when sessions there need the owner (Needs permission, Waiting for you or Review). On a real phone a tab shows only the name and that badge. An offline Mac is greyed: counts shown, no badge.
 - Tab names that do not fit are cut with "…" and the full name shows on hover; the drawer shows the full name, wrapped.
 - Counts cover the whole company, never the repo filter and never went-home sessions.
 - A company tab filters the office, the went-home list and the phone's stacked rooms to that company; a Mac's sessions never share a company with another Mac's. Pressing the company already viewed changes nothing, so the repo filter stays.
@@ -96,14 +96,14 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 
 - The "All companies" button sits at the bar's right edge and stays there however many companies there are; only the tabs scroll. On a real phone it is a grid icon button labelled "All companies".
 - A Mac's name in the bar is a fold toggle. Folding shows the Mac as one label, `Mac · N companies` (N counts the tabs hidden; with none hidden only the Mac's name shows), and hides its tabs except the viewed company's, which always stays visible.
-- A folded Mac shows a needs-you badge beside its label that adds up Needs permission and Waiting for you of the hidden companies, only for companies on an online Mac. New work on a folded Mac never unfolds it; the label and badge update on the next poll.
+- A folded Mac shows a needs-you badge beside its label that adds up Needs permission, Waiting for you and Review of the hidden companies, only for companies on an online Mac. New work on a folded Mac never unfolds it; the label and badge update on the next poll.
 - Picking a company hidden by a fold (from the drawer) shows that company's tab and hides the one before; the Mac stays folded.
 - Folded Macs are remembered per browser in `localStorage` (`claude-office.collapsed-macs`, a list of machine ids). Missing, unreadable or unavailable storage means every Mac is open; a Mac starts open; ids of unknown Macs are ignored.
 
 ### The drawer
 
 - The bar's "All companies" button opens a drawer above the office: a 420 px panel on the right on a desktop, a full-width bottom sheet on a phone, an iPad or a narrow window. It closes on a pick, the × button or Escape. Opening it closes an open details card.
-- It lists every Mac and every company with the same four counts and the same needs-you badge, offline Macs greyed, and "N elsewhere need you" (needs permission plus waiting for you in other companies on online Macs), hidden at zero.
+- It lists every Mac and every company with the same five counts and the same needs-you badge, offline Macs greyed, and "N elsewhere need you" (needs permission, waiting for you and review in other companies on online Macs), hidden at zero.
 - A company's row has a pencil (see [Renaming a company](#renaming-a-company)) and a company-mode switch (see below). Picking a row selects that company.
 - Only one right drawer is open at a time: opening All companies closes Went home and the other way round. On a desktop the companies drawer floats over the office; the status line ("Updated N min ago", "Connection lost") moves to its left so the drawer never covers it.
 
@@ -273,7 +273,7 @@ Design background lives in `docs/brainstorm/`. Where it disagrees with this file
 
 ### iPad and narrow windows
 
-- An iPad, a touch tablet up to 1024 px wide and any mouse window up to 768 px wide (for example 700x800) keep the pixel office, panning and pinch-zoom, the select-only strip of employee cards at the bottom, and tabs with four counts and the "All companies" text.
+- An iPad, a touch tablet up to 1024 px wide and any mouse window up to 768 px wide (for example 700x800) keep the pixel office, panning and pinch-zoom, the select-only strip of employee cards at the bottom, and tabs with five counts and the "All companies" text.
 - A short but wide mouse window (for example 800x400) gets the desktop layout: no card strip, and the details card, drawers and repo panel sit beside the office.
 - On the iPad, tablet and narrow-window screens the details card, the companies drawer and the repo chip panel are bottom sheets, Went home is the bottom-left button opening a sheet, and Hire floats at the bottom-right. The phone's bottom bar and stacked rooms never appear.
 - An iPad in Split View at phone width counts as a real phone and gets the stacked rooms.

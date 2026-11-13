@@ -12,7 +12,7 @@ import { CompanyStrip } from "./CompanyStrip";
 
 const company = (
   name: string,
-  counts: [number, number, number, number],
+  counts: [number, number, number, number, number],
   options: { needsYou?: boolean; active?: boolean; machineId?: string } = {},
 ) => ({
   company: {
@@ -27,8 +27,8 @@ const company = (
     working: counts[0],
     needsPermission: counts[1],
     waitingForYou: counts[2],
-    review: 0,
-    idle: counts[3],
+    review: counts[3],
+    idle: counts[4],
   },
   needsYou: options.needsYou ?? false,
   active: options.active ?? true,
@@ -37,7 +37,7 @@ const company = (
 describe("the company strip", () => {
   afterEach(cleanup);
 
-  it("shows a tab per active company with four labelled counts, a badge only when the owner is needed on an online Mac, and greys an offline Mac", () => {
+  it("shows a tab per active company with five labelled counts, a badge only when the owner is needed on an online Mac, and greys an offline Mac", () => {
     // Given an online Mac with an urgent company, a quiet one with nothing live, and an offline Mac
     const macs: MacOverview[] = [
       {
@@ -46,8 +46,8 @@ describe("the company strip", () => {
         online: true,
         switchedOff: [],
         companies: [
-          company("personal", [3, 1, 1, 5], { needsYou: true }),
-          company("old", [0, 0, 0, 0], { active: false }),
+          company("personal", [3, 1, 1, 2, 5], { needsYou: true }),
+          company("old", [0, 0, 0, 0, 0], { active: false }),
         ],
       },
       {
@@ -55,7 +55,7 @@ describe("the company strip", () => {
         machineName: "Mini",
         online: false,
         switchedOff: [],
-        companies: [company("lab", [0, 2, 0, 0], { machineId: "m2" })],
+        companies: [company("lab", [0, 2, 0, 0, 0], { machineId: "m2" })],
       },
       {
         machineId: "m3",
@@ -86,16 +86,20 @@ describe("the company strip", () => {
     ]);
     expect(screen.queryByText("Empty")).toBeNull();
 
-    // And each tab carries the four counts in room order
+    // And each tab carries the five counts in room order
     const personal = within(tabs[0]);
     expect(
-      ["3 working", "1 needs permission", "1 waiting for you", "5 idle"].map(
-        (label) => personal.getByLabelText(label).textContent,
-      ),
-    ).toEqual(["3", "1", "1", "5"]);
+      [
+        "3 working",
+        "1 needs permission",
+        "1 waiting for you",
+        "2 review",
+        "5 idle",
+      ].map((label) => personal.getByLabelText(label).textContent),
+    ).toEqual(["3", "1", "1", "2", "5"]);
 
-    // And the urgent company shows a badge of how many need the owner
-    expect(personal.getByTestId("company-badge").textContent).toBe("2");
+    // And the urgent company shows a badge of how many need the owner, Review included
+    expect(personal.getByTestId("company-badge").textContent).toBe("4");
 
     // And the offline Mac is greyed, keeps its counts and shows no badge
     const mini = screen.getByTestId("mac-group-m2");
@@ -118,7 +122,10 @@ describe("the company strip", () => {
         machineName: "Air",
         online: true,
         switchedOff: [],
-        companies: [company("a", [1, 0, 0, 0]), company("b", [0, 0, 0, 1])],
+        companies: [
+          company("a", [1, 0, 0, 0, 0]),
+          company("b", [0, 0, 0, 0, 1]),
+        ],
       },
     ];
 
@@ -167,14 +174,17 @@ describe("the company strip", () => {
         machineName: "Air",
         online: true,
         switchedOff: [],
-        companies: [company("a", [1, 0, 0, 0]), company("b", [0, 0, 0, 1])],
+        companies: [
+          company("a", [1, 0, 0, 0, 0]),
+          company("b", [0, 0, 0, 0, 1]),
+        ],
       },
       {
         machineId: "m2",
         machineName: "Mini",
         online: true,
         switchedOff: [],
-        companies: [company("lab", [1, 0, 0, 0], { machineId: "m2" })],
+        companies: [company("lab", [1, 0, 0, 0, 0], { machineId: "m2" })],
       },
     ];
     const toggles: string[] = [];
@@ -232,14 +242,14 @@ describe("the company strip", () => {
         machineName: "Air",
         online: true,
         switchedOff: [],
-        companies: [company("a", [1, 0, 0, 0])],
+        companies: [company("a", [1, 0, 0, 0, 0])],
       },
       {
         machineId: "m2",
         machineName: "Mini",
         online: true,
         switchedOff: [],
-        companies: [company("lab", [1, 0, 0, 0], { machineId: "m2" })],
+        companies: [company("lab", [1, 0, 0, 0, 0], { machineId: "m2" })],
       },
     ];
 
@@ -273,9 +283,9 @@ describe("the company strip", () => {
         online: true,
         switchedOff: [],
         companies: [
-          company("here", [0, 1, 1, 0], { needsYou: true }),
-          company("urgent", [0, 2, 1, 0], { needsYou: true }),
-          company("quiet", [3, 0, 0, 0]),
+          company("here", [0, 1, 1, 0, 0], { needsYou: true }),
+          company("urgent", [0, 2, 1, 2, 0], { needsYou: true }),
+          company("quiet", [3, 0, 0, 0, 0]),
         ],
       },
     ];
@@ -301,7 +311,7 @@ describe("the company strip", () => {
     expect(screen.getByTestId("mac-toggle-m1").textContent).toContain(
       "Air · 2 companies",
     );
-    expect(screen.getByTestId("mac-badge-m1").textContent).toBe("3");
+    expect(screen.getByTestId("mac-badge-m1").textContent).toBe("5");
   });
 
   it("shows only the caret and the Mac's name on a folded Mac whose one tab is the viewed one", () => {
@@ -312,7 +322,7 @@ describe("the company strip", () => {
         machineName: "Air",
         online: true,
         switchedOff: [],
-        companies: [company("here", [1, 0, 0, 0])],
+        companies: [company("here", [1, 0, 0, 0, 0])],
       },
     ];
 
@@ -333,7 +343,7 @@ describe("the company strip", () => {
     expect(screen.queryByTestId("mac-badge-m1")).toBeNull();
   });
 
-  it("shows no tab on a folded Mac viewed elsewhere, badges all its needs-you counts, and gives an offline folded Mac no badge", () => {
+  it("shows no tab on a folded Mac viewed elsewhere, badges all its needs-you counts with Review, and gives an offline folded Mac no badge", () => {
     // Given a folded online Mac with two urgent companies, a folded offline Mac, and the viewed company on a third Mac
     const macs: MacOverview[] = [
       {
@@ -342,8 +352,8 @@ describe("the company strip", () => {
         online: true,
         switchedOff: [],
         companies: [
-          company("a", [0, 1, 0, 0], { needsYou: true }),
-          company("b", [0, 0, 2, 0], { needsYou: true }),
+          company("a", [0, 1, 0, 0, 0], { needsYou: true }),
+          company("b", [0, 0, 2, 3, 0], { needsYou: true }),
         ],
       },
       {
@@ -351,14 +361,14 @@ describe("the company strip", () => {
         machineName: "Mini",
         online: false,
         switchedOff: [],
-        companies: [company("lab", [0, 4, 0, 0], { machineId: "m2" })],
+        companies: [company("lab", [0, 4, 0, 1, 0], { machineId: "m2" })],
       },
       {
         machineId: "m3",
         machineName: "Pro",
         online: true,
         switchedOff: [],
-        companies: [company("here", [1, 0, 0, 0], { machineId: "m3" })],
+        companies: [company("here", [1, 0, 0, 0, 0], { machineId: "m3" })],
       },
     ];
 
@@ -374,13 +384,13 @@ describe("the company strip", () => {
       />,
     );
 
-    // Then only the viewed tab shows, Air badges 3, and Mini has no badge
+    // Then only the viewed tab shows, Air badges 6 (a permission, 2 waiting, 3 review), and Mini has no badge
     expect(
       screen
         .getAllByTestId("company-tab")
         .map((tab) => tab.getAttribute("data-company-name")),
     ).toEqual(["here"]);
-    expect(screen.getByTestId("mac-badge-m1").textContent).toBe("3");
+    expect(screen.getByTestId("mac-badge-m1").textContent).toBe("6");
     expect(screen.queryByTestId("mac-badge-m2")).toBeNull();
   });
 
@@ -393,7 +403,7 @@ describe("the company strip", () => {
         machineName: "Air",
         online: true,
         switchedOff: [],
-        companies: [company(long, [1, 0, 0, 0])],
+        companies: [company(long, [1, 0, 0, 0, 0])],
       },
     ];
 
@@ -415,7 +425,7 @@ describe("the company strip", () => {
 
   it("includes the viewed company's tab even when nothing is live in it, and renders an empty strip without a crash", () => {
     // Given a company with nothing live that is the viewed one
-    const quiet = company("quiet", [0, 0, 0, 0], { active: false });
+    const quiet = company("quiet", [0, 0, 0, 0, 0], { active: false });
     const macs: MacOverview[] = [
       {
         machineId: "m1",
@@ -456,7 +466,7 @@ describe("the company strip", () => {
     expect(screen.getByRole("navigation", { name: "Companies" })).toBeTruthy();
   });
 
-  it("shows Other as the last tab of its Mac with its four counts, from sessions started in a switched-off folder", () => {
+  it("shows Other as the last tab of its Mac with its five counts, from sessions started in a switched-off folder", () => {
     // Given g is off, with a company below it and two sessions started at g itself
     const T = "2026-11-09T10:00:00.000Z";
     const session = (id: string, cwd: string, state: "working" | "idle") => ({
@@ -507,7 +517,7 @@ describe("renaming a company from its tab", () => {
 
   /** One Mac with a renamed company (Harbor, folder q), an unnamed one (p) and Other. */
   const macsOf = (): MacOverview[] => {
-    const named = company("q", [1, 0, 0, 0]);
+    const named = company("q", [1, 0, 0, 0, 0]);
     named.company.name = "Harbor";
     return [
       {
@@ -517,11 +527,11 @@ describe("renaming a company from its tab", () => {
         switchedOff: [],
         companies: [
           named,
-          company("p", [0, 0, 0, 1]),
+          company("p", [0, 0, 0, 0, 1]),
           {
-            ...company("Other", [0, 0, 0, 1]),
+            ...company("Other", [0, 0, 0, 0, 1]),
             company: {
-              ...company("Other", [0, 0, 0, 1]).company,
+              ...company("Other", [0, 0, 0, 0, 1]).company,
               path: null,
               other: true,
             },
@@ -720,14 +730,14 @@ describe("renaming a company from its tab", () => {
   });
 
   it("on a phone a tab shows the name and the needs-you badge only, no counts", () => {
-    // Given a company with four counts that needs the owner
+    // Given a company with five counts that needs the owner
     const macs: MacOverview[] = [
       {
         machineId: "m1",
         machineName: "Air",
         online: true,
         switchedOff: [],
-        companies: [company("personal", [3, 1, 2, 5], { needsYou: true })],
+        companies: [company("personal", [3, 1, 2, 2, 5], { needsYou: true })],
       },
     ];
 
@@ -744,9 +754,9 @@ describe("renaming a company from its tab", () => {
       />,
     );
 
-    // Then the tab holds the name and a badge of 3, with no labelled counts
+    // Then the tab holds the name and a badge of 5 that includes Review, with no labelled counts
     const tab = screen.getByTestId("company-tab");
-    expect(tab.textContent).toBe("personal3");
+    expect(tab.textContent).toBe("personal5");
     expect(within(tab).queryAllByRole("img")).toHaveLength(0);
   });
 
@@ -758,7 +768,7 @@ describe("renaming a company from its tab", () => {
         machineName: "Air",
         online: true,
         switchedOff: [],
-        companies: [company("personal", [1, 0, 0, 0])],
+        companies: [company("personal", [1, 0, 0, 0, 0])],
       },
     ];
     const props = {

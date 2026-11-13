@@ -20,6 +20,31 @@ const live = (
 });
 
 describe("the company overview", () => {
+  it("marks a company that has only a Review employee as needing the owner, unless its Mac is offline", () => {
+    // Given two Macs, each with one company whose only employee is in Review, and the second Mac offline
+    const overview = buildOverview({
+      folders: [
+        { machineId: "m1", path: "/p", companyMode: true },
+        { machineId: "m2", path: "/q", companyMode: true },
+      ],
+      sessions: [
+        live("m1", "a", "/p/x", "review"),
+        live("m2", "b", "/q/x", "review"),
+      ],
+      machines: [
+        { machineId: "m1", machineName: "Air", lastSeenAt: T },
+        { machineId: "m2", machineName: "Mini", lastSeenAt: T },
+      ],
+      offlineMachineIds: new Set(["m2"]),
+      departures: [],
+    });
+
+    // Then the online Mac's company needs the owner and the offline one does not
+    const [air, mini] = overview.macs.map((mac) => mac.companies[0]);
+    expect([air.counts.review, air.needsYou]).toEqual([1, true]);
+    expect([mini.counts.review, mini.needsYou]).toEqual([1, false]);
+  });
+
   it("marks a company active from a departure alone, with all counts at zero", () => {
     // Given a company whose only session has gone home
     const gone = { ...live("m1", "f", "/p/y", "wentHome"), endedAt: T };
