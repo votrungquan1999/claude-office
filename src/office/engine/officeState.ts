@@ -1059,18 +1059,18 @@ export class OfficeState {
     }
   }
 
-  /** Puts the persistent "…" bubble of a Waiting for you employee over its head. */
-  showAsksBubble(id: number): void {
+  /** Puts a bubble over the employee that stays until its state changes: "…" for Waiting for you, a checkmark for Review. */
+  showStateBubble(id: number, type: "asks" | "review"): void {
     const ch = this.characters.get(id);
     if (ch) {
-      ch.bubbleType = "asks";
+      ch.bubbleType = type;
       ch.bubbleTimer = 0;
     }
   }
 
-  clearAsksBubble(id: number): void {
+  clearStateBubble(id: number, type: "asks" | "review"): void {
     const ch = this.characters.get(id);
-    if (ch && ch.bubbleType === "asks") {
+    if (ch && ch.bubbleType === type) {
       ch.bubbleType = null;
       ch.bubbleTimer = 0;
     }

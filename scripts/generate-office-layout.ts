@@ -229,12 +229,49 @@ function furnishAsSignOff({ c0, width, top }: RoomBox): void {
   stayPutRooms.push(Room.NeedsPermission);
 }
 
+/**
+ * The gallery: finished work on the wall, a stander on the floor beside it, a table with a mug and two seats at it.
+ * @param box - The room to furnish.
+ */
+function furnishAsGallery({ c0, width, top }: RoomBox): void {
+  const wallRow = wallRowOf(top);
+  // Wall pieces start above the wall row; the doorway in the wall stays clear
+  place("LARGE_PAINTING", c0 + 1, wallRow - 1);
+  place("SMALL_PAINTING", c0 + 3, wallRow - 1);
+  place("LARGE_PAINTING", c0 + 7, wallRow - 1);
+  place("SMALL_PAINTING_2", c0 + 9, wallRow - 1);
+  place("PLANT", c0 + 1, wallRow + 8);
+  place("PLANT", c0 + width - 2, wallRow + 8);
+  const tableCol = c0 + 5;
+  const tableRow = wallRow + 4;
+  place("COFFEE_TABLE", tableCol, tableRow);
+  // The mug lies on the table's front row, or it would float above the table
+  place("COFFEE", tableCol + 1, tableRow + 1);
+  place("CUSHIONED_CHAIR_FRONT", tableCol, tableRow - 1);
+  place("CUSHIONED_CHAIR_SIDE:left", tableCol + 2, tableRow);
+  // The west chair is decoration: no place lists it
+  place("CUSHIONED_CHAIR_SIDE", tableCol - 1, tableRow + 1);
+  // Places in fill order: the stander, then the two sitters. The stander is two tiles tall and stands one row below the wall, under the small painting and clear of the room sign, facing the viewer.
+  spots.push(
+    {
+      col: c0 + 3,
+      row: wallRow + 2,
+      facing: "down",
+      pose: "stand",
+      standing: true,
+    },
+    { col: tableCol, row: tableRow - 1, facing: "down", pose: "sit" },
+    { col: tableCol + 2, row: tableRow, facing: "left", pose: "sit" },
+  );
+  stayPutRooms.push(Room.Review);
+}
+
 /** How each room is furnished; one entry per room. */
 const FURNISH: Record<Room, (box: RoomBox) => void> = {
   [Room.Working]: furnishWithDesks,
   [Room.NeedsPermission]: furnishAsSignOff,
   [Room.WaitingForYou]: furnishAsWaitingArea,
-  [Room.Review]: furnishWithDesks,
+  [Room.Review]: furnishAsGallery,
   [Room.Idle]: furnishAsLounge,
 };
 for (const box of ROOMS) FURNISH[box.room](box);

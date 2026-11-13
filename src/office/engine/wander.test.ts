@@ -146,3 +146,60 @@ describe("Needs permission employees queue at the counter", () => {
     expect([...visited].sort()).toEqual([...new Set(placed)].sort());
   });
 });
+
+describe("Review employees stay calm in the gallery", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("keeps six of them, the three without a place included, inside the room and still for half an hour, never typing, and lets one walk out to Idle", () => {
+    // Given six employees in Review: three take the places, three stand on the floor
+    vi.spyOn(Math, "random").mockImplementation(seededRandom(3));
+    const office = loadOffice();
+    const sync = createSceneSync(office, { smoothMs: 0 });
+    const review = [0, 1, 2, 3, 4, 5].map((n) => session(n, "review"));
+    sync.apply(review, { firstLoad: true });
+    const { cols, areaTiles } = office.getLayout();
+    const tileOf = () =>
+      office.getCharacters().map((ch) => `${ch.tileCol},${ch.tileRow}`);
+    const placed = tileOf();
+
+    // When half an hour passes
+    const visited = new Set<string>();
+    for (let step = 0; step < 30 * 60 * 10; step++) {
+      office.update(0.1);
+      for (const tile of tileOf()) visited.add(tile);
+    }
+
+    // Then the first stands under the paintings and nobody left the tile it was put on, nor is anyone typing
+    const characters = office.getCharacters();
+    expect([characters[0].pose, characters[0].standing]).toEqual([
+      "stand",
+      true,
+    ]);
+    expect([...visited].sort()).toEqual([...new Set(placed)].sort());
+    expect(
+      characters
+        .filter((ch) => ch.seatId !== null)
+        .every((ch) => ch.pose !== "type"),
+    ).toBe(true);
+    expect(
+      characters.filter((ch) => ch.seatId === null).every((ch) => ch.standing),
+    ).toBe(true);
+    expect(
+      characters.every(
+        (ch) => areaTiles?.[ch.tileRow * cols + ch.tileCol] === "review",
+      ),
+    ).toBe(true);
+
+    // And when the owner moves one to Idle it walks out to the Idle room
+    sync.apply([session(0, "idle"), ...review.slice(1)]);
+    for (let step = 0; step < 600; step++) {
+      office.update(0.1);
+      sync.tick();
+    }
+    expect(office.seatZone(office.getCharacters()[0].seatId ?? "")).toBe(
+      "idle",
+    );
+  });
+});

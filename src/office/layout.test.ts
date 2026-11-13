@@ -10,7 +10,7 @@ const SEATS_PER_ROOM: Record<string, number> = {
   working: 24,
   needsPermission: 7,
   waitingForYou: 8,
-  review: 12,
+  review: 3,
   idle: 6,
 };
 
@@ -355,5 +355,103 @@ describe("the Needs permission sign-off counter", () => {
     expect(places.every((seat) => seat.seatCol >= counterEdge)).toBe(true);
     const distances = places.map((seat) => seat.seatCol - counterEdge);
     expect(distances).toEqual([...distances].sort((a, b) => a - b));
+  });
+});
+
+describe("the Review gallery", () => {
+  it("shows finished work on the wall and has one stander beside it first and two people at a table, and after it only Working has computers and only the sign-off counter has a desk outside Working", () => {
+    // Given the generated office
+    const office = loadOffice();
+    const { cols, areaTiles, furniture } = office.getLayout();
+    const roomAt = (col: number, row: number) =>
+      areaTiles?.[row * cols + col] ?? null;
+    const places = [...office.seats.entries()]
+      .filter(([uid]) => office.seatZone(uid) === "review")
+      .map(([, seat]) => seat);
+    const inReview = furniture
+      .filter(
+        (item) =>
+          roomAt(item.col, item.row) === "review" ||
+          // A wall piece stands on the wall rows above the room's floor
+          roomAt(item.col, item.row + 1) === "review" ||
+          roomAt(item.col, item.row + 2) === "review",
+      )
+      .map((item) => item.type);
+    const outsideWorking = furniture.filter(
+      (item) => roomAt(item.col, item.row) !== "working",
+    );
+
+    const table = furniture.find((item) => item.type === "COFFEE_TABLE");
+    const mug = furniture.find(
+      (item) =>
+        item.type === "COFFEE" && roomAt(item.col, item.row) === "review",
+    );
+
+    // Then the wall has paintings and the table has its mug
+    expect(inReview).toEqual(
+      expect.arrayContaining([
+        "LARGE_PAINTING",
+        "SMALL_PAINTING",
+        "COFFEE_TABLE",
+        "COFFEE",
+      ]),
+    );
+
+    // And the mug lies on the table's front row, or it would float above the table
+    expect(mug?.row).toBe((table?.row ?? 0) + 1);
+
+    // And the first place is the stander facing down at the viewer, then two sitters at the table
+    expect(
+      places.map((seat) => [seat.pose, seat.standing, seat.facingDir]),
+    ).toEqual([
+      ["stand", true, Direction.DOWN],
+      ["sit", false, Direction.DOWN],
+      ["sit", false, Direction.LEFT],
+    ]);
+
+    // And no painting covers a floor tile of the room, so none blocks a doorway or a place
+    const covered = furniture
+      .filter((item) => item.type.includes("PAINTING"))
+      .flatMap((item) => {
+        const entry = getCatalogEntry(item.type);
+        return Array.from(
+          { length: (entry?.footprintW ?? 1) * (entry?.footprintH ?? 1) },
+          (_, n) => [
+            item.col + (n % (entry?.footprintW ?? 1)),
+            item.row + Math.floor(n / (entry?.footprintW ?? 1)),
+          ],
+        );
+      })
+      .filter(([col, row]) => roomAt(col, row) === "review");
+    expect(covered).toEqual([]);
+
+    // And the stander's sprite, its own tile and the one above, overlaps no painting tile
+    const paintingTiles = new Set(
+      furniture
+        .filter((item) => item.type.includes("PAINTING"))
+        .flatMap((item) => {
+          const entry = getCatalogEntry(item.type);
+          return Array.from(
+            { length: (entry?.footprintW ?? 1) * (entry?.footprintH ?? 1) },
+            (_, n) =>
+              `${item.col + (n % (entry?.footprintW ?? 1))},${item.row + Math.floor(n / (entry?.footprintW ?? 1))}`,
+          );
+        }),
+    );
+    const stander = places[0];
+    expect([
+      paintingTiles.has(`${stander.seatCol},${stander.seatRow}`),
+      paintingTiles.has(`${stander.seatCol},${stander.seatRow - 1}`),
+    ]).toEqual([false, false]);
+
+    // And outside Working there is no computer and exactly one desk, the sign-off counter
+    expect(
+      outsideWorking.filter((item) => item.type.startsWith("PC_")),
+    ).toEqual([]);
+    expect(
+      outsideWorking
+        .filter((item) => item.type.startsWith("DESK_"))
+        .map((item) => roomAt(item.col, item.row)),
+    ).toEqual(["needsPermission"]);
   });
 });

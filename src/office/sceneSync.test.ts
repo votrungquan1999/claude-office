@@ -406,6 +406,49 @@ describe("scene sync", () => {
       ).toEqual(["needsPermission", "needsPermission"]);
     });
 
+    it.each(["needsPermission", "waitingForYou", "review"] as const)(
+      "stands the extra employees of the stay-put %s room in the lower half of its floor, clear of the art on the wall",
+      (state) => {
+        // Given a stay-put room with three employees more than it has places
+        const office = loadOffice();
+        const sync = createSceneSync(office);
+        const room = state;
+        const places = [...office.seats.keys()].filter(
+          (uid) => office.seatZone(uid) === room,
+        ).length;
+        const sessions = Array.from({ length: places + 3 }, (_, n) =>
+          session(
+            "m1",
+            "Mac",
+            `s${n}`,
+            "/w",
+            "2026-11-08T10:00:00.000Z",
+            state,
+          ),
+        );
+
+        // When they all arrive
+        sync.apply(sessions, { firstLoad: true });
+
+        // Then the three without a place stand in the lower half of the room's floor rows
+        const { cols, areaTiles } = office.getLayout();
+        const floorRows = (areaTiles ?? []).flatMap((label, at) =>
+          label === room ? [Math.floor(at / cols)] : [],
+        );
+        const lowerHalfStart =
+          (Math.min(...floorRows) + Math.max(...floorRows)) / 2;
+        const extras = office
+          .getCharacters()
+          .filter((ch) => ch.seatId === null);
+        expect(extras).toHaveLength(3);
+        expect(extras.map((ch) => ch.tileRow >= lowerHalfStart)).toEqual([
+          true,
+          true,
+          true,
+        ]);
+      },
+    );
+
     it("keeps every extra employee inside its room even when the room's floor has no free tile left", () => {
       // Given far more Needs permission sessions than the room has seats and floor tiles
       const office = loadOffice();
@@ -523,6 +566,37 @@ describe("scene sync", () => {
       expect(office.seats.get(oldSeatId as string)?.assigned).toBe(false);
     });
 
+    it("puts employees who arrive together in a full room on different floor tiles", () => {
+      // Given six employees working and a Review room with three seats
+      const office = loadOffice();
+      const sync = createSceneSync(office, { smoothMs: 0 });
+      const at = (n: number, state: SessionDto["state"], second: number) =>
+        session(
+          "m1",
+          "Mac",
+          `s${n}`,
+          "/w",
+          `2026-11-08T10:00:0${second}.000Z`,
+          state,
+        );
+      const all = (state: SessionDto["state"], second: number) =>
+        Array.from({ length: 6 }, (_, n) => at(n, state, second));
+      sync.apply(all("working", 0), { firstLoad: true });
+
+      // When all six finish in one poll and have settled in the room
+      sync.apply(all("review", 1));
+      for (let step = 0; step < 1200; step++) office.update(0.1);
+
+      // Then the three without a seat stand on three different tiles
+      const standers = office
+        .getCharacters()
+        .filter((ch) => ch.seatId === null);
+      expect(standers).toHaveLength(3);
+      expect(
+        new Set(standers.map((ch) => `${ch.tileCol},${ch.tileRow}`)).size,
+      ).toBe(3);
+    });
+
     it("shows the state on the employee: busy while working or thinking, a permission bubble that stays until the dialog closes, idle when the turn is done", () => {
       // Given one employee
       const office = loadOffice();
@@ -590,7 +664,7 @@ describe("scene sync", () => {
       expect(employee().bubbleType).toBeNull();
     });
 
-    it("sits a Review employee in the Review room, calm: not busy and with no bubble", () => {
+    it("sits a Review employee in the Review room, calm: not busy", () => {
       // Given a working employee
       const office = loadOffice();
       const sync = createSceneSync(office, { smoothMs: 0 });
@@ -613,6 +687,36 @@ describe("scene sync", () => {
       // Then it sits in the Review room and is not busy
       expect(office.seatZone(employee().seatId ?? "")).toBe("review");
       expect(employee().isActive).toBe(false);
+    });
+
+    it("keeps a checkmark bubble over a Review employee until the owner moves it to Idle", () => {
+      // Given a working employee
+      const office = loadOffice();
+      const sync = createSceneSync(office, { smoothMs: 0 });
+      const at = (state: SessionDto["state"], second: number) =>
+        session(
+          "m1",
+          "Mac",
+          "a",
+          "/w",
+          `2026-11-08T10:00:0${second}.000Z`,
+          state,
+        );
+      sync.apply([at("working", 0)], { firstLoad: true });
+      const employee = () => office.getCharacters()[0];
+
+      // When its turn ends with a result and a minute passes
+      sync.apply([at("review", 1)]);
+      for (let step = 0; step < 600; step++) office.update(0.1);
+
+      // Then the checkmark is still there, and a poll puts it back if something cleared it
+      expect(employee().bubbleType).toBe("review");
+      employee().bubbleType = null;
+      sync.apply([at("review", 1)]);
+      expect(employee().bubbleType).toBe("review");
+
+      // And when the owner moves it to Idle, the bubble goes
+      sync.apply([at("idle", 2)]);
       expect(employee().bubbleType).toBeNull();
     });
 

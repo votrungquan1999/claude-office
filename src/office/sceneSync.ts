@@ -116,21 +116,37 @@ export function createSceneSync(
     );
   }
 
-  /** A walkable floor tile of the room that is not a seat or a doorway; a free one first, else any. */
-  function floorIn(room: string): { col: number; row: number } | undefined {
+  /** The walkable floor tiles of the room that are not a seat or a doorway: free ones first, lowest rows first so extras stay clear of the art on the wall. */
+  function floorTilesIn(
+    room: string,
+    exceptId?: number,
+  ): Array<{ col: number; row: number }> {
     const { cols, areaTiles } = office.getLayout();
+    // A walker counts where it is heading, so employees arriving together do not pick the same tile.
     const taken = new Set(
-      office.getCharacters().map((ch) => `${ch.tileCol},${ch.tileRow}`),
+      office
+        .getCharacters()
+        .filter((ch) => ch.id !== exceptId)
+        .map((ch) => {
+          const goal = ch.path[ch.path.length - 1];
+          return `${goal?.col ?? ch.tileCol},${goal?.row ?? ch.tileRow}`;
+        }),
     );
-    const floor = office.walkableTiles.filter(
-      ({ col, row }) =>
-        areaTiles?.[row * cols + col] === room &&
-        office.getSeatAtTile(col, row) === null &&
-        !isDoorway(col, row),
-    );
-    return (
-      floor.find(({ col, row }) => !taken.has(`${col},${row}`)) ?? floor[0]
-    );
+    const isTaken = ({ col, row }: { col: number; row: number }) =>
+      taken.has(`${col},${row}`);
+    return office.walkableTiles
+      .filter(
+        ({ col, row }) =>
+          areaTiles?.[row * cols + col] === room &&
+          office.getSeatAtTile(col, row) === null &&
+          !isDoorway(col, row),
+      )
+      .sort(
+        (a, b) =>
+          Number(isTaken(a)) - Number(isTaken(b)) ||
+          b.row - a.row ||
+          a.col - b.col,
+      );
   }
 
   /** Gives up the employee's seat and puts it on the room's floor; arrivals appear there, others walk. */
@@ -142,12 +158,17 @@ export function createSceneSync(
     character.seatId = null;
     // Even on a full floor the employee belongs to the room, so its wandering stays inside it.
     character.standingRoom = room;
-    const tile = floorIn(room);
-    if (!tile) return;
+    const floor = floorTilesIn(room, id);
+    if (floor.length === 0) return;
     if (!arriving) {
-      office.walkToTile(id, tile.col, tile.row);
+      // A walled-in pocket of floor has no path, so the next tile is tried
+      floor.some((tile) => office.walkToTile(id, tile.col, tile.row));
       return;
     }
+    const tile = floor[0];
+    // The look it took from the seat it just gave up would sit it down in mid-air
+    character.pose = "stand";
+    character.standing = true;
     character.tileCol = tile.col;
     character.tileRow = tile.row;
     character.x = tile.col * TILE_SIZE + TILE_SIZE / 2;
@@ -167,8 +188,10 @@ export function createSceneSync(
     // Re-asserted on every sync: other renderer paths can clear the bubble.
     if (state === "needsPermission") office.showPermissionBubble(id);
     else office.clearPermissionBubble(id);
-    if (state === "waitingForYou") office.showAsksBubble(id);
-    else office.clearAsksBubble(id);
+    if (state === "waitingForYou") office.showStateBubble(id, "asks");
+    else office.clearStateBubble(id, "asks");
+    if (state === "review") office.showStateBubble(id, "review");
+    else office.clearStateBubble(id, "review");
   }
 
   /** Sends the employee to its pending room once the state has held for the smoothing window. */

@@ -19,7 +19,7 @@ const SEATS: Record<string, number> = {
   working: 24,
   needsPermission: 7,
   waitingForYou: 8,
-  review: 12,
+  review: 3,
   idle: 6,
 };
 
@@ -72,14 +72,14 @@ test("the owner sees an office with five labelled rooms", async ({
         .map((seat) => seat.pose),
     ),
   ).toEqual(new Set(["type"]));
-  // And the sign-off queue holds a paper while the benches and Review's chairs sit still
+  // And the sign-off queue holds a paper while the benches and the gallery's table chairs sit still, with one stander in the gallery
   const posesOf = (room: string) =>
     new Set(
       seats.filter((seat) => seat.areaLabel === room).map((seat) => seat.pose),
     );
   expect(posesOf("needsPermission")).toEqual(new Set(["read"]));
   expect(posesOf("waitingForYou")).toEqual(new Set(["sit"]));
-  expect(posesOf("review")).toEqual(new Set(["sit"]));
+  expect(posesOf("review")).toEqual(new Set(["stand", "sit"]));
 });
 
 test("idle, waiting-for-you and thinking sessions each sit in their own room, thinking inside Working", async ({

@@ -29,7 +29,7 @@ interface OfficeTestHooks {
     seatId: string | null;
     isActive: boolean;
     macOffline: boolean;
-    bubbleType: "permission" | "waiting" | "asks" | null;
+    bubbleType: "permission" | "waiting" | "asks" | "review" | null;
     pose: string;
     standing: boolean;
     /** 0 down, 1 left, 2 right, 3 up */

@@ -231,7 +231,7 @@ export interface Character {
   /** Room a seatless employee stands in; wandering stays inside it. */
   standingRoom?: string;
   /** Active speech bubble type, or null if none showing */
-  bubbleType: "permission" | "waiting" | "asks" | null;
+  bubbleType: "permission" | "waiting" | "asks" | "review" | null;
   /** Only meaningful while bubbleType === 'waiting': true when the agent went
    *  idle waiting on the user (surfaces the "Waiting for input" label);
    *  false/undefined when the agent simply finished its turn (checkmark only,
