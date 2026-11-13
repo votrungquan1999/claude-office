@@ -21,7 +21,11 @@ import {
 import { ROOM_OF_STATE } from "@/office/rooms";
 import { createSceneSync, lookOf } from "@/office/sceneSync";
 import { installTestHooks } from "@/office/testHooks";
-import { dayStartOf, todaysDepartures } from "@/office/wentHome";
+import {
+  dayStartOf,
+  searchableSessions,
+  todaysDepartures,
+} from "@/office/wentHome";
 import { employeeName } from "@/shared/employee-name";
 import type { FolderDto } from "@/shared/folders";
 import { resolveSelection } from "@/shared/overview";
@@ -45,9 +49,11 @@ import { HireDialog, type HireMac } from "./HireDialog";
 import { companyRowsOf } from "./list/companyRows";
 import { ListPanel } from "./list/ListPanel";
 import { settleRanks } from "./list/pendingRanks";
+import { SearchPalette } from "./list/SearchPalette";
 import { useListModel } from "./list/useListModel";
 import { useReviewMoves } from "./list/useReviewMoves";
 import { useRowMoves } from "./list/useRowMoves";
+import { useSearchPalette } from "./list/useSearchPalette";
 import { useSeenRows } from "./list/useSeenRows";
 import {
   type OfficeData,
@@ -695,6 +701,7 @@ export function OfficeView() {
     loaded: loaded && lastUpdatedAt !== null,
   });
   useTabTitle(needsYou.total);
+  const palette = useSearchPalette(!isPhone);
   /**
    * Opens the original of a Needs you copy, switching company first when it lives elsewhere.
    * @param key - The employee to open.
@@ -1013,6 +1020,7 @@ export function OfficeView() {
             tagLabels={tagFilterView.labels}
             serverOffsetMs={serverOffsetMs}
             onSelect={(key) => selectEmployee(key, "list")}
+            onSearch={palette.openPalette}
             canDrag={hasMouse}
             onMove={(key, overKey) => void moveRow(key, overKey)}
             moveError={rankError}
@@ -1025,6 +1033,24 @@ export function OfficeView() {
           />
         )}
       </div>
+      {palette.open && (
+        <SearchPalette
+          sessions={searchableSessions([...sessions.values()], now)}
+          companyNameOf={(s) => overview.tree.companyOf(s)?.companyName ?? ""}
+          offlineMachineIds={offlineIds}
+          onShow={(key) => {
+            palette.closePalette();
+            // Any company's employee opens like a Needs you copy
+            const session = sessions.get(key);
+            if (session)
+              selectNeedsYouRow(
+                key,
+                overview.tree.companyOf(session)?.companyKey ?? null,
+              );
+          }}
+          onClose={palette.closePalette}
+        />
+      )}
       {isPhone &&
         !drawerOpen &&
         !wentHomeOpen &&

@@ -24,6 +24,8 @@ interface SessionRow {
   /** The conversation's place in the owner's list. */
   rank?: string;
   request?: string;
+  /** The conversation tab's name (its /rename name). */
+  tabName?: string;
   recentSteps?: Array<Omit<StepDto, "startedAt"> & { startedAt: Date }>;
   runningSteps?: Array<{ text: string; startedAt: Date }>;
   currentTodo?: string | null;
@@ -84,6 +86,7 @@ function toDto(row: SessionRow): SessionDto {
     ...(row.ownerName ? { ownerName: row.ownerName } : {}),
     ...(row.rank ? { rank: row.rank } : {}),
     ...(row.request ? { request: row.request } : {}),
+    ...(row.tabName ? { tabName: row.tabName } : {}),
     ...(row.bridgeSessionId ? { bridgeSessionId: row.bridgeSessionId } : {}),
     ...(row.recentSteps?.length
       ? {

@@ -47,6 +47,8 @@ export const sessionDtoSchema = z.object({
   endedAt: z.string().optional(),
   /** Name on the desk; absent only when nothing is known yet. */
   deskName: z.string().optional(),
+  /** The name of the Claude or Cursor conversation tab (its /rename name); absent when it has none. */
+  tabName: z.string().optional(),
   /** The name the owner gave the employee; beats every automatic name. Absent when the owner gave none. */
   ownerName: z.string().optional(),
   /** The conversation's place in the owner's list: plain text sorted by character code; absent until the owner first moves a row. */

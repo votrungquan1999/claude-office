@@ -199,6 +199,10 @@ export interface SeedSession {
   startCwd?: string;
   state?: string;
   deskName?: string;
+  /** The first message of the conversation. */
+  request?: string;
+  /** The conversation tab's name in the registry. */
+  tabName?: string;
   /** Repo tags as the agent sends them. */
   tags?: Array<{ name: string; key: string }>;
   endedAt?: Date;

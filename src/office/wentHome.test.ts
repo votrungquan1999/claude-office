@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { SessionDto } from "@/shared/session";
-import { todaysDepartures } from "./wentHome";
+import {
+  searchableSessions,
+  todaysDepartures,
+  wentHomeRowsOf,
+} from "./wentHome";
 
 const ORIGINAL_TZ = process.env.TZ;
 
@@ -77,5 +81,82 @@ describe("today's departures", () => {
     expect(idsAt("2026-11-02T04:30:00.000Z", dst, "America/New_York")).toEqual([
       "early",
     ]);
+  });
+});
+
+describe("the sessions a search reads", () => {
+  it("keeps live sessions and today's departures, and drops yesterday's and never-prompted ended ones", () => {
+    // Given a live session and three ended ones: today's, yesterday's and one that never got a prompt
+    const now = new Date(2026, 10, 14, 15, 0);
+    const today = new Date(2026, 10, 14, 9, 0).toISOString();
+    const yesterday = new Date(2026, 10, 13, 20, 0).toISOString();
+    const live = ended("live", today, {
+      state: "idle",
+      endedAt: undefined,
+      hadPrompt: undefined,
+    });
+    const sessions = [
+      ended("yesterday", yesterday),
+      ended("silent", today, { hadPrompt: false }),
+      ended("today", today),
+      live,
+    ];
+
+    // When the search pool is made
+    const ids = searchableSessions(sessions, now).map((s) => s.sessionId);
+
+    // Then the live one comes first, then today's departure
+    expect(ids).toEqual(["live", "today"]);
+  });
+});
+
+describe("the went-home rows", () => {
+  it("writes a departure's task, where it worked and when it went home", () => {
+    // Given a departure with a card name in a project folder
+    const at = new Date(2026, 10, 14, 9, 5).toISOString();
+    const sessions = [ended("a", at, { deskName: "Fix ledger" })];
+
+    // When the rows are made
+    const rows = wentHomeRowsOf(sessions, () => ({
+      companyKey: "k",
+      companyName: "personal",
+      project: "app",
+    }));
+
+    // Then the row names its task, place and time
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      key: "m1/a",
+      task: "Fix ledger",
+      where: "Mac / personal/app",
+      time: "09:05",
+    });
+  });
+
+  it("leaves 'undefined' out of the place when the Mac is unknown", () => {
+    // Given a departure whose Mac no company knows
+    const at = new Date(2026, 10, 14, 9, 5).toISOString();
+
+    // When the rows are made
+    const [row] = wentHomeRowsOf([ended("a", at)], () => null);
+
+    // Then the place is the Mac alone
+    expect(row.where).toBe("Mac");
+  });
+
+  it("leaves the Mac out of the place when it has no name", () => {
+    // Given a departure from a Mac with no name
+    const at = new Date(2026, 10, 14, 9, 5).toISOString();
+    const nameless = ended("a", at, { machineName: "" });
+
+    // When the rows are made
+    const [row] = wentHomeRowsOf([nameless], () => ({
+      companyKey: "k",
+      companyName: "personal",
+      project: "app",
+    }));
+
+    // Then the place is the company and project alone
+    expect(row.where).toBe("personal/app");
   });
 });

@@ -117,6 +117,45 @@ describe("a desk is named after the session", () => {
     expect((await officeSessions())[0]?.deskName).toBe("New name");
   });
 
+  it("publishes the conversation's tab name apart from the desk name, so a card name does not hide it", async () => {
+    // Given a session named "real vn30" in Claude Code whose desk shows its card summary
+    const { fake, agent } = await setUpMac("machine-air", "Quan's MacBook Air");
+    const live = await processes.live();
+    fake.addSession({
+      sessionId: "s1",
+      cwd: "/work/a",
+      name: "real vn30",
+      pid: live.pid,
+      procStart: live.procStart,
+    });
+    fake.writeKanban("s1", { cardId: "c1", summary: "Card A" });
+    await runHook(fake.home, {
+      hook_event_name: "SessionStart",
+      session_id: "s1",
+      cwd: "/work/a",
+    });
+    await expect
+      .poll(
+        async () => {
+          await agent.flush();
+          return (await officeSessions())[0]?.deskName;
+        },
+        { timeout: 5000 },
+      )
+      .toBe("Card A");
+
+    // Then the tab name still reaches the office
+    expect((await officeSessions())[0]?.tabName).toBe("real vn30");
+
+    // When the owner renames the tab and the agent next checks the registry
+    fake.updateSession("s1", { name: "real vn30 v2" });
+    await agent.reconcile();
+    await agent.flush();
+
+    // Then the new tab name replaces it
+    expect((await officeSessions())[0]?.tabName).toBe("real vn30 v2");
+  }, 30_000);
+
   it("drops the desk name when the card goes away and nothing else can name the desk", async () => {
     // Given a session whose only name comes from its card (command first, no registry name)
     const { fake, agent } = await setUpMac("machine-air", "Quan's MacBook Air");

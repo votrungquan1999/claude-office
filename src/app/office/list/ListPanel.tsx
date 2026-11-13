@@ -63,6 +63,8 @@ interface ListPanelProps {
   departures: DepartureRow[];
   /** Opens a departure's card. */
   onSelectDeparture: (key: string) => void;
+  /** Opens the Cmd+K search. */
+  onSearch: () => void;
   /** Whether a mouse can drag rows to new places. */
   canDrag: boolean;
   /** Lights up the employee of the row being dragged; null when the drag ends. */
@@ -97,6 +99,7 @@ export function ListPanel({
   reveal,
   departures,
   onSelectDeparture,
+  onSearch,
   canDrag,
   moveError,
   onDragHover,
@@ -202,6 +205,13 @@ export function ListPanel({
           {companyName} · {employees.length}{" "}
           {employees.length === 1 ? "employee" : "employees"}
         </span>
+        <button
+          type="button"
+          onClick={onSearch}
+          className="mr-4 border-2 border-border px-8 py-2 text-xs hover:bg-btn-hover"
+        >
+          ⌘K Search
+        </button>
         <button
           type="button"
           aria-label="Fold the list"

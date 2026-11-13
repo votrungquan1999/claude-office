@@ -1180,6 +1180,9 @@ export class SessionTracker {
         startedAt: new Date(tracked.startedAt),
         ...(deskName ? { deskName } : {}),
         ...(tracked.request ? { request: tracked.request } : {}),
+        ...(tracked.registryName?.trim()
+          ? { tabName: tracked.registryName }
+          : {}),
         ...(tracked.bridgeSessionId && !notRunning
           ? { bridgeSessionId: tracked.bridgeSessionId }
           : {}),
