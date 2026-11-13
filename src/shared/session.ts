@@ -160,3 +160,35 @@ export const ownerNameRequestSchema = z.object({
 });
 
 export type OwnerNameRequest = z.infer<typeof ownerNameRequestSchema>;
+
+/** The longest list place the server accepts. */
+export const RANK_MAX_LENGTH = 64;
+
+/** Far above any company's live rows, so a first drag that places them all fits one request. */
+export const RANK_MAX_ITEMS = 5000;
+
+/** The places the owner's move gives to conversations; one request per move. */
+export const rankRequestSchema = z
+  .object({
+    items: z
+      .array(
+        z.object({
+          machineId: z.string().min(1),
+          sessionId: z.string().min(1),
+          rank: z
+            .string()
+            .max(RANK_MAX_LENGTH)
+            .regex(/^[a-z]*[b-z]$/),
+        }),
+      )
+      .min(1)
+      .max(RANK_MAX_ITEMS),
+  })
+  .refine(
+    ({ items }) =>
+      new Set(items.map((i) => `${i.machineId}/${i.sessionId}`)).size ===
+      items.length,
+    { message: "a conversation appears twice" },
+  );
+
+export type RankRequest = z.infer<typeof rankRequestSchema>;

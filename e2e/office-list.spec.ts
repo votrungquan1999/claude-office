@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
+import { E2E_BASE_URL } from "./constants";
 import {
   clickEmployee,
   employeeLabelled,
@@ -538,6 +539,436 @@ test.describe("a conversation that went home", () => {
       timeout: 20_000,
     });
     await expect(page.getByTestId("list-row-new")).toHaveCount(0);
+  });
+});
+
+/** Drags a row with the mouse to the top edge of another row, in small steps like a hand; `release: false` keeps the button down. */
+async function dragRow(
+  page: Page,
+  from: Locator,
+  to: Locator,
+  { release = true } = {},
+) {
+  const start = await from.boundingBox();
+  const end = await to.boundingBox();
+  if (!start || !end) throw new Error("dragRow: a row is not rendered");
+  await page.mouse.move(start.x + 100, start.y + start.height / 2);
+  await page.mouse.down();
+  const targetY = end.y + 4;
+  const fromY = start.y + start.height / 2;
+  for (let step = 1; step <= 12; step++) {
+    await page.mouse.move(
+      start.x + 100,
+      fromY + ((targetY - fromY) * step) / 12,
+    );
+  }
+  if (release) await page.mouse.up();
+}
+
+test.describe("dragging a row", () => {
+  test.use({ viewport: { width: 1280, height: 800 }, hasTouch: false });
+
+  /** Four placed conversations, A first. */
+  const placed = () =>
+    seed(
+      ["A", "B", "C", "D"].map((name, i) => ({
+        sessionId: name.toLowerCase(),
+        deskName: `Task ${name}`,
+        rank: "bdfh"[i],
+      })),
+    );
+  const names = (page: Page) => page.getByTestId("list-row-name");
+  const row = (page: Page, name: string) =>
+    page.getByTestId("list-row").filter({ hasText: `Task ${name}` });
+
+  test("dropping a row moves it with one request, it holds after a reload and on a second device, and the row's employee is not selected", async ({
+    browser,
+    context,
+    page,
+  }) => {
+    // Given four placed conversations and a second device that has the office open
+    await placed();
+    await signInAsOwner(context);
+    const requests: string[] = [];
+    let answered = 0;
+    page.on("request", (request) => {
+      if (request.url().includes("/api/office/sessions/rank"))
+        requests.push(request.postData() ?? "");
+    });
+    page.on("response", (response) => {
+      if (response.url().includes("/api/office/sessions/rank")) answered++;
+    });
+    const second = await browser.newContext({
+      baseURL: E2E_BASE_URL,
+      viewport: { width: 1280, height: 800 },
+      hasTouch: false,
+    });
+    await signInAsOwner(second);
+    const otherPage = await second.newPage();
+    try {
+      await otherPage.goto("/");
+      await expect(names(otherPage)).toHaveText([
+        "Task A",
+        "Task B",
+        "Task C",
+        "Task D",
+      ]);
+      await page.goto("/");
+      await waitForEmployees(page, 4);
+
+      // When the owner drags the last row to the top
+      await dragRow(page, row(page, "D"), row(page, "A"));
+
+      // Then it is first at once, with exactly one request
+      await expect(names(page)).toHaveText([
+        "Task D",
+        "Task A",
+        "Task B",
+        "Task C",
+      ]);
+      await expect.poll(() => answered).toBe(1);
+      expect(requests).toHaveLength(1);
+      await expect(page.getByTestId("details-panel")).toHaveCount(0);
+
+      // And it is still first after a reload
+      await page.reload();
+      await waitForEmployees(page, 4);
+      await expect(names(page)).toHaveText([
+        "Task D",
+        "Task A",
+        "Task B",
+        "Task C",
+      ]);
+
+      // And the second device shows the same order after its next poll
+      await expect(names(otherPage)).toHaveText(
+        ["Task D", "Task A", "Task B", "Task C"],
+        { timeout: 20_000 },
+      );
+      expect(requests).toHaveLength(1);
+    } finally {
+      await second.close();
+    }
+  });
+});
+
+test.describe("the employee of a dragged row", () => {
+  test.use({ viewport: { width: 1280, height: 800 }, hasTouch: false });
+
+  test("lights up in the office while its row is dragged, and not after it is dropped or cancelled", async ({
+    context,
+    page,
+  }) => {
+    // Given four placed conversations
+    await seed(
+      ["A", "B", "C", "D"].map((name, i) => ({
+        sessionId: name.toLowerCase(),
+        deskName: `Task ${name}`,
+        rank: "bdfh"[i],
+      })),
+    );
+    await signInAsOwner(context);
+    await page.goto("/");
+    await waitForEmployees(page, 4);
+    const dee = await employeeLabelled(page, "Task D");
+    const row = (name: string) =>
+      page.getByTestId("list-row").filter({ hasText: `Task ${name}` });
+    const hovered = () =>
+      page.evaluate(() => window.__officeTestHooks?.getHoveredAgentId());
+    await page.mouse.move(5, 5);
+    expect(await hovered()).toBeNull();
+
+    // When the owner drags D's row and holds it over A
+    await dragRow(page, row("D"), row("A"), { release: false });
+
+    // Then D's employee is lit up
+    await expect.poll(hovered).toBe(dee);
+
+    // When the owner presses Esc
+    await page.keyboard.press("Escape");
+    await page.mouse.up();
+
+    // Then it is not lit up any more
+    await expect.poll(hovered).toBeNull();
+    // The cancelled row glides back; wait until it stops moving before grabbing it again
+    let lastTop = Number.NaN;
+    await expect
+      .poll(async () => {
+        const top = (await row("D").boundingBox())?.y;
+        const settled = top === lastTop;
+        lastTop = top ?? Number.NaN;
+        return settled;
+      })
+      .toBe(true);
+
+    // When the owner drags D's row again and drops it
+    await dragRow(page, row("D"), row("A"), { release: false });
+    await expect.poll(hovered).toBe(dee);
+    await page.mouse.up();
+
+    // Then it is not lit up after the drop either
+    await expect.poll(hovered).toBeNull();
+  });
+});
+
+test.describe("the look of a dragged row", () => {
+  test.use({ viewport: { width: 1280, height: 800 }, hasTouch: false });
+
+  test("each row has a grip, the dragged row is opaque and above its neighbours, a dashed gap says where it drops, and a screen reader hears its new place", async ({
+    context,
+    page,
+  }) => {
+    // Given four placed conversations
+    await seed(
+      ["A", "B", "C", "D"].map((name, i) => ({
+        sessionId: name.toLowerCase(),
+        deskName: `Task ${name}`,
+        rank: "bdfh"[i],
+      })),
+    );
+    await signInAsOwner(context);
+    await page.goto("/");
+    await waitForEmployees(page, 4);
+    const row = (name: string) =>
+      page.getByTestId("list-row").filter({ hasText: `Task ${name}` });
+
+    // Then every row shows a grip labelled "Drag to reorder"
+    await expect(page.getByLabel("Drag to reorder")).toHaveCount(4);
+
+    // When the owner holds D over B
+    await dragRow(page, row("D"), row("B"), { release: false });
+
+    // Then the dragged row has a solid background and sits above the rows it passes over
+    const look = (name: string) =>
+      row(name).evaluate((el) => {
+        const style = getComputedStyle(el);
+        return { background: style.backgroundColor, z: style.zIndex };
+      });
+    const dragged = await look("D");
+    expect(dragged.background).not.toBe("rgba(0, 0, 0, 0)");
+    expect(Number(dragged.z)).toBeGreaterThan(Number((await look("B")).z) || 0);
+    // And a gap reads "Drops here"
+    await expect(page.getByText("Drops here")).toBeVisible();
+    // And a visible status chip names the employee and its place
+    const chip = page.getByTestId("drag-chip");
+    await expect(chip).toBeVisible();
+    await expect(chip).toHaveText("Moving Task D to position 2 of 4");
+    await expect(chip).toHaveAttribute("role", "status");
+    // And a screen reader hears the same
+    await expect(page.locator("[id^=DndLiveRegion]")).toContainText(
+      "Moving Task D to position 2 of 4",
+    );
+
+    // When the owner presses Esc
+    await page.keyboard.press("Escape");
+    await page.mouse.up();
+
+    // Then the gap and the chip are gone
+    await expect(page.getByText("Drops here")).toHaveCount(0);
+    await expect(chip).toHaveCount(0);
+  });
+});
+
+test.describe("a row dropped while another conversation arrives", () => {
+  test.use({ viewport: { width: 1280, height: 800 }, hasTouch: false });
+
+  test("lands on the place of the row it was dropped on, counted in the order the owner sees after the arrival", async ({
+    context,
+    page,
+  }) => {
+    // Given four placed conversations
+    await seed(
+      ["A", "B", "C", "D"].map((name, i) => ({
+        sessionId: name.toLowerCase(),
+        deskName: `Task ${name}`,
+        rank: "bdfh"[i],
+      })),
+    );
+    await signInAsOwner(context);
+    await page.goto("/");
+    await waitForEmployees(page, 4);
+    const row = (name: string) =>
+      page.getByTestId("list-row").filter({ hasText: `Task ${name}` });
+
+    // When the owner holds D over A and a new conversation arrives before the drop
+    await dragRow(page, row("D"), row("A"), { release: false });
+    await withE2eDb((db) =>
+      db.collection("sessions").insertOne({
+        machineId: "m1",
+        machineName: "Studio Mac",
+        sessionId: "arrival",
+        deskName: "Task E",
+        cwd: "/Users/q/personal",
+        state: "idle",
+        startedAt: new Date(),
+        changedAt: new Date(),
+      }),
+    );
+    await waitForEmployees(page, 5);
+    await page.mouse.up();
+
+    // Then D sits where A was, so below the arrival
+    await expect(page.getByTestId("list-row-name")).toHaveText([
+      "Task E",
+      "Task D",
+      "Task A",
+      "Task B",
+      "Task C",
+    ]);
+  });
+});
+
+test.describe("a row that is not dropped somewhere new", () => {
+  test.use({ viewport: { width: 1280, height: 800 }, hasTouch: false });
+
+  test("sends nothing for a click without movement, a drag cancelled with Esc, or a drop on its own place", async ({
+    context,
+    page,
+  }) => {
+    // Given four placed conversations
+    await seed(
+      ["A", "B", "C", "D"].map((name, i) => ({
+        sessionId: name.toLowerCase(),
+        deskName: `Task ${name}`,
+        rank: "bdfh"[i],
+      })),
+    );
+    await signInAsOwner(context);
+    const requests: string[] = [];
+    page.on("request", (request) => {
+      if (request.url().includes("/api/office/sessions/rank"))
+        requests.push(request.url());
+    });
+    await page.goto("/");
+    await waitForEmployees(page, 4);
+    const names = page.getByTestId("list-row-name");
+    const original = ["Task A", "Task B", "Task C", "Task D"];
+    const row = (name: string) =>
+      page.getByTestId("list-row").filter({ hasText: `Task ${name}` });
+
+    // When the owner clicks a row without moving the mouse
+    await row("C").getByTestId("list-row-name").click();
+
+    // Then it is selected, with its card
+    await expect(page.getByTestId("details-panel")).toContainText("Task C");
+
+    // When the owner starts dragging D to the top and presses Esc before letting go
+    await dragRow(page, row("D"), row("A"), { release: false });
+    await page.keyboard.press("Escape");
+    await page.mouse.up();
+
+    // Then the order is as before
+    await expect(names).toHaveText(original);
+
+    // When the owner drags B a little way and lets go over its own place
+    const box = await row("B").boundingBox();
+    if (!box) throw new Error("row B is not rendered");
+    const x = box.x + 100;
+    const y = box.y + box.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, y + 6, { steps: 3 });
+    await page.mouse.move(x, y + 12, { steps: 3 });
+    await page.mouse.move(x, y, { steps: 3 });
+    await page.mouse.up();
+
+    // Then the order is as before, and no request was ever sent
+    await expect(names).toHaveText(original);
+    await page.waitForTimeout(500);
+    expect(requests).toEqual([]);
+  });
+});
+
+test.describe("the rename dialog opened from a row", () => {
+  test.use({ viewport: { width: 1280, height: 800 }, hasTouch: false });
+
+  test("dragging inside its name field moves no row and sends no request", async ({
+    context,
+    page,
+  }) => {
+    // Given four placed conversations and D's rename dialog open
+    await seed(
+      ["A", "B", "C", "D"].map((name, i) => ({
+        sessionId: name.toLowerCase(),
+        deskName: `Task ${name}`,
+        rank: "bdfh"[i],
+      })),
+    );
+    await signInAsOwner(context);
+    const requests: string[] = [];
+    page.on("request", (request) => {
+      if (request.url().includes("/api/office/sessions/rank"))
+        requests.push(request.url());
+    });
+    await page.goto("/");
+    await waitForEmployees(page, 4);
+    await page.getByRole("button", { name: "Rename Task D" }).click();
+    const field = page.getByRole("dialog").getByRole("textbox");
+    await expect(field).toBeVisible();
+    const box = await field.boundingBox();
+    if (!box) throw new Error("the name field is not rendered");
+
+    // When the owner presses in the name field and drags well past the rows above
+    const x = box.x + 40;
+    const y = box.y + box.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    for (let step = 1; step <= 12; step++)
+      await page.mouse.move(x, y - (step * 300) / 12);
+    await page.mouse.up();
+
+    // Then no row moved and no request was sent
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("list-row-name")).toHaveText([
+      "Task A",
+      "Task B",
+      "Task C",
+      "Task D",
+    ]);
+    await page.waitForTimeout(500);
+    expect(requests).toEqual([]);
+  });
+});
+
+test.describe("a refused move", () => {
+  test.use({ viewport: { width: 1280, height: 800 }, hasTouch: false });
+
+  test("puts the row back and says so under the list's header", async ({
+    context,
+    page,
+  }) => {
+    // Given four placed conversations and a server that refuses the save
+    await seed(
+      ["A", "B", "C", "D"].map((name, i) => ({
+        sessionId: name.toLowerCase(),
+        deskName: `Task ${name}`,
+        rank: "bdfh"[i],
+      })),
+    );
+    await signInAsOwner(context);
+    await page.route("**/api/office/sessions/rank", (route) =>
+      route.fulfill({ status: 500, body: "{}" }),
+    );
+    await page.goto("/");
+    await waitForEmployees(page, 4);
+
+    // When the owner drags D to the top
+    await dragRow(
+      page,
+      page.getByTestId("list-row").filter({ hasText: "Task D" }),
+      page.getByTestId("list-row").filter({ hasText: "Task A" }),
+    );
+
+    // Then the row is back in its old place, and an alert says the move failed
+    await expect(page.getByTestId("list-move-error")).toHaveText(
+      "Could not move. Try again.",
+    );
+    await expect(page.getByTestId("list-row-name")).toHaveText([
+      "Task A",
+      "Task B",
+      "Task C",
+      "Task D",
+    ]);
   });
 });
 

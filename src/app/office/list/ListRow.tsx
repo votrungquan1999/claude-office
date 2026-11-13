@@ -1,16 +1,18 @@
-import { useEffect, useRef, useState } from "react";
+import { useSortable } from "@dnd-kit/sortable";
+import { useEffect, useRef } from "react";
 import { CharacterMugShot } from "@/office/components/CharacterMugShot";
 import { remoteControlUrl } from "@/office/remoteControl";
 import { lookOf } from "@/office/sceneSync";
 import { employeeName } from "@/shared/employee-name";
 import { type SessionDto, sessionKey } from "@/shared/session";
 import { formatElapsed } from "../elapsed";
-import { RenameEmployeeDialog } from "../RenameEmployeeDialog";
 import { type BandKey, bandOf, contextLineOf } from "../rowText";
 import { useNow } from "../useNow";
 
 export interface ListRowProps {
   session: SessionDto;
+  /** Whether a mouse can drag this row to a new place. */
+  draggable: boolean;
   /** Whether this conversation arrived after this device first showed the list and has not been opened yet. */
   isNew: boolean;
   /** Whether this is the employee whose card is open. */
@@ -27,8 +29,8 @@ export interface ListRowProps {
   onSelect: (key: string) => void;
   /** Moves the employee's Review to Idle. */
   onMoveToIdle: (key: string) => void;
-  /** Sends the owner's name for the employee; resolves true when the server stored it. */
-  onRename: (key: string, name: string) => Promise<boolean>;
+  /** Asks for the rename dialog of this employee. */
+  onRequestRename: (key: string) => void;
 }
 
 /** The colours of a row's state bar and word. */
@@ -71,6 +73,7 @@ const SHOWN_TAGS = 1;
  */
 export function ListRow({
   session,
+  draggable,
   isNew,
   selected,
   revealToken,
@@ -79,12 +82,15 @@ export function ListRow({
   serverOffsetMs,
   onSelect,
   onMoveToIdle,
-  onRename,
+  onRequestRename,
 }: ListRowProps) {
   // The clock lives in the row, so only the rows re-render every second.
   const nowMs = useNow() + serverOffsetMs;
-  const [renaming, setRenaming] = useState(false);
   const rowRef = useRef<HTMLLIElement>(null);
+  const sortable = useSortable({
+    id: sessionKey(session),
+    disabled: !draggable,
+  });
   // Keeps the row in sight after a pick in the office; a pick in the list must not move it under the pointer.
   useEffect(() => {
     if (revealToken !== null)
@@ -112,14 +118,54 @@ export function ListRow({
     : null;
   const approving = session.state === "needsPermission" && !offline;
   const tags = session.tags ?? [];
+  // A positioned row with its own background paints over the rows it passes; without them its neighbours show through.
+  const rowLook = sortable.isDragging
+    ? "relative z-10 bg-btn-bg outline-2 outline-accent-bright shadow-[6px_6px_0_var(--color-bg-dark)]"
+    : selected
+      ? "bg-btn-hover shadow-[inset_4px_0_0_var(--color-accent-bright)]"
+      : "";
   return (
     <li
-      ref={rowRef}
+      ref={(node) => {
+        rowRef.current = node;
+        sortable.setNodeRef(node);
+      }}
+      style={{
+        transform: sortable.transform
+          ? `translate3d(${sortable.transform.x}px, ${sortable.transform.y}px, 0)`
+          : undefined,
+        transition: sortable.transition,
+      }}
+      {...sortable.listeners}
       data-testid="list-row"
       data-key={key}
       aria-current={selected ? "true" : undefined}
-      className={`flex items-stretch gap-8 border-b border-bg-thumb px-8 py-8 ${offline ? "opacity-60" : ""} ${selected ? "bg-btn-hover shadow-[inset_4px_0_0_var(--color-accent-bright)]" : ""}`}
+      className={`flex items-stretch gap-8 border-b border-bg-thumb px-8 py-8 ${offline ? "opacity-60" : ""} ${rowLook}`}
     >
+      {draggable && (
+        <span
+          role="img"
+          aria-label="Drag to reorder"
+          aria-describedby={sortable.attributes["aria-describedby"]}
+          title="Drag to reorder"
+          className="flex w-18 shrink-0 cursor-grab items-center justify-center text-text-muted"
+        >
+          <svg
+            aria-hidden="true"
+            width="8"
+            height="14"
+            viewBox="0 0 8 14"
+            fill="currentColor"
+          >
+            <rect x="0" y="0" width="3" height="3" />
+            <rect x="5" y="0" width="3" height="3" />
+            <rect x="0" y="5.5" width="3" height="3" />
+            <rect x="5" y="5.5" width="3" height="3" />
+            <rect x="0" y="11" width="3" height="3" />
+            <rect x="5" y="11" width="3" height="3" />
+          </svg>
+        </span>
+      )}
       <span aria-hidden="true" className={`w-4 shrink-0 ${style.bar}`} />
       <span
         aria-hidden="true"
@@ -191,22 +237,11 @@ export function ListRow({
       <button
         type="button"
         aria-label={`Rename ${name}`}
-        onClick={() => setRenaming(true)}
+        onClick={() => onRequestRename(key)}
         className="size-30 shrink-0 self-center border-2 border-border bg-btn-bg hover:bg-btn-hover"
       >
         ✎
       </button>
-      {renaming && (
-        <RenameEmployeeDialog
-          ownerName={session.ownerName}
-          automaticName={employeeName({
-            deskName: session.deskName,
-            cwd: session.cwd,
-          })}
-          onSave={(next) => onRename(key, next)}
-          onClose={() => setRenaming(false)}
-        />
-      )}
       {remoteControl && (
         <a
           href={remoteControl}

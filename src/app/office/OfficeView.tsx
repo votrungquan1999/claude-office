@@ -24,7 +24,6 @@ import { installTestHooks } from "@/office/testHooks";
 import { dayStartOf, todaysDepartures } from "@/office/wentHome";
 import { employeeName } from "@/shared/employee-name";
 import type { FolderDto } from "@/shared/folders";
-import { sortByListOrder } from "@/shared/list-order";
 import { buildOverview, resolveSelection } from "@/shared/overview";
 import {
   type ChangesResponse,
@@ -52,8 +51,15 @@ import {
   settleEmployeeNames,
 } from "./employeeName";
 import { HireDialog, type HireMac } from "./HireDialog";
+import { companyRows } from "./list/companyRows";
 import { ListPanel } from "./list/ListPanel";
-import { loadSeenRows, markSeen } from "./list/seenRows";
+import {
+  applyRanks,
+  type PendingRanks,
+  settleRanks,
+} from "./list/pendingRanks";
+import { useRowMoves } from "./list/useRowMoves";
+import { useSeenRows } from "./list/useSeenRows";
 import {
   acceptName,
   applyNames,
@@ -119,6 +125,8 @@ interface OfficeData {
   reviewMoves: ReviewMoves;
   /** Employee names the owner gave on this device that no answer has confirmed yet. */
   employeeNames: PendingEmployeeNames;
+  /** List places the owner gave on this device that no answer has confirmed yet. */
+  ranks: PendingRanks;
   offline: ReadonlySet<string>;
 }
 
@@ -128,9 +136,12 @@ interface OfficeData {
  * @returns The sessions to show.
  */
 function shownSessions(data: OfficeData): SessionMap {
-  return applyEmployeeNames(
-    applyReviewMoves(data.sessions, data.reviewMoves),
-    data.employeeNames,
+  return applyRanks(
+    applyEmployeeNames(
+      applyReviewMoves(data.sessions, data.reviewMoves),
+      data.employeeNames,
+    ),
+    data.ranks,
   );
 }
 
@@ -263,8 +274,7 @@ export function OfficeView() {
   // How far the server's clock is ahead of this browser's, from the latest answer.
   const [serverOffsetMs, setServerOffsetMs] = useState(0);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  // The conversations this device has opened or already had when it first showed the list; null until the first answer, or when storage is unavailable.
-  const [seenKeys, setSeenKeys] = useState<ReadonlySet<string> | null>(null);
+  const seen = useSeenRows();
   // The employee last picked in the office; the list scrolls its row into view.
   const [reveal, setReveal] = useState<{ key: string; token: number } | null>(
     null,
@@ -290,6 +300,7 @@ export function OfficeView() {
     names: new Map(),
     reviewMoves: new Map(),
     employeeNames: new Map(),
+    ranks: new Map(),
     offline: new Set(),
   });
   // The poll reads refs only, so the picked company lives in one too.
@@ -401,10 +412,7 @@ export function OfficeView() {
       firstLoad ? new Map() : dataRef.current.sessions,
       answer.sessions,
     );
-    if (firstLoad)
-      setSeenKeys(
-        loadSeenRows(() => window.localStorage, [...sessions.keys()]),
-      );
+    if (firstLoad) seen.load([...sessions.keys()]);
     commit(
       {
         sessions,
@@ -421,6 +429,8 @@ export function OfficeView() {
           sessions,
           poll,
         ),
+        // A place stays in force until an answer shows it or a later change of the row, so a poll already in flight cannot put the row back.
+        ranks: settleRanks(dataRef.current.ranks, sessions),
         // Judged against the server's clock: the phone's may be minutes off.
         offline: offlineMachineIds(answer.machines, answer.serverNow, [
           ...[...sessions.values()].map((session) => session.machineId),
@@ -577,6 +587,30 @@ export function OfficeView() {
     return false;
   };
 
+  const { moveRow, rankError } = useRowMoves({
+    getRanks: () => dataRef.current.ranks,
+    setRanks: (ranks) => commit({ ...dataRef.current, ranks }, false),
+    serverOffsetMs,
+    viewedRows: () => {
+      const shown = shownSessions(dataRef.current);
+      const overview = overviewOf(dataRef.current, new Date());
+      const { matches } = tagFilterOf(
+        shown,
+        overview.tree.companyOf,
+        companyRef.current,
+        tagPickRef.current,
+      );
+      return {
+        rows: companyRows(
+          shown.values(),
+          (session) => overview.tree.companyOf(session)?.companyKey,
+          companyRef.current,
+        ),
+        matches,
+      };
+    },
+  });
+
   /** Opens the company drawer; a details panel left open would sit under it, so it closes. */
   const openDrawer = () => {
     setSwitchError(null);
@@ -712,6 +746,7 @@ export function OfficeView() {
       names,
       reviewMoves: new Map(),
       employeeNames: new Map(),
+      ranks: new Map(),
       offline: offlineIds,
     },
     now,
@@ -778,14 +813,11 @@ export function OfficeView() {
     );
   };
   // The list shows live employees in the owner's order; the tag filter narrows it like the office.
-  const everyone = sortByListOrder(
-    [...sessions.values()].filter(
-      (session) =>
-        session.state !== "wentHome" &&
-        overview.tree.companyOf(session)?.companyKey === companyKey &&
-        tagFilterView.matches(session),
-    ),
-  );
+  const everyone = companyRows(
+    sessions.values(),
+    (session) => overview.tree.companyOf(session)?.companyKey,
+    companyKey,
+  ).filter(tagFilterView.matches);
   const departures = todaysDepartures([...sessions.values()], now).filter(
     (session) => overview.tree.companyOf(session)?.companyKey === companyKey,
   );
@@ -808,8 +840,7 @@ export function OfficeView() {
     : [];
   // A card opened while the went-home drawer is open is the newer overlay, however it was opened.
   const openDetails = (key: string | null) => {
-    if (key !== null && seenKeys && !seenKeys.has(key))
-      setSeenKeys(markSeen(() => window.localStorage, seenKeys, key));
+    if (key !== null) seen.open(key);
     setSelectedKey(key);
     setCardOverWentHome(wentHomeOpen && key !== null);
   };
@@ -1058,7 +1089,7 @@ export function OfficeView() {
           <ListPanel
             companyName={viewedCompany?.name ?? ""}
             employees={everyone}
-            seenKeys={seenKeys}
+            seenKeys={seen.seenKeys}
             selectedKey={selectedKey}
             reveal={reveal}
             departures={wentHomeRows}
@@ -1067,6 +1098,13 @@ export function OfficeView() {
             tagLabels={tagFilterView.labels}
             serverOffsetMs={serverOffsetMs}
             onSelect={(key) => selectEmployee(key, "list")}
+            canDrag={hasMouse}
+            onMove={(key, overKey) => void moveRow(key, overKey)}
+            moveError={rankError}
+            onDragHover={(key) => {
+              officeState.hoveredAgentId =
+                key === null ? null : (sceneSync.agentIdOf(key) ?? null);
+            }}
             onMoveToIdle={(key) => void moveToIdle(key)}
             onRename={renameEmployee}
           />

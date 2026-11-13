@@ -40,6 +40,8 @@ interface OfficeTestHooks {
   selectAgent: (id: number) => void;
   /** The id of the selected employee, or null when none is selected. */
   getSelectedAgentId: () => number | null;
+  /** The id of the employee lit up by hover or by dragging its list row, or null when none is. */
+  getHoveredAgentId: () => number | null;
   /** The office's size in tiles. */
   getLayoutSize: () => { cols: number; rows: number };
   getZoom: () => number;
@@ -132,6 +134,7 @@ export function installTestHooks(view: TestHookView): void {
     getZoom: view.getZoom,
     getPan: view.getPan,
     getSelectedAgentId: () => view.getOfficeState().selectedAgentId,
+    getHoveredAgentId: () => view.getOfficeState().hoveredAgentId,
     selectAgent: (id) => {
       view.getOfficeState().selectedAgentId = id;
     },
