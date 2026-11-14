@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
 import { act, renderHook } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { useListFolds } from "./useListFolds";
+
+// Folds are remembered in localStorage, which jsdom keeps across tests in a file
+beforeEach(() => window.localStorage?.clear());
 
 const keys = (...list: string[]) => new Set(list);
 
