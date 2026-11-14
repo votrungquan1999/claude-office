@@ -1,10 +1,11 @@
+import type { AnyBulkWriteOperation } from "mongodb";
 import type { NextRequest } from "next/server";
 import { getDb } from "@/db/mongo";
 import { requireOwner } from "@/lib/require-owner";
 import { reviewSeenRequestSchema } from "@/shared/session";
 
 /**
- * The owner has looked at one or more Review employees and moves them to Idle.
+ * The owner has looked at one or more Review employees and moves them to Idle; an Idle the owner moved to Review goes back to that Idle.
  * @param request - The request carrying the Reviews the owner saw.
  * @returns How many were marked (fewer than sent is normal: those rows had already left that Review); 401 when not the owner, 400 for a malformed body.
  */
@@ -21,22 +22,42 @@ export async function POST(request: NextRequest) {
   const { items } = body.data;
   const db = await getDb();
   const result = await db.collection("sessions").bulkWrite(
-    items.map(({ machineId, sessionId, stateSince }) => ({
-      updateOne: {
-        // Only the Review the owner saw; a row that moved on keeps its state
-        filter: {
-          machineId,
-          sessionId,
-          state: "review",
-          stateSince: new Date(stateSince),
+    items.flatMap(
+      ({ machineId, sessionId, stateSince }): AnyBulkWriteOperation[] => [
+        {
+          updateOne: {
+            // Only the Review the owner saw; a row that moved on keeps its state
+            filter: {
+              machineId,
+              sessionId,
+              state: "review",
+              stateSince: new Date(stateSince),
+            },
+            update: {
+              $set: { reviewSeenAt: new Date(stateSince) },
+              // The database clock times the move, so a Mac's clock never enters
+              $currentDate: { reviewClearedAt: true, changedAt: true },
+            },
+          },
         },
-        update: {
-          $set: { reviewSeenAt: new Date(stateSince) },
-          // The database clock times the move, so a Mac's clock never enters
-          $currentDate: { reviewClearedAt: true, changedAt: true },
+        {
+          updateOne: {
+            // An Idle the owner moved to Review goes back to that same Idle
+            filter: {
+              machineId,
+              sessionId,
+              state: "idle",
+              stateSince: new Date(stateSince),
+              reviewRaisedAt: new Date(stateSince),
+            },
+            update: {
+              $unset: { reviewRaisedAt: "" },
+              $currentDate: { changedAt: true },
+            },
+          },
         },
-      },
-    })),
+      ],
+    ),
   );
   return Response.json({ marked: result.modifiedCount });
 }

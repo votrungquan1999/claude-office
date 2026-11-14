@@ -1,6 +1,11 @@
 import { useState } from "react";
 import type { SessionMap } from "../officeStore";
-import { postReviewSeen, type ReviewMoves } from "../reviewSeen";
+import {
+  applyReviewMoves,
+  postMoveToReview,
+  postReviewSeen,
+  type ReviewMoves,
+} from "../reviewSeen";
 
 interface ReviewMovesInput {
   /** The sessions as the answers carried them. */
@@ -13,9 +18,9 @@ interface ReviewMovesInput {
 }
 
 /**
- * Moving Reviews to Idle: shows them at once, sends one request for all, and takes them back when refused.
+ * Moving Reviews to Idle and an Idle to Review: shows the move at once, sends one request, and takes it back when refused.
  * @param input - The sessions, the pending moves and the clock offset.
- * @returns The move handler and which moves the last refusal took back.
+ * @returns The move handlers and which moves the last refusal took back.
  */
 export function useReviewMoves({
   getSessions,
@@ -26,7 +31,27 @@ export function useReviewMoves({
   const [refused, setRefused] = useState<{
     keys: ReadonlySet<string>;
     all: boolean;
-  }>({ keys: new Set(), all: false });
+    /** Where the refused move was going. */
+    to: "idle" | "review";
+  }>({ keys: new Set(), all: false, to: "idle" });
+
+  /**
+   * The employee to move when the owner sees it in the given state, named by the time the answers hold.
+   * @param key - The employee's `sessionKey`.
+   * @param shownState - The state the button moves it out of.
+   * @returns Its machine, session and `stateSince`, or undefined when it is not shown in that state.
+   */
+  const targetOf = (key: string, shownState: "idle" | "review") => {
+    const session = applyReviewMoves(getSessions(), getMoves()).get(key);
+    if (session?.state !== shownState || !session.stateSince) return undefined;
+    // A move no answer has shown yet names the employee by the time it was made from.
+    const stateSince = getMoves().get(key)?.stateSince ?? session.stateSince;
+    return {
+      machineId: session.machineId,
+      sessionId: session.sessionId,
+      stateSince,
+    };
+  };
 
   /**
    * Moves Review employees to Idle with one request.
@@ -34,26 +59,16 @@ export function useReviewMoves({
    * @param all - Whether the owner moved a whole list, so a refusal is shown for the list and not for one card.
    */
   const moveReviewsToIdle = async (keys: string[], all = false) => {
-    const sessions = getSessions();
     const items = keys.flatMap((key) => {
-      const session = sessions.get(key);
-      return session?.state === "review" && session.stateSince
-        ? [
-            {
-              key,
-              machineId: session.machineId,
-              sessionId: session.sessionId,
-              stateSince: session.stateSince,
-            },
-          ]
-        : [];
+      const target = targetOf(key, "review");
+      return target ? [{ key, ...target }] : [];
     });
     if (items.length === 0) return;
-    setRefused({ keys: new Set(), all: false });
+    setRefused({ keys: new Set(), all: false, to: "idle" });
     const movedAt = new Date(Date.now() + serverOffsetMs).toISOString();
     const next = new Map(getMoves());
     for (const { key, stateSince } of items)
-      next.set(key, { stateSince, movedAt });
+      next.set(key, { to: "idle", stateSince, movedAt });
     setMoves(next);
     const marked = await postReviewSeen({
       items: items.map(({ machineId, sessionId, stateSince }) => ({
@@ -65,16 +80,48 @@ export function useReviewMoves({
     if (marked !== undefined && marked > 0) return;
     // A move the answers already settled has nothing to take back.
     const reverted = new Map(getMoves());
-    const taken = items.filter(
-      ({ key, stateSince }) => reverted.get(key)?.stateSince === stateSince,
-    );
+    const taken = items.filter(({ key, stateSince }) => {
+      const pending = reverted.get(key);
+      return pending?.to === "idle" && pending.stateSince === stateSince;
+    });
     for (const { key } of taken) reverted.delete(key);
     setMoves(reverted);
     // Marking nothing means the Review had already moved on: the real state shows again with no failure message.
     if (marked === undefined) {
-      setRefused({ keys: new Set(taken.map(({ key }) => key)), all });
+      setRefused({
+        keys: new Set(taken.map(({ key }) => key)),
+        all,
+        to: "idle",
+      });
     }
   };
 
-  return { moveReviewsToIdle, refused };
+  /**
+   * Moves one Idle employee to Review with one request.
+   * @param key - The `sessionKey` to move; skipped when it is no longer Idle.
+   */
+  const moveIdleToReview = async (key: string) => {
+    const target = targetOf(key, "idle");
+    if (!target) return;
+    const { machineId, sessionId, stateSince } = target;
+    const movedAt = new Date(Date.now() + serverOffsetMs).toISOString();
+    setRefused({ keys: new Set(), all: false, to: "review" });
+    setMoves(
+      new Map(getMoves()).set(key, { to: "review", stateSince, movedAt }),
+    );
+    const marked = await postMoveToReview({ machineId, sessionId, stateSince });
+    if (marked !== undefined && marked > 0) return;
+    // A move the answers already settled has nothing to take back.
+    const pending = getMoves().get(key);
+    if (pending?.to !== "review" || pending.stateSince !== stateSince) return;
+    const reverted = new Map(getMoves());
+    reverted.delete(key);
+    setMoves(reverted);
+    // Marking nothing means the Idle had already moved on: the real state shows again with no failure message.
+    if (marked === undefined) {
+      setRefused({ keys: new Set([key]), all: false, to: "review" });
+    }
+  };
+
+  return { moveReviewsToIdle, moveIdleToReview, refused };
 }

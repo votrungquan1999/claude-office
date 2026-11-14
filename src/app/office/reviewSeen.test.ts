@@ -19,7 +19,10 @@ const mapOf = (...sessions: SessionDto[]) =>
   new Map(sessions.map((session) => [sessionKey(session), session]));
 const moved = (session: SessionDto) =>
   new Map([
-    [sessionKey(session), { stateSince: REVIEW_SINCE, movedAt: MOVED_AT }],
+    [
+      sessionKey(session),
+      { to: "idle" as const, stateSince: REVIEW_SINCE, movedAt: MOVED_AT },
+    ],
   ]);
 
 describe("a Review moved to Idle on this device", () => {
@@ -59,5 +62,51 @@ describe("a Review moved to Idle on this device", () => {
         .size,
     ).toBe(0);
     expect(settleReviewMoves(moves, mapOf()).size).toBe(0);
+  });
+});
+
+describe("an Idle moved to Review on this device", () => {
+  it("shows as Review while the Idle is still the one seen, and a later Idle of it shows as it is", () => {
+    // Given the owner moved an Idle employee to Review
+    const idle = { ...review("a"), state: "idle" as const };
+    const later = { ...idle, stateSince: "2026-11-09T10:00:00.000Z" };
+    const moves = new Map([
+      [
+        sessionKey(idle),
+        { to: "review" as const, stateSince: REVIEW_SINCE, movedAt: MOVED_AT },
+      ],
+    ]);
+
+    // When the move is laid over the sessions
+    const shown = applyReviewMoves(mapOf(idle), moves);
+    const afterLater = applyReviewMoves(mapOf(later), moves);
+
+    // Then the moved Idle reads Review with its own time, and a later Idle stays Idle
+    expect(shown.get(sessionKey(idle))).toMatchObject({
+      state: "review",
+      stateSince: REVIEW_SINCE,
+    });
+    expect(afterLater.get(sessionKey(later))?.state).toBe("idle");
+  });
+
+  it("is dropped once an answer shows Review or a later Idle, and kept while the same Idle is still shown", () => {
+    // Given a pending move to Review
+    const idle = { ...review("a"), state: "idle" as const };
+    const moves = new Map([
+      [
+        sessionKey(idle),
+        { to: "review" as const, stateSince: REVIEW_SINCE, movedAt: MOVED_AT },
+      ],
+    ]);
+
+    // Then a poll that still carries the same Idle keeps it, and Review or a later Idle drops it
+    expect(settleReviewMoves(moves, mapOf(idle)).size).toBe(1);
+    expect(settleReviewMoves(moves, mapOf(review("a"))).size).toBe(0);
+    expect(
+      settleReviewMoves(
+        moves,
+        mapOf({ ...idle, stateSince: "2026-11-09T10:00:00.000Z" }),
+      ).size,
+    ).toBe(0);
   });
 });

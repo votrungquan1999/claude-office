@@ -56,6 +56,10 @@ interface DetailsPanelProps {
   onMoveToIdle?: () => void | Promise<void>;
   /** Why the last move to Idle was refused; absent when it was not. */
   moveToIdleError?: string;
+  /** Moves the Idle employee to Review; the button waits until the returned promise settles. */
+  onMoveToReview?: () => void | Promise<void>;
+  /** Why the last move to Review was refused; absent when it was not. */
+  moveToReviewError?: string;
   /** Where the employee stands in the company's list; absent for one that went home. */
   place?: Place;
   /** Why the last Move to top or bottom was refused; absent when it was not. */
@@ -231,6 +235,8 @@ function Card({
   onRename,
   onMoveToIdle,
   moveToIdleError,
+  onMoveToReview,
+  moveToReviewError,
   place,
   placeError,
   onMoveToTop,
@@ -388,6 +394,34 @@ function Card({
             <p data-testid="move-to-idle-note" className="text-xs">
               Moving to Idle means you have seen the result. It stays in your
               list, in the same place.
+            </p>
+          </div>
+        )}
+        {band.key === "idle" && (
+          <div className="flex shrink-0 flex-col gap-1">
+            <button
+              type="button"
+              disabled={moving}
+              onClick={async () => {
+                setMoving(true);
+                try {
+                  await onMoveToReview?.();
+                } finally {
+                  setMoving(false);
+                }
+              }}
+              className="border-2 border-bg-dark bg-btn-bg px-3 py-3 text-center font-bold uppercase shadow-[3px_3px_0_var(--color-bg-dark)] hover:bg-btn-hover [@media(max-height:500px)]:py-1"
+            >
+              Move to Review
+            </button>
+            {moveToReviewError && (
+              <p role="alert" className="text-xs font-bold">
+                {moveToReviewError}
+              </p>
+            )}
+            <p data-testid="move-to-review-note" className="text-xs">
+              Moving to Review puts it in Needs you until it starts working
+              again.
             </p>
           </div>
         )}

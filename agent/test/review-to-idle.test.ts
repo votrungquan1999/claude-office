@@ -18,6 +18,7 @@ describe("a Review the owner moved to Idle, when the Mac's agent restarts", () =
   async function restartOverReview(
     mark:
       | { reviewSeenAt: Date; reviewClearedAt?: Date }
+      | { reviewRaisedAt: Date }
       | Record<string, never>,
     stored: { state: string; stateSince: Date } = {
       state: "review",
@@ -96,6 +97,17 @@ describe("a Review the owner moved to Idle, when the Mac's agent restarts", () =
     // Then it is the same Review, dated when it began, not when the registry last changed status
     expect(row?.state).toBe("review");
     expect(row?.stateSince).toEqual(REVIEW_SINCE);
+  }, 60_000);
+
+  it("keeps the stored time of an Idle the owner moved to Review, so it still shows Review", async () => {
+    // When the agent restarts over an Idle the owner moved to Review
+    const row = await restartOverReview(
+      { reviewRaisedAt: REVIEW_SINCE },
+      { state: "idle", stateSince: REVIEW_SINCE },
+    );
+
+    // Then it is the same Idle, dated when it began, so the owner's move still names it
+    expect([row?.state, row?.stateSince]).toEqual(["idle", REVIEW_SINCE]);
   }, 60_000);
 
   it("stores Review when the mark names an earlier Review than the one stored", async () => {

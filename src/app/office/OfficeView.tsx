@@ -431,7 +431,7 @@ export function OfficeView() {
     });
   };
 
-  const { moveReviewsToIdle, refused } = useReviewMoves({
+  const { moveReviewsToIdle, moveIdleToReview, refused } = useReviewMoves({
     getSessions: () => dataRef.current.sessions,
     getMoves: () => dataRef.current.reviewMoves,
     setMoves: (reviewMoves) =>
@@ -817,6 +817,7 @@ export function OfficeView() {
     serverOffsetMs,
     onSelect: (key: string) => selectEmployee(key, "list"),
     onMoveToIdle: (key: string) => void moveToIdle(key),
+    onMoveToReview: (key: string) => void moveIdleToReview(key),
     onMove: (key: string, overKey: string) => void moveRow(key, overKey),
     moveError: rankError,
     onDragHover: (key: string | null) => {
@@ -1037,8 +1038,21 @@ export function OfficeView() {
               selectedKey ? moveToIdle(selectedKey) : undefined
             }
             moveToIdleError={
-              selectedKey && !refused.all && refused.keys.has(selectedKey)
+              selectedKey &&
+              !refused.all &&
+              refused.to === "idle" &&
+              refused.keys.has(selectedKey)
                 ? "Could not move to Idle. Try again."
+                : undefined
+            }
+            onMoveToReview={() =>
+              selectedKey ? moveIdleToReview(selectedKey) : undefined
+            }
+            moveToReviewError={
+              selectedKey &&
+              refused.to === "review" &&
+              refused.keys.has(selectedKey)
+                ? "Could not move to Review. Try again."
                 : undefined
             }
             place={selectedPlace ?? undefined}

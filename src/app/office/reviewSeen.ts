@@ -1,30 +1,37 @@
-import type { ReviewSeenRequest, SessionDto } from "@/shared/session";
+import type {
+  MoveToReviewRequest,
+  ReviewSeenRequest,
+  SessionDto,
+} from "@/shared/session";
 import type { SessionMap } from "./officeStore";
 
-/** A Review the owner moved to Idle on this device that no answer has confirmed yet, keyed by `sessionKey`. */
-export type ReviewMoves = ReadonlyMap<
-  string,
-  {
-    /** The `stateSince` of the Review the owner saw. */
-    stateSince: string;
-    /** When the owner moved it, on the server's clock. */
-    movedAt: string;
-  }
->;
+/** A Review the owner moved to Idle, or an Idle moved to Review, on this device that no answer has confirmed yet. */
+export interface ReviewMove {
+  /** Where the owner moved it. */
+  to: "idle" | "review";
+  /** The `stateSince` of the Review (or Idle) the owner saw. */
+  stateSince: string;
+  /** When the owner moved it, on the server's clock. */
+  movedAt: string;
+}
 
-/** Whether the session is still in the very Review the owner saw. */
-function isSeenReview(
+/** The pending moves, keyed by `sessionKey`. */
+export type ReviewMoves = ReadonlyMap<string, ReviewMove>;
+
+/** Whether the session is still in the very Review (or Idle) the owner moved. */
+function isStillSeen(
   session: SessionDto | undefined,
-  stateSince: string,
+  move: ReviewMove,
 ): session is SessionDto {
-  return session?.state === "review" && session.stateSince === stateSince;
+  const from = move.to === "idle" ? "review" : "idle";
+  return session?.state === from && session.stateSince === move.stateSince;
 }
 
 /**
- * Shows each pending move as Idle.
+ * Shows each pending move as the state the owner picked.
  * @param sessions - The sessions the answers carried.
  * @param moves - The moves waiting for an answer.
- * @returns The sessions with every moved Review shown as Idle, timed from the move.
+ * @returns The sessions with every moved Review shown as Idle, timed from the move, and every moved Idle shown as Review.
  */
 export function applyReviewMoves(
   sessions: SessionMap,
@@ -34,9 +41,13 @@ export function applyReviewMoves(
   const shown = new Map(sessions);
   for (const [key, move] of moves) {
     const session = sessions.get(key);
-    if (isSeenReview(session, move.stateSince)) {
-      shown.set(key, { ...session, state: "idle", stateSince: move.movedAt });
-    }
+    if (!isStillSeen(session, move)) continue;
+    shown.set(
+      key,
+      move.to === "idle"
+        ? { ...session, state: "idle", stateSince: move.movedAt }
+        : { ...session, state: "review" },
+    );
   }
   return shown;
 }
@@ -45,16 +56,14 @@ export function applyReviewMoves(
  * Drops the moves an answer has caught up with.
  * @param moves - The moves waiting for an answer.
  * @param sessions - The sessions the answers carried.
- * @returns The moves whose Review is still the one shown.
+ * @returns The moves whose Review (or Idle) is still the one shown.
  */
 export function settleReviewMoves(
   moves: ReviewMoves,
   sessions: SessionMap,
 ): ReviewMoves {
   return new Map(
-    [...moves].filter(([key, move]) =>
-      isSeenReview(sessions.get(key), move.stateSince),
-    ),
+    [...moves].filter(([key, move]) => isStillSeen(sessions.get(key), move)),
   );
 }
 
@@ -76,6 +85,29 @@ export async function postReviewSeen(
     const body: unknown = await response.json().catch(() => undefined);
     const marked = (body as { marked?: unknown } | undefined)?.marked;
     return typeof marked === "number" ? marked : request.items.length;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Sends the Idle employee the owner moved to Review to the server.
+ * @param request - The employee, with the `stateSince` the owner saw.
+ * @returns How many the server marked (0 when that Idle had already moved on), or undefined on any refusal or network failure.
+ */
+export async function postMoveToReview(
+  request: MoveToReviewRequest,
+): Promise<number | undefined> {
+  try {
+    const response = await fetch("/api/office/sessions/to-review", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(request),
+    });
+    if (!response.ok) return undefined;
+    const body: unknown = await response.json().catch(() => undefined);
+    const marked = (body as { marked?: unknown } | undefined)?.marked;
+    return typeof marked === "number" ? marked : 1;
   } catch {
     return undefined;
   }

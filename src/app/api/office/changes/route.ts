@@ -36,6 +36,8 @@ interface SessionRow {
   reviewSeenAt?: Date;
   /** When the owner moved it, by the database clock. */
   reviewClearedAt?: Date;
+  /** The `stateSince` of the Idle the owner moved to Review. */
+  reviewRaisedAt?: Date;
   kept?: SessionDto["kept"];
   notRunning?: true;
   waitingAtMac?: true;
@@ -72,6 +74,11 @@ function toDto(row: SessionRow): SessionDto {
     row.state === "review" &&
     row.reviewSeenAt !== undefined &&
     row.reviewSeenAt.getTime() === row.stateSince?.getTime();
+  // The owner moved this very Idle to Review; the next turn gives it another time and ends the move.
+  const raised =
+    row.state === "idle" &&
+    row.reviewRaisedAt !== undefined &&
+    row.reviewRaisedAt.getTime() === row.stateSince?.getTime();
   const shownSince = cleared ? row.reviewClearedAt : row.stateSince;
   return {
     machineId: row.machineId,
@@ -79,7 +86,11 @@ function toDto(row: SessionRow): SessionDto {
     sessionId: row.sessionId,
     cwd: row.cwd,
     startCwd: row.startCwd ?? row.cwd,
-    state: row.state === "waiting" || cleared ? "idle" : row.state,
+    state: raised
+      ? "review"
+      : row.state === "waiting" || cleared
+        ? "idle"
+        : row.state,
     startedAt: row.startedAt.toISOString(),
     ...(row.endedAt ? { endedAt: row.endedAt.toISOString() } : {}),
     ...(row.deskName ? { deskName: row.deskName } : {}),

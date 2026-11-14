@@ -174,6 +174,7 @@ export async function seedRunningSessions(options: SeedOptions): Promise<void> {
           state: 1,
           reviewSeenAt: 1,
           reviewClearedAt: 1,
+          reviewRaisedAt: 1,
         },
       },
     )
@@ -201,6 +202,9 @@ export async function seedRunningSessions(options: SeedOptions): Promise<void> {
         storedReviewClearedAt: stored
           .find((doc) => doc.sessionId === entry.sessionId)
           ?.reviewClearedAt?.getTime(),
+        storedReviewRaisedAt: stored
+          .find((doc) => doc.sessionId === entry.sessionId)
+          ?.reviewRaisedAt?.getTime(),
         firstMessage: transcript.firstMessage,
         pasteHead: transcript.pasteHead,
         request: transcript.request,

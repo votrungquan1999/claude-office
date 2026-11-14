@@ -151,6 +151,15 @@ export const reviewSeenRequestSchema = z.object({
 
 export type ReviewSeenRequest = z.infer<typeof reviewSeenRequestSchema>;
 
+/** The Idle employee the owner moves to Review, named by the `stateSince` the owner saw. */
+export const moveToReviewRequestSchema = z.strictObject({
+  machineId: z.string().min(1),
+  sessionId: z.string().min(1),
+  stateSince: z.iso.datetime(),
+});
+
+export type MoveToReviewRequest = z.infer<typeof moveToReviewRequestSchema>;
+
 /** The longest name the owner can give an employee, the same cut the automatic names get. */
 export const OWNER_NAME_MAX_LENGTH = 60;
 

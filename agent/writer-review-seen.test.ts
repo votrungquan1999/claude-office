@@ -4,7 +4,7 @@ import { getDb } from "@/db/mongo";
 import { useTestMongo } from "@/test/use-test-mongo";
 import { SessionWriter } from "./writer";
 
-describe("the owner's fields on a stored session (Review-to-Idle mark, employee name, list place)", () => {
+describe("the owner's fields on a stored session (Review-to-Idle and Idle-to-Review marks, employee name, list place)", () => {
   useTestMongo();
 
   it("survive the agent republishing the session, with or without steps", async () => {
@@ -23,6 +23,7 @@ describe("the owner's fields on a stored session (Review-to-Idle mark, employee 
       stateSince: reviewSince,
       reviewSeenAt: reviewSince,
       reviewClearedAt: clearedAt,
+      reviewRaisedAt: reviewSince,
       ownerName: "Login fixer",
       rank: "mm",
       startedAt: new Date(0),
@@ -61,14 +62,15 @@ describe("the owner's fields on a stored session (Review-to-Idle mark, employee 
     await writer.flush();
     writer.stop();
 
-    // Then the mark, the name and the place are still on the row
+    // Then the marks, the name and the place are still on the row
     const stored = await sessions.findOne({ sessionId: "s1" });
     expect(stored?.cwd).toBe("/work/b");
     expect([
       stored?.reviewSeenAt,
       stored?.reviewClearedAt,
+      stored?.reviewRaisedAt,
       stored?.ownerName,
       stored?.rank,
-    ]).toEqual([reviewSince, clearedAt, "Login fixer", "mm"]);
+    ]).toEqual([reviewSince, clearedAt, reviewSince, "Login fixer", "mm"]);
   }, 60_000);
 });

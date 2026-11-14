@@ -24,6 +24,7 @@ interface PhoneSearchResultsProps {
   /** Opens an employee of another company, switching to it first. */
   onSelectElsewhere: (key: string, companyKey: string) => void;
   onMoveToIdle: (key: string) => void;
+  onMoveToReview: (key: string) => void;
 }
 
 /**
@@ -44,6 +45,7 @@ export function PhoneSearchResults({
   onSelectDeparture,
   onSelectElsewhere,
   onMoveToIdle,
+  onMoveToReview,
 }: PhoneSearchResultsProps) {
   /**
    * One match as a row; it has no grip and says why it matched.
@@ -66,6 +68,7 @@ export function PhoneSearchResults({
       serverOffsetMs={serverOffsetMs}
       onSelect={onOpen}
       onMoveToIdle={onMoveToIdle}
+      onMoveToReview={onMoveToReview}
       onRequestRename={() => {}}
     />
   );

@@ -66,6 +66,8 @@ export interface SeedSession {
   storedReviewSeenAt?: number;
   /** When the owner moved that Review to Idle, as stored. */
   storedReviewClearedAt?: number;
+  /** The `stateSince` of the Idle the owner moved to Review, as stored. */
+  storedReviewRaisedAt?: number;
   firstMessage?: string;
   /** The start of the paste when the first message was only a paste. */
   pasteHead?: string;
@@ -352,9 +354,18 @@ export class SessionTracker {
         seed.storedState === "review" && tracked.memory.state === "review"
           ? seed.storedStateSince
           : undefined;
+      // So does an Idle the owner moved to Review, whose move is keyed to that time.
+      const raisedIdle =
+        seed.storedState === "idle" &&
+        tracked.memory.state === "idle" &&
+        seed.storedReviewRaisedAt !== undefined &&
+        seed.storedReviewRaisedAt === seed.storedStateSince
+          ? seed.storedStateSince
+          : undefined;
       tracked.stateSince =
         movedAt ??
         sameReview ??
+        raisedIdle ??
         seed.statusUpdatedAt ??
         (sameRoom ? seed.storedStateSince : undefined) ??
         this.options.now();
