@@ -142,6 +142,7 @@ export function PhoneList({
         ) : (
           <>
             <NeedsYouSection
+              scope="own"
               {...needsYou}
               phone
               selectedKey={selectedKey}
@@ -149,6 +150,16 @@ export function PhoneList({
               onMoveToIdle={onMoveToIdle}
               open={fold.folds.needsYou}
               onToggle={() => fold.toggle("needsYou")}
+            />
+            <NeedsYouSection
+              scope="others"
+              {...needsYou}
+              phone
+              selectedKey={selectedKey}
+              serverOffsetMs={serverOffsetMs}
+              onMoveToIdle={onMoveToIdle}
+              open={fold.folds.otherCompanies}
+              onToggle={() => fold.toggle("otherCompanies")}
             />
             <section aria-label="Everyone">
               <button

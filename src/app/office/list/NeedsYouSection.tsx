@@ -12,6 +12,8 @@ import { useNow } from "../useNow";
 const GROUP_CAP = 4;
 
 export interface NeedsYouSectionProps {
+  /** Which rows the section lists: this company's, or the other companies'. */
+  scope?: "own" | "others";
   needsYou: NeedsYou;
   /** The company being viewed; its rows open without switching company. */
   viewedCompanyKey: string | null;
@@ -47,6 +49,7 @@ const BADGES = {
  * @returns The section, or nothing when nobody needs the owner.
  */
 export function NeedsYouSection({
+  scope = "own",
   needsYou,
   viewedCompanyKey,
   selectedKey,
@@ -61,16 +64,39 @@ export function NeedsYouSection({
 }: NeedsYouSectionProps) {
   // Groups whose "and N more" the owner opened; "own" is the viewed company.
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
-  if (needsYou.total === 0) return null;
-  const groups = [
-    { key: "own", companyKey: null, rows: needsYou.own },
-    ...needsYou.others.map((group) => ({
-      key: group.companyKey,
-      companyKey: group.companyKey,
-      companyName: group.companyName,
-      rows: group.rows,
-    })),
-  ];
+  const others = scope === "others";
+  const groups = others
+    ? needsYou.others.map((group) => ({
+        key: group.companyKey,
+        companyKey: group.companyKey as string | null,
+        companyName: group.companyName as string | undefined,
+        rows: group.rows,
+      }))
+    : [
+        {
+          key: "own",
+          companyKey: null as string | null,
+          companyName: undefined as string | undefined,
+          rows: needsYou.own,
+        },
+      ];
+  const reviewItems: ReviewItem[] = groups
+    .flatMap((group) => group.rows)
+    .flatMap((session) =>
+      session.state === "review" && session.stateSince
+        ? [
+            {
+              machineId: session.machineId,
+              sessionId: session.sessionId,
+              stateSince: session.stateSince,
+            },
+          ]
+        : [],
+    );
+  const label = others ? "In other companies" : "Needs you";
+  const prefix = others ? "other-companies" : "needs-you";
+  const count = groups.reduce((sum, group) => sum + group.rows.length, 0);
+  if (count === 0) return null;
   /**
    * The rows of one group and its "and N more" line.
    * @param group - The group.
@@ -87,7 +113,7 @@ export function NeedsYouSection({
             key={`needs:${sessionKey(session)}`}
             session={session}
             selected={sessionKey(session) === selectedKey}
-            companyName={"companyName" in group ? group.companyName : undefined}
+            companyName={group.companyName}
             serverOffsetMs={serverOffsetMs}
             phone={phone}
             onMoveToIdle={onMoveToIdle}
@@ -115,8 +141,8 @@ export function NeedsYouSection({
   };
   return (
     <section
-      aria-label="Needs you"
-      data-testid="needs-you"
+      aria-label={label}
+      data-testid={prefix}
       className={`flex shrink-0 flex-col border-b-2 border-border ${phone ? "" : "max-h-[45%]"}`}
     >
       <div
@@ -125,28 +151,28 @@ export function NeedsYouSection({
         <button
           type="button"
           aria-expanded={sectionOpen}
-          aria-controls="needs-you-rows"
+          aria-controls={`${prefix}-rows`}
           onClick={onToggle}
           className={`flex items-center gap-8 ${phone ? "self-stretch" : ""}`}
         >
           <span aria-hidden="true" className="text-xs">
             {sectionOpen ? "▼" : "▶"}
           </span>
-          <span className="font-bold">Needs you</span>
+          <span className="font-bold">{label}</span>
         </button>
         <span
-          data-testid="needs-count"
+          data-testid={others ? "other-companies-count" : "needs-count"}
           className="bg-room-permission px-6 text-xs text-bg-dark"
         >
-          {needsYou.total}
+          {count}
         </span>
-        {needsYou.reviewItems.length > 0 && (
+        {reviewItems.length > 0 && (
           <button
             type="button"
-            onClick={() => onMoveAllToIdle(needsYou.reviewItems)}
+            onClick={() => onMoveAllToIdle(reviewItems)}
             className={`ml-auto border-2 border-room-review px-8 text-xs hover:bg-btn-hover ${phone ? "min-h-44" : ""}`}
           >
-            Move all {needsYou.reviewItems.length} Review to Idle
+            Move all {reviewItems.length} Review to Idle
           </button>
         )}
       </div>
@@ -156,17 +182,11 @@ export function NeedsYouSection({
         </p>
       )}
       <ul
-        id="needs-you-rows"
+        id={`${prefix}-rows`}
         hidden={!sectionOpen}
         className={phone ? "" : "min-h-0 overflow-y-auto"}
       >
-        {renderGroup(groups[0])}
-        {groups.length > 1 && (
-          <li className="px-12 pt-6 text-xs text-text-muted uppercase">
-            In other companies
-          </li>
-        )}
-        {groups.slice(1).map((group) => (
+        {groups.map((group) => (
           <li key={group.key} className="contents">
             <ul className="contents">{renderGroup(group)}</ul>
           </li>

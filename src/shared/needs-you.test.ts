@@ -80,18 +80,6 @@ describe("selecting who needs the owner", () => {
       ["m2/home", ["g"]],
     ]);
     expect(result.total).toBe(5);
-    expect(result.reviewItems).toEqual([
-      {
-        machineId: "m1",
-        sessionId: "b",
-        stateSince: "2026-11-01T01:00:00.000Z",
-      },
-      {
-        machineId: "m2",
-        sessionId: "g",
-        stateSince: "2026-11-01T02:00:00.000Z",
-      },
-    ]);
   });
 
   it("keeps an employee's place when it changes from Waiting for you to Review", () => {
@@ -120,7 +108,7 @@ describe("selecting who needs the owner", () => {
   });
 });
 
-describe("companies the strip does not list, and Review rows with a time", () => {
+describe("companies the strip does not list", () => {
   const inputFor = (rows: SessionDto[], companyOrder: string[]) => ({
     sessions: rows,
     companyOf: (s: SessionDto) => ({
@@ -148,25 +136,6 @@ describe("companies the strip does not list, and Review rows with a time", () =>
     expect(result.others.map((g) => g.companyKey)).toEqual([
       "m3/home",
       "m0/home",
-    ]);
-  });
-
-  it("offers only Review employees to Move all, though every listed row carries a time in state", () => {
-    // Given a Review, a Waiting for you and a Needs permission employee that all have a stateSince
-    const since = "2026-11-01T01:00:00.000Z";
-    const rows = [
-      session("a", "review", { stateSince: since }),
-      session("b", "waitingForYou", { stateSince: since }),
-      session("c", "needsPermission", { stateSince: since }),
-    ];
-
-    // When Needs you is selected
-    const result = selectNeedsYou(inputFor(rows, ["m1/home"]));
-
-    // Then all three are listed but only the Review one can be moved to Idle
-    expect(result.total).toBe(3);
-    expect(result.reviewItems).toEqual([
-      { machineId: "m1", sessionId: "a", stateSince: since },
     ]);
   });
 });

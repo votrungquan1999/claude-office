@@ -40,8 +40,6 @@ export interface NeedsYou {
   others: NeedsYouGroup[];
   /** Every listed employee, own and other. */
   total: number;
-  /** Every listed Review employee, in list order. */
-  reviewItems: ReviewItem[];
 }
 
 interface NeedsYouInput {
@@ -102,16 +100,5 @@ export function selectNeedsYou(input: NeedsYouInput): NeedsYou {
     own,
     others,
     total: listed.length,
-    reviewItems: listed.flatMap((session) =>
-      session.state === "review" && session.stateSince
-        ? [
-            {
-              machineId: session.machineId,
-              sessionId: session.sessionId,
-              stateSince: session.stateSince,
-            },
-          ]
-        : [],
-    ),
   };
 }

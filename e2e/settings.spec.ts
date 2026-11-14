@@ -62,7 +62,7 @@ async function openOffice(page: Page) {
   await expect(page.getByTestId("list-row")).toHaveCount(1);
 }
 
-test("by default the list is open, the tab counts everyone who needs the owner, and Needs you lists the other company", async ({
+test("by default the list is open, the tab counts everyone who needs the owner, and the other company is in its own section below Needs you", async ({
   context,
   page,
 }) => {
@@ -72,11 +72,11 @@ test("by default the list is open, the tab counts everyone who needs the owner, 
   // When the owner opens the office
   await openOffice(page);
 
-  // Then the list is open, the tab says 2, and Needs you has the other company's block
+  // Then the list is open, the tab says 2, and "In other companies" is its own section
   await expect(page.getByTestId("list-panel")).toBeVisible();
   await expect(page).toHaveTitle("(2) Claude Office");
   await expect(
-    page.getByTestId("needs-you").getByText("In other companies"),
+    page.getByRole("region", { name: "In other companies" }),
   ).toBeVisible();
 });
 
@@ -149,17 +149,18 @@ test("turning the tab count off puts the plain title back at once, and on again 
   await expect(page).toHaveTitle("(2) Claude Office");
 });
 
-test("turning other companies off leaves only the viewed company in Needs you and Move all, and the tab still counts everyone", async ({
+test("turning other companies off removes the In other companies section, and the tab still counts everyone", async ({
   context,
   page,
 }) => {
-  // Given Needs you listing both companies and Move all covering both
+  // Given Needs you and "In other companies" each with a Move all for their one Review employee
   await signInAsOwner(context);
   await openOffice(page);
-  const needs = page.getByTestId("list-panel").getByTestId("needs-you");
-  await expect(needs.getByText("In other companies")).toBeVisible();
+  const panel = page.getByTestId("list-panel");
+  const others = panel.getByRole("region", { name: "In other companies" });
+  await expect(others).toBeVisible();
   await expect(
-    needs.getByRole("button", { name: "Move all 2 Review to Idle" }),
+    others.getByRole("button", { name: "Move all 1 Review to Idle" }),
   ).toBeVisible();
 
   // When the owner turns "Needs you includes other companies" off
@@ -170,10 +171,12 @@ test("turning other companies off leaves only the viewed company in Needs you an
   await expect(toggle).toHaveAttribute("aria-checked", "true");
   await toggle.click();
 
-  // Then the other company's block is gone and Move all counts only the viewed company
-  await expect(needs.getByText("In other companies")).toHaveCount(0);
+  // Then the other section is gone and Needs you still moves only the viewed company
+  await expect(others).toHaveCount(0);
   await expect(
-    needs.getByRole("button", { name: "Move all 1 Review to Idle" }),
+    panel
+      .getByTestId("needs-you")
+      .getByRole("button", { name: "Move all 1 Review to Idle" }),
   ).toBeVisible();
 
   // And the tab still counts both
@@ -207,7 +210,7 @@ test("the switches keep their positions after a reload", async ({
   ).toHaveAttribute("aria-checked", "false");
   await expect(page).toHaveTitle("Claude Office");
   await expect(
-    page.getByTestId("needs-you").getByText("In other companies"),
+    page.getByRole("region", { name: "In other companies" }),
   ).toHaveCount(0);
 });
 

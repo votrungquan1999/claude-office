@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { selectNeedsYou } from "@/shared/needs-you";
+import { type ReviewItem, selectNeedsYou } from "@/shared/needs-you";
 import type { SessionDto } from "@/shared/session";
 import { NeedsYouSection } from "./NeedsYouSection";
 
@@ -36,17 +36,23 @@ function needsYouOf(rows: SessionDto[]) {
 
 function show(
   rows: SessionDto[],
-  { onSelect = () => {}, selectedKey = null as string | null } = {},
+  {
+    onSelect = () => {},
+    selectedKey = null as string | null,
+    scope = "own" as "own" | "others",
+    onMoveAllToIdle = (_items: ReviewItem[]) => {},
+  } = {},
 ) {
   render(
     <NeedsYouSection
+      scope={scope}
       needsYou={needsYouOf(rows)}
       viewedCompanyKey="m1"
       selectedKey={selectedKey}
       serverOffsetMs={0}
       onSelect={onSelect}
       onMoveToIdle={() => {}}
-      onMoveAllToIdle={() => {}}
+      onMoveAllToIdle={onMoveAllToIdle}
       open={true}
       onToggle={() => {}}
     />,
@@ -56,38 +62,93 @@ function show(
 describe("the Needs you section", () => {
   afterEach(cleanup);
 
-  it("shows four rows of the viewed company then 'and N more' that expands in place, with the total across companies in the header", () => {
+  it("shows four rows of the viewed company then 'and N more' that expands in place, the header counting only this company", () => {
     // Given seven needing employees here and one in another company
     show([
       ...["a", "b", "c", "d", "e", "f", "g"].map((id) => session(id)),
       session("z", { machineId: "m2" }),
     ]);
 
-    // Then the header counts all eight; four own rows and the other company's one show, with "and 3 more"
-    expect(screen.getByTestId("needs-count").textContent).toBe("8");
-    expect(screen.getAllByTestId("needs-row")).toHaveLength(5);
+    // Then the header counts the seven; four rows show, with "and 3 more", and nothing of the other company
+    expect(screen.getByTestId("needs-count").textContent).toBe("7");
+    expect(screen.getAllByTestId("needs-row")).toHaveLength(4);
     expect(screen.getByRole("button", { name: "and 3 more" })).toBeTruthy();
+    expect(screen.queryByText("In other companies")).toBeNull();
 
     // When the owner expands it
     fireEvent.click(screen.getByRole("button", { name: "and 3 more" }));
 
-    // Then all seven own rows show, and the other company stays under its heading
-    expect(screen.getAllByTestId("needs-row")).toHaveLength(8);
-    expect(screen.getByText("In other companies")).toBeTruthy();
+    // Then all seven rows show
+    expect(screen.getAllByTestId("needs-row")).toHaveLength(7);
   });
 
-  it("caps another company's group at four rows with its own 'and N more'", () => {
-    // Given six needing employees in another company and one here
-    show([
-      session("a"),
-      ...["p", "q", "r", "s", "t", "u"].map((id) =>
-        session(id, { machineId: "m2" }),
-      ),
-    ]);
+  it("lists the other companies in their own section, capped at four rows per company, counting only their rows", () => {
+    // Given six needing employees in another company, one in a third, and one here
+    show(
+      [
+        session("a"),
+        ...["p", "q", "r", "s", "t", "u"].map((id) =>
+          session(id, { machineId: "m2" }),
+        ),
+        session("v", { machineId: "m3" }),
+      ],
+      { scope: "others" },
+    );
 
-    // Then that company shows four rows and 'and 2 more'
+    // Then the section is headed "In other companies" and counts the seven rows of other companies only
+    expect(
+      screen.getByRole("region", { name: "In other companies" }),
+    ).toBeTruthy();
+    expect(screen.getByTestId("other-companies-count").textContent).toBe("7");
+
+    // And the first company shows four rows and "and 2 more", the third its one, each with its company chip
     expect(screen.getAllByTestId("needs-row")).toHaveLength(5);
     expect(screen.getByRole("button", { name: "and 2 more" })).toBeTruthy();
+    expect(
+      screen
+        .getAllByTestId("needs-row-company")
+        .map((chip) => chip.textContent),
+    ).toEqual([
+      "Company m2",
+      "Company m2",
+      "Company m2",
+      "Company m2",
+      "Company m3",
+    ]);
+  });
+
+  it("moves only its own section's Review rows with Move all, hidden ones included", () => {
+    // Given five Review rows here (one beyond the cap), one Review row in another company, and a waiting one
+    const rows = [
+      ...["a", "b", "c", "d", "e"].map((id) =>
+        session(id, { state: "review" }),
+      ),
+      session("w"),
+      session("z", { machineId: "m2", state: "review" }),
+    ];
+    const moved: ReviewItem[][] = [];
+
+    // When the viewed company's section shows and its Move all is pressed
+    show(rows, { onMoveAllToIdle: (items) => moved.push(items) });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Move all 5 Review to Idle" }),
+    );
+    cleanup();
+
+    // And the other companies' section shows and its Move all is pressed
+    show(rows, {
+      scope: "others",
+      onMoveAllToIdle: (items) => moved.push(items),
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Move all 1 Review to Idle" }),
+    );
+
+    // Then each press named only its own section's Review rows
+    expect(moved.map((items) => items.map((i) => i.sessionId))).toEqual([
+      ["a", "b", "c", "d", "e"],
+      ["z"],
+    ]);
   });
 
   it("names the Remote Control link in words: Approve for a permission, Open otherwise", () => {

@@ -11,11 +11,26 @@ describe("the remembered section folds", () => {
     // Then Needs you is closed, the rest are default, and garbage and nothing give the defaults
     expect(partial).toEqual({
       needsYou: false,
+      otherCompanies: true,
       everyone: true,
       wentHome: false,
     });
-    const defaults = { needsYou: true, everyone: true, wentHome: false };
+    const defaults = {
+      needsYou: true,
+      otherCompanies: true,
+      everyone: true,
+      wentHome: false,
+    };
     expect(garbage).toEqual(defaults);
     expect(empty).toEqual(defaults);
+  });
+
+  it("remembers the other companies' fold on its own, apart from Needs you", () => {
+    // Given stored text that closes only "In other companies"
+    const folds = parseListFolds('{"otherCompanies":false}');
+
+    // Then that section is closed and Needs you keeps its default
+    expect(folds.otherCompanies).toBe(false);
+    expect(folds.needsYou).toBe(true);
   });
 });

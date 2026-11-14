@@ -118,6 +118,15 @@ test("the phone shows a search field, Needs you, Everyone in the owner's order w
     "Foxtrot other",
   ]);
 
+  // And folding "In other companies" leaves Needs you open, each with its own count
+  await list.getByRole("button", { name: "In other companies" }).click();
+  await expect(
+    list.getByTestId("needs-row").locator("visible=true"),
+  ).toHaveCount(2);
+  await expect(list.getByTestId("needs-count")).toHaveText("2");
+  await expect(list.getByTestId("other-companies-count")).toHaveText("1");
+  await list.getByRole("button", { name: "In other companies" }).click();
+
   // And Everyone lists the company in the owner's order with a grip on every row and none on Needs you
   await expect(list.getByTestId("list-row-name")).toHaveText([
     "Beta asks",
@@ -1050,7 +1059,7 @@ test.describe("the phone's settings", () => {
     await expect(button).toBeFocused();
   });
 
-  test("the Settings sheet's switch takes the other companies out of Needs you and out of Move all, and keeps them out after a reload", async ({
+  test("the Settings sheet's switch takes the In other companies section away, and keeps them out after a reload", async ({
     context,
     page,
   }) => {
@@ -1078,9 +1087,11 @@ test.describe("the phone's settings", () => {
     await signInAsOwner(context);
     await page.goto("/");
     const needs = page.getByTestId("needs-you");
-    await expect(needs).toContainText("Their review");
+    const others = page.getByTestId("other-companies");
+    await expect(others).toContainText("Their review");
+    await expect(needs).not.toContainText("Their review");
     await expect(
-      needs.getByRole("button", { name: /Move all 2 Review to Idle/ }),
+      others.getByRole("button", { name: /Move all 1 Review to Idle/ }),
     ).toBeVisible();
 
     // When the owner turns the switch off in the Settings sheet
@@ -1093,18 +1104,16 @@ test.describe("the phone's settings", () => {
     await toggle.tap();
     await sheet.getByRole("button", { name: "Close" }).tap();
 
-    // Then Needs you lists only the viewed company and Move all counts only it
+    // Then the other section is gone and Needs you lists only the viewed company
     await expect(needs).toContainText("Own review");
-    await expect(needs).not.toContainText("Their review");
+    await expect(others).toHaveCount(0);
     await expect(
       needs.getByRole("button", { name: /Move all 1 Review to Idle/ }),
     ).toBeVisible();
 
     // And the choice holds after a reload
     await page.reload();
-    await expect(page.getByTestId("needs-you")).not.toContainText(
-      "Their review",
-    );
+    await expect(page.getByTestId("other-companies")).toHaveCount(0);
   });
 
   test("opening Settings closes the Went home sheet, and a scrim over the strip and the rows blocks them", async ({

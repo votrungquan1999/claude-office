@@ -8,13 +8,15 @@ export type FoldSection = keyof ListFolds;
 
 /**
  * What is folded in the list: each section (remembered on this device) and the whole list (open or folded at every load, as the device settings say).
- * @param needsKeys - The keys of every employee Needs you lists.
+ * @param ownKeys - The keys of every employee the Needs you section lists.
+ * @param otherKeys - The keys of every employee the In other companies section lists.
  * @param existingKeys - The keys of every employee that needs the owner anywhere, listed or not (another company, an offline Mac).
  * @param loaded - Whether the first answer is in; before it the set is empty and no key is an arrival.
  * @returns The folds and the ways to change them.
  */
 export function useListFolds(
-  needsKeys: ReadonlySet<string>,
+  ownKeys: ReadonlySet<string>,
+  otherKeys: ReadonlySet<string>,
   existingKeys: ReadonlySet<string>,
   loaded: boolean,
 ) {
@@ -25,7 +27,8 @@ export function useListFolds(
   useEffect(() => setListOpen(listStart === "open"), [listStart]);
   const lastExisting = useRef<ReadonlySet<string> | null>(null);
   // The set changes identity on every render, so effects watch its content
-  const signature = [...needsKeys].sort().join("|");
+  const signature = [...ownKeys].sort().join("|");
+  const otherSignature = [...otherKeys].sort().join("|");
   const existingSignature = [...existingKeys].sort().join("|");
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: the signatures stand for the sets' content
@@ -33,16 +36,22 @@ export function useListFolds(
     if (!loaded) return;
     // The first look records what is there; a reload is not an arrival
     // Listed employees that were not waiting anywhere at the last look are new; a Mac coming back, a company switch or a setting that adds rows leaves them in the earlier set
-    if (hasArrival(lastExisting.current, needsKeys)) {
-      // Only the Needs you section reopens; the whole-list strip never unfolds on its own
+    const ownArrived = hasArrival(lastExisting.current, ownKeys);
+    const otherArrived = hasArrival(lastExisting.current, otherKeys);
+    if (ownArrived || otherArrived) {
+      // Each section reopens only for an arrival in itself; the whole-list strip never unfolds on its own
       setFolds((current) => {
-        const next = { ...current, needsYou: true };
+        const next = {
+          ...current,
+          needsYou: current.needsYou || ownArrived,
+          otherCompanies: current.otherCompanies || otherArrived,
+        };
         storeListFolds(next);
         return next;
       });
     }
     lastExisting.current = existingKeys;
-  }, [signature, existingSignature, loaded]);
+  }, [signature, otherSignature, existingSignature, loaded]);
 
   /**
    * Opens or closes a section and remembers it.

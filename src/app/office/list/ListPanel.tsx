@@ -156,12 +156,22 @@ export function ListPanel({
         </p>
       )}
       <NeedsYouSection
+        scope="own"
         {...needsYou}
         selectedKey={selectedKey}
         serverOffsetMs={serverOffsetMs}
         onMoveToIdle={onMoveToIdle}
         open={fold.folds.needsYou}
         onToggle={() => fold.toggle("needsYou")}
+      />
+      <NeedsYouSection
+        scope="others"
+        {...needsYou}
+        selectedKey={selectedKey}
+        serverOffsetMs={serverOffsetMs}
+        onMoveToIdle={onMoveToIdle}
+        open={fold.folds.otherCompanies}
+        onToggle={() => fold.toggle("otherCompanies")}
       />
       <section aria-label="Everyone" className="flex min-h-0 flex-1 flex-col">
         <button

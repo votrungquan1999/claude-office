@@ -1453,7 +1453,7 @@ test.afterEach(async () => {
 test.describe("the Needs you section", () => {
   test.use({ viewport: { width: 1280, height: 800 }, hasTouch: false });
 
-  test("copies everyone who needs the owner above Everyone, four per company then 'and N more', other companies under 'In other companies', leaves out an offline Mac, and a click opens the original in its company", async ({
+  test("copies everyone who needs the owner above Everyone, four per company then 'and N more', other companies in their own 'In other companies' section, leaves out an offline Mac, and a click opens the original in its company", async ({
     context,
     page,
   }) => {
@@ -1491,19 +1491,33 @@ test.describe("the Needs you section", () => {
     await page.goto("/");
     await waitForEmployees(page, 7);
     const needs = page.getByTestId("needs-you");
+    const others = page.getByTestId("other-companies");
 
-    // Then the section counts seven, shows four own copies, 'and 2 more', and the other company's copy
-    await expect(page.getByTestId("needs-count")).toHaveText("7");
+    // Then Needs you counts its six and shows four copies with 'and 2 more'
+    await expect(page.getByTestId("needs-count")).toHaveText("6");
     await expect(needs.getByTestId("needs-row-name")).toHaveText([
       "Task A",
       "Task B",
       "Task C",
       "Task D",
-      "Lab task",
     ]);
-    await expect(needs.getByText("In other companies")).toBeVisible();
-    await expect(needs.getByTestId("needs-row-company")).toHaveText("lab");
-    await expect(needs.getByText("Old task")).toHaveCount(0);
+
+    // And the other company's copy sits in its own section below, counted there
+    await expect(
+      page.getByRole("region", { name: "In other companies" }),
+    ).toBeVisible();
+    await expect(page.getByTestId("other-companies-count")).toHaveText("1");
+    await expect(others.getByTestId("needs-row-name")).toHaveText(["Lab task"]);
+    await expect(others.getByTestId("needs-row-company")).toHaveText("lab");
+    await expect(page.getByText("Old task")).toHaveCount(0);
+
+    // And folding "In other companies" leaves Needs you open
+    await page.getByRole("button", { name: "In other companies" }).click();
+    await expect(
+      others.getByTestId("needs-row").locator("visible=true"),
+    ).toHaveCount(0);
+    await expect(needs.getByTestId("needs-row")).toHaveCount(4);
+    await page.getByRole("button", { name: "In other companies" }).click();
 
     // And the originals stay in Everyone
     await expect(page.getByTestId("list-row-name")).toHaveText([
@@ -1527,11 +1541,10 @@ test.describe("the Needs you section", () => {
       "Task D",
       "Task E",
       "Task F",
-      "Lab task",
     ]);
 
     // When a copy of the other company's employee is clicked
-    await needs
+    await others
       .getByTestId("needs-row")
       .filter({ hasText: "Lab task" })
       .getByRole("button")
@@ -1643,7 +1656,7 @@ test.describe("a Review copy in Needs you", () => {
 test.describe("Move all Review to Idle", () => {
   test.use({ viewport: { width: 1280, height: 800 }, hasTouch: false });
 
-  test("moves every listed Review employee, also beyond the cap and in another company, with one request, and a second device follows", async ({
+  test("moves every Review employee of a section, also beyond the cap, with one request per section, and a second device follows", async ({
     browser,
     context,
     page,
@@ -1686,20 +1699,32 @@ test.describe("Move all Review to Idle", () => {
       await waitForEmployees(otherPage, 6);
       await page.goto("/");
       await waitForEmployees(page, 6);
-      const moveAll = page.getByRole("button", {
-        name: "Move all 6 Review to Idle",
+      const moveOwn = page.getByRole("button", {
+        name: "Move all 5 Review to Idle",
+      });
+      const moveOthers = page.getByRole("button", {
+        name: "Move all 1 Review to Idle",
       });
 
-      // When the owner presses it once
-      await moveAll.click();
+      // When the owner presses this company's Move all once
+      await moveOwn.click();
 
-      // Then every Review employee reads Idle, the button is gone and one request carried six items
+      // Then this company's Review employees read Idle with one request of five items, and the other company's button stays
       await expect(
         page.getByTestId("list-everyone").getByTestId("list-row-status"),
       ).toHaveText([/^Idle/, /^Idle/, /^Idle/, /^Idle/, /^Idle/, /^Waiting/]);
-      await expect(moveAll).toHaveCount(0);
+      await expect(moveOwn).toHaveCount(0);
+      await expect(moveOthers).toBeVisible();
       expect(requests).toHaveLength(1);
-      expect(JSON.parse(requests[0]).items).toHaveLength(6);
+      expect(JSON.parse(requests[0]).items).toHaveLength(5);
+
+      // When the owner presses the other companies' Move all
+      await moveOthers.click();
+
+      // Then a second request carries that one item
+      await expect(moveOthers).toHaveCount(0);
+      expect(requests).toHaveLength(2);
+      expect(JSON.parse(requests[1]).items).toHaveLength(1);
 
       // And a second device shows them Idle after its next poll
       await expect(

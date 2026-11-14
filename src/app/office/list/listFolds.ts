@@ -3,12 +3,14 @@ import { z } from "zod";
 /** Which sections of the list are open. */
 export interface ListFolds {
   needsYou: boolean;
+  otherCompanies: boolean;
   everyone: boolean;
   wentHome: boolean;
 }
 
 const DEFAULT_FOLDS: ListFolds = {
   needsYou: true,
+  otherCompanies: true,
   everyone: true,
   wentHome: false,
 };
@@ -18,6 +20,7 @@ const LIST_FOLDS_STORAGE_KEY = "claude-office.list-folds";
 // A field that is missing or of the wrong type takes its default
 const foldsSchema = z.object({
   needsYou: z.boolean().catch(DEFAULT_FOLDS.needsYou),
+  otherCompanies: z.boolean().catch(DEFAULT_FOLDS.otherCompanies),
   everyone: z.boolean().catch(DEFAULT_FOLDS.everyone),
   wentHome: z.boolean().catch(DEFAULT_FOLDS.wentHome),
 });

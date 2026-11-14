@@ -27,7 +27,7 @@ interface ListModelInput {
 }
 
 /**
- * What the list shows: the viewed company's rows, the open card's place, the Needs you copies and the folds. It also sets the browser tab's title from the Needs you count.
+ * What the list shows: the viewed company's rows, the open card's place, the Needs you and In other companies copies and the folds. It also sets the browser tab's title from the Needs you count.
  * @param input - The sessions, the view and the selection.
  * @returns The rows the filter shows, the selected row's place, Needs you, and the fold state.
  */
@@ -64,11 +64,8 @@ export function useListModel({
   useTabTitle(everywhere.total, tabCount);
   const needsYou = needsYouOtherCompanies ? everywhere : needsYouOf(false);
   const listFold = useListFolds(
-    new Set(
-      [...needsYou.own, ...needsYou.others.flatMap((g) => g.rows)].map(
-        sessionKey,
-      ),
-    ),
+    new Set(needsYou.own.map(sessionKey)),
+    new Set(needsYou.others.flatMap((g) => g.rows).map(sessionKey)),
     new Set(
       [...everywhere.own, ...everywhere.others.flatMap((g) => g.rows)].map(
         sessionKey,
