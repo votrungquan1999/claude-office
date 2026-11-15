@@ -46,6 +46,7 @@ import {
   type TerminalWindow,
 } from "./terminal-control";
 import {
+  isHireCommandOf,
   isLaunchOf,
   readWindowRecord,
   removeLaunchFiles,
@@ -442,6 +443,7 @@ export function createCommandPoller(
         conversation: DoomedProcess;
         children: DoomedProcess[];
         tty: string;
+        args: string;
       }
     | undefined
   > => {
@@ -469,6 +471,7 @@ export function createCommandPoller(
       conversation: { pid, started: info.started },
       children: doomedFrom(table, descendantsOf(table, pid)),
       tty: info.tty,
+      args: info.args,
     };
   };
 
@@ -542,17 +545,33 @@ export function createCommandPoller(
     return { note: await closeWhenIdle(control, recorded, waits) };
   };
 
-  /** Whether the process is the very one the launch script recorded, on the device it recorded. */
+  /** Whether the process is the very one the launch script recorded, on the device it recorded, or with no pid on record, the hire's own command on a terminal. */
   const launchedHere = (
-    found: { conversation: DoomedProcess; tty: string } | undefined,
+    sessionId: string,
+    found:
+      | { conversation: DoomedProcess; tty: string; args: string }
+      | undefined,
     record: WindowRecord,
-  ): boolean =>
+  ): boolean => {
+    if (found === undefined) return false;
+    // A desk launched before pid records existed is proven by the hire's own command line instead.
+    if (record.pid === undefined) {
+      const claudePath = options.claudePath ?? findClaude(home);
+      return (
+        claudePath !== undefined &&
+        isHireCommandOf(found.args, sessionId, claudePath) &&
+        // A real terminal device, and the recorded one when the launch wrote one.
+        sameDevice(found.tty, record.tty ?? found.tty)
+      );
+    }
     // A hand resume can reuse the device but not the pid and start time.
-    found !== undefined &&
-    record.tty !== undefined &&
-    sameDevice(found.tty, record.tty) &&
-    record.pid === found.conversation.pid &&
-    record.started === found.conversation.started;
+    return (
+      record.tty !== undefined &&
+      sameDevice(found.tty, record.tty) &&
+      record.pid === found.conversation.pid &&
+      record.started === found.conversation.started
+    );
+  };
 
   /** Whether the window Terminal named is the recorded one; a window id not recorded or a Terminal that cannot answer proves nothing against it. */
   const inRecordedWindow = (
@@ -574,13 +593,13 @@ export function createCommandPoller(
     const launchId = launch?.launchId ?? sessionId;
     const record = readWindowRecord(home, launchId);
     const control = options.terminalControl;
+    const launched = launchedHere(sessionId, found, record);
     // Found before the process ends: a dead process has no terminal device to look the window up by.
     const looked =
-      found && control && order.endRunning && launchedHere(found, record)
+      found && control && order.endRunning && launched
         ? await lookUpWindow(control, found)
         : undefined;
-    const ownWindow =
-      launchedHere(found, record) && inRecordedWindow(record, looked);
+    const ownWindow = launched && inRecordedWindow(record, looked);
     // After an agent restart there is no record, and start-up already swept the launch files.
     if (launch) removeLaunchFiles(home, launch.launchId);
     removeWindowRecord(home, launchId);

@@ -264,6 +264,24 @@ export function sweepLaunchFiles(
 }
 
 /**
+ * Whether a command line is exactly what a hire script's `exec` runs for one session, as `ps` prints it.
+ * A wake's `--resume <id> --remote-control` is not accepted: the owner can type that very command by hand.
+ * @param args - The process's command line.
+ * @param sessionId - The session.
+ * @param claudePath - The claude binary the agent launches.
+ * @returns True only for the hire's own command, whatever its first message says.
+ */
+export function isHireCommandOf(
+  args: string,
+  sessionId: string,
+  claudePath: string,
+): boolean {
+  const options = `${claudePath} --remote-control --session-id ${sessionId} --`;
+  // The process table trims the space an empty message leaves.
+  return args === options || args.startsWith(`${options} `);
+}
+
+/**
  * Whether a command line is the claude binary started for one session by a hire (`--session-id`) or a wake (`--resume`).
  * Only the options before the first `--` count: the hire's first message follows it and can say anything.
  * @param args - The process's command line.

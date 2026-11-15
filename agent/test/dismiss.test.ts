@@ -724,7 +724,7 @@ describe("dismissing a hired or woken employee", () => {
     expect(mac.terminal.closes).toEqual([]);
   }, 60_000);
 
-  it("ends nothing when the launch record holds no pid, as on a desk hired by an earlier build", async () => {
+  it("ends nothing when the launch record holds no pid and the process is not the hire's own command", async () => {
     // Given a running hire whose pid record is gone but whose device and window are recorded
     const mac = await setUpMac("machine-air", "Air");
     const { sessionId, conversation } = await runningHire(mac);
@@ -791,7 +791,7 @@ describe("dismissing a hired or woken employee", () => {
     expect(mac.terminal.closes).toEqual([]);
   }, 60_000);
 
-  it("ends nothing for a desk with no launch record at all, such as one hired before the record existed", async () => {
+  it("ends nothing for a desk with no launch record at all whose process is not the hire's own command", async () => {
     // Given a running hire whose launch record files are gone
     const mac = await setUpMac("machine-air", "Air");
     const { sessionId, conversation } = await runningHire(mac);
@@ -807,6 +807,87 @@ describe("dismissing a hired or woken employee", () => {
     expect(mac.terminal.closes).toEqual([]);
     const [desk] = await officeSessions();
     expect(desk).not.toHaveProperty("kept");
+  }, 60_000);
+
+  /** A running hire launched before launch records existed: no device, pid or window record, its process showing the given command line, in its window's tab unless `onTerminal` is false. */
+  async function hireWithoutRecords(
+    mac: Mac,
+    commandLine: (sessionId: string) => string,
+    onTerminal = true,
+  ) {
+    const { folder, sessionId } = await hireOnto(mac, "Fix the login bug");
+    const conversation = await processes.standIn({ sessionId });
+    if (onTerminal) mac.terminal.attach([conversation.pid]);
+    mac.terminal.startSession(sessionId, {
+      cwd: folder,
+      pid: conversation.pid,
+      procStart: conversation.procStart,
+    });
+    await mac.agent.reconcile();
+    await mac.agent.flush();
+    for (const extension of ["tty", "pid", "window"]) {
+      rmSync(recordFile(mac, sessionId, extension), { force: true });
+    }
+    mac.terminal.showCommandLine(conversation.pid, commandLine(sessionId));
+    return { sessionId, conversation };
+  }
+
+  it("ends a desk with no launch records whose process runs the office's own hire command on a terminal, and closes its window", async () => {
+    // Given a running hire with no launch records, its process showing the exact command the hire script runs
+    const mac = await setUpMac("machine-air", "Air");
+    const { sessionId, conversation } = await hireWithoutRecords(
+      mac,
+      (id) =>
+        `${process.execPath} --remote-control --session-id ${id} -- Fix the login bug`,
+    );
+
+    // When the owner dismisses it
+    const order = await dismiss(mac, sessionId);
+
+    // Then the conversation ended and the window found by its device was closed, with no note
+    expect(order).toMatchObject({ status: "done" });
+    expect(isAlive(conversation.pid)).toBe(false);
+    expect(mac.terminal.closes).toEqual([mac.terminal.windows[0]?.id]);
+    expect(order).not.toHaveProperty("note");
+    expect(await officeSessions()).toEqual([]);
+  }, 60_000);
+
+  it("ends nothing for a desk with no launch records whose process resumes the conversation, since the owner can type that very command by hand", async () => {
+    // Given a running desk with no launch records whose process is a resume of the conversation with Remote Control
+    const mac = await setUpMac("machine-air", "Air");
+    const { sessionId, conversation } = await hireWithoutRecords(
+      mac,
+      (id) => `${process.execPath} --resume ${id} --remote-control`,
+    );
+
+    // When the owner dismisses it
+    const order = await dismiss(mac, sessionId);
+
+    // Then the conversation lives on, nothing was closed and the note says it was left running
+    expect(order).toMatchObject({ status: "done" });
+    expect(order?.note).toBe(WINDOW_NOTES.leftRunning);
+    expect(isAlive(conversation.pid)).toBe(true);
+    expect(mac.terminal.closes).toEqual([]);
+  }, 60_000);
+
+  it("ends nothing for a desk with no launch records whose process runs the office's own hire command but on no terminal", async () => {
+    // Given a running desk with no launch records, its process showing the hire's command but attached to no terminal device
+    const mac = await setUpMac("machine-air", "Air");
+    const { sessionId, conversation } = await hireWithoutRecords(
+      mac,
+      (id) =>
+        `${process.execPath} --remote-control --session-id ${id} -- Fix the login bug`,
+      false,
+    );
+
+    // When the owner dismisses it
+    const order = await dismiss(mac, sessionId);
+
+    // Then the conversation lives on, nothing was closed and the note says it was left running
+    expect(order).toMatchObject({ status: "done" });
+    expect(order?.note).toBe(WINDOW_NOTES.leftRunning);
+    expect(isAlive(conversation.pid)).toBe(true);
+    expect(mac.terminal.closes).toEqual([]);
   }, 60_000);
 
   it("sends a woken employee that is still waiting at the Mac home at the moment of the dismiss, listed in today's departures", async () => {

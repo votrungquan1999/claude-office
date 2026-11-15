@@ -49,6 +49,8 @@ export interface FakeTerminal {
   attachUnseen(pids: number[], window?: FakeWindow): void;
   /** Adds a second tab, running nothing, to a window (the last one opened by default). */
   addTab(window?: FakeWindow): void;
+  /** Makes `ps` print this command line for a process, as for a claude started with these options; a stand-in otherwise shows its own. */
+  showCommandLine(pid: number, args: string): void;
   /** The real process table with each attached process on its tab's device, as `ps` prints it (`ttys900`); stand-ins otherwise have no terminal (`??`). */
   readProcessTable(): Promise<ProcessTable>;
   /** After `reads` more reads, every read of the process table fails, as when `ps` cannot be run. */
@@ -86,6 +88,7 @@ export function createFakeTerminal(fake: FakeHome): FakeTerminal {
   let readsLeft = Number.POSITIVE_INFINITY;
   let nextWindowId = 7000;
   const recordedPid = new WeakSet<FakeWindow>();
+  const commandLines = new Map<number, string>();
 
   /** Busy is judged for the tab with the window's device, as the real control does. */
   const busy = (window: FakeWindow, tty: string) =>
@@ -195,6 +198,9 @@ export function createFakeTerminal(fake: FakeHome): FakeTerminal {
         unseen: [],
       });
     },
+    showCommandLine(pid, args) {
+      commandLines.set(pid, args);
+    },
     failProcessTableAfter(reads) {
       readsLeft = reads;
     },
@@ -209,6 +215,10 @@ export function createFakeTerminal(fake: FakeHome): FakeTerminal {
             if (info) info.tty = tab.tty.replace(/^\/dev\//, "");
           }
         }
+      }
+      for (const [pid, args] of commandLines) {
+        const info = table.get(pid);
+        if (info) info.args = args;
       }
       return table;
     },
