@@ -14,6 +14,7 @@ import {
   dismissClosesWindow,
   macBlock,
   offlineMachineIds,
+  takesBlankHire,
 } from "@/office/offline";
 import { ROOM_OF_STATE } from "@/office/rooms";
 import { createSceneSync, lookOf } from "@/office/sceneSync";
@@ -653,6 +654,7 @@ export function OfficeView() {
     machineId: machine.machineId,
     machineName: machine.machineName,
     block: macBlock(machine, serverNowIso),
+    takesBlank: takesBlankHire(machine.agentVersion),
   }));
   const hireButton = (
     <button

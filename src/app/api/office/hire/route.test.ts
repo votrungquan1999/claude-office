@@ -165,6 +165,45 @@ describe("hiring an employee", () => {
     expect((await response.json()).error).toMatch(/update this Mac's agent/i);
   });
 
+  it("refuses a blank hire to a Mac whose agent is older than 0.5.0 with a plain sentence, storing nothing, and stores one for a Mac on 0.5.0", async () => {
+    // Given a Mac on 0.5.0 beside the one on 0.3.0, both online with the folder
+    const db = await getDb();
+    await db.collection("machines").insertOne({
+      machineId: "mac-new",
+      machineName: "New",
+      lastSeenAt: new Date(),
+      agentVersion: "0.5.0",
+    });
+    await db.collection("folders").insertOne({
+      machineId: "mac-new",
+      path: "/work/app",
+      companyMode: true,
+      firstSeenAt: new Date(),
+    });
+    const blankHire = (machineId: string) =>
+      POST(post({ machineId, folder: "/work/app", blank: true }, ownerHeaders));
+
+    // When the owner hires blank on the 0.3.0 Mac
+    const refused = await blankHire("mac-up");
+
+    // Then it is refused with a sentence the dialog can show, and nothing is stored
+    expect(refused.status).toBe(409);
+    expect((await refused.json()).error).toBe(
+      "Update this Mac's agent to hire with no first message.",
+    );
+    expect(await orders()).toHaveLength(0);
+
+    // When the owner hires blank on the 0.5.0 Mac
+    const accepted = await blankHire("mac-new");
+
+    // Then one order is stored with no first message
+    expect(accepted.status).toBe(200);
+    const stored = await orders();
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({ machineId: "mac-new", kind: "hire" });
+    expect(stored[0]).not.toHaveProperty("firstMessage");
+  });
+
   describe("with this server's clock an hour ahead", () => {
     afterEach(() => {
       vi.useRealTimers();

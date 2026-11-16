@@ -15,6 +15,9 @@ export const MIN_AGENT_VERSION = "0.3.0";
 /** The first agent version whose Dismiss ends the conversation and closes its window; older agents only stop keeping the employee. */
 export const DISMISS_MIN_AGENT_VERSION = "0.4.0";
 
+/** The first agent version that opens a hire with no first message; an older one fails such an order as not valid. */
+export const BLANK_HIRE_MIN_AGENT_VERSION = "0.5.0";
+
 /** The first agent version that restarts itself when the owner asks from Settings. */
 export const RESTART_MIN_AGENT_VERSION = "0.5.0";
 
@@ -95,6 +98,15 @@ export function offlineMachineIds(
  */
 export function dismissClosesWindow(agentVersion: string | undefined): boolean {
   return !isOlderThan(agentVersion, DISMISS_MIN_AGENT_VERSION);
+}
+
+/**
+ * Whether a Mac's agent opens a hire with no first message.
+ * @param agentVersion - The agent's reported version, if any.
+ * @returns True for an agent at or past the version that runs blank hires.
+ */
+export function takesBlankHire(agentVersion: string | undefined): boolean {
+  return !isOlderThan(agentVersion, BLANK_HIRE_MIN_AGENT_VERSION);
 }
 
 /**

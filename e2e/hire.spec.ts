@@ -221,6 +221,69 @@ test("ticking Blank greys out the first message, keeps what was typed without se
   expect(order).not.toHaveProperty("firstMessage");
 });
 
+test("Blank is greyed with a reason for a Mac whose agent is older than 0.5.0, and switching to one never sends a blank hire", async ({
+  context,
+  page,
+}) => {
+  // Given the online Mac on 0.5.0 and a second online Mac on 0.4.0, each with a folder
+  await withE2eDb(async (db) => {
+    await db
+      .collection("machines")
+      .updateOne({ machineId: "m-up" }, { $set: { agentVersion: "0.5.0" } });
+    await db.collection("machines").insertOne({
+      machineId: "m-mid",
+      machineName: "Mid Mac",
+      lastSeenAt: new Date(),
+      agentVersion: "0.4.0",
+    });
+    await seedFolders(db.collection("folders"), [
+      { machineId: "m-mid", path: "/work/mid", existsOnMac: true },
+    ]);
+  });
+  await signInAsOwner(context);
+  await page.goto("/");
+  await waitForEmployees(page, 1);
+  await page.getByTestId("hire-button").click();
+  const blank = page.getByRole("checkbox", { name: "Blank" });
+  const message = page.getByTestId("hire-message");
+
+  // When the owner ticks Blank on the 0.5.0 Mac, then picks the 0.4.0 Mac
+  await blank.check();
+  await page.getByTestId("hire-mac").selectOption("m-mid");
+
+  // Then Blank is greyed and unticked with the reason, the message box is open again and Hire needs a message
+  await expect(blank).toBeDisabled();
+  await expect(blank).not.toBeChecked();
+  await expect(page.getByTestId("hire-blank-note")).toHaveText(
+    "Update this Mac's agent to hire with no first message.",
+  );
+  await expect(message).toBeEnabled();
+  await expect(page.getByTestId("hire-submit")).toBeDisabled();
+
+  // When the owner writes a message and hires
+  await message.fill("Fix the login bug");
+  await page.getByTestId("hire-submit").click();
+
+  // Then the order carries that message
+  await expect.poll(async () => (await readCommands()).length).toBe(1);
+  const [order] = await readCommands();
+  expect(order).toMatchObject({
+    machineId: "m-mid",
+    folder: "/work/mid",
+    firstMessage: "Fix the login bug",
+  });
+
+  // And back on the 0.5.0 Mac, Blank can be ticked again with no note
+  await page
+    .getByTestId("hire-dialog")
+    .getByRole("button", { name: "Close" })
+    .click();
+  await page.getByTestId("hire-button").click();
+  await page.getByTestId("hire-mac").selectOption("m-up");
+  await expect(blank).toBeEnabled();
+  await expect(page.getByTestId("hire-blank-note")).toHaveCount(0);
+});
+
 test("the dialog warns that a hire will wait at the Mac when the chosen folder is not trusted, and not for a trusted or unjudged one", async ({
   context,
   page,

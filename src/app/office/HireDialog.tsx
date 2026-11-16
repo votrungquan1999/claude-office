@@ -11,6 +11,8 @@ export interface HireMac {
   machineName: string;
   /** Why the Mac cannot take orders; absent when it can. */
   block?: MacBlock;
+  /** Whether the Mac's agent opens a hire with no first message. */
+  takesBlank: boolean;
 }
 
 export interface HireDialogProps {
@@ -97,18 +99,22 @@ export function HireDialog({
       record.cliTrusted === false,
   );
   const sending = posting || phase.phase === "pending";
+  const takesBlank =
+    macs.find((mac) => mac.machineId === pickedMac)?.takesBlank === true;
+  // An older agent would fail a blank hire, so Blank counts only on a Mac that takes it.
+  const blankOn = blank && takesBlank;
   const canSubmit =
     !sending &&
     pickedMac !== "" &&
     folder !== "" &&
-    (blank || message.trim() !== "");
+    (blankOn || message.trim() !== "");
 
   const submit = async () => {
     setRefusal(null);
     setPosting(true);
     // A blank hire leaves the typed text in the box, unsent.
     const result = await postHire(
-      blank
+      blankOn
         ? { machineId: pickedMac, folder, blank: true }
         : { machineId: pickedMac, folder, firstMessage: message },
     );
@@ -194,7 +200,7 @@ export function HireDialog({
             // biome-ignore lint/a11y/noAutofocus: a modal dialog's first field takes focus
             autoFocus
             value={message}
-            disabled={sending || blank}
+            disabled={sending || blankOn}
             rows={4}
             onChange={(event) => setMessage(event.target.value)}
             className="border-2 border-border bg-bg-dark p-6"
@@ -204,12 +210,17 @@ export function HireDialog({
           <input
             type="checkbox"
             data-testid="hire-blank"
-            checked={blank}
-            disabled={sending}
+            checked={blankOn}
+            disabled={sending || !takesBlank}
             onChange={(event) => setBlank(event.target.checked)}
           />
           Blank
         </label>
+        {!takesBlank && pickedMac !== "" && (
+          <p data-testid="hire-blank-note" className="text-xs">
+            Update this Mac's agent to hire with no first message.
+          </p>
+        )}
         {untrusted && (
           <p data-testid="hire-trust-warning" className="text-xs">
             Claude Code has not trusted this folder yet: the new employee will

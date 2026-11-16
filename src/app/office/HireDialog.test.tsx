@@ -12,10 +12,20 @@ import { MacBlock } from "@/office/offline";
 import { HireDialog } from "./HireDialog";
 
 const macs = [
-  { machineId: "up", machineName: "Up Mac" },
-  { machineId: "second", machineName: "Second Mac" },
-  { machineId: "down", machineName: "Down Mac", block: MacBlock.Offline },
-  { machineId: "old", machineName: "Old Mac", block: MacBlock.Outdated },
+  { machineId: "up", machineName: "Up Mac", takesBlank: true },
+  { machineId: "second", machineName: "Second Mac", takesBlank: true },
+  {
+    machineId: "down",
+    machineName: "Down Mac",
+    block: MacBlock.Offline,
+    takesBlank: true,
+  },
+  {
+    machineId: "old",
+    machineName: "Old Mac",
+    block: MacBlock.Outdated,
+    takesBlank: false,
+  },
 ];
 const folders = [
   { machineId: "up", path: "/work/app", companyMode: true },
