@@ -181,3 +181,53 @@ describe("a running employee that one periodic check misreads", () => {
     expect(lines.join("\n")).not.toContain("secret");
   }, 60_000);
 });
+
+describe("a running employee that a periodic check wrongly ended", () => {
+  const { setUpMac, officeSessions } = useMacHarness();
+  const processes = useLiveProcesses();
+
+  it("brings a session sent home back to work at the next check once its own registry entry lists the same live process again", async () => {
+    // Given a running session that had a prompt, seen alive by a check
+    const { fake, agent } = await setUpMac("machine-air", "Quan's MacBook Air");
+    const live = await processes.live();
+    fake.addSession({
+      sessionId: "plain",
+      cwd: "/work/plain",
+      pid: live.pid,
+      procStart: live.procStart,
+    });
+    const send = (event: Record<string, unknown>) =>
+      runHook(fake.home, {
+        session_id: "plain",
+        cwd: "/work/plain",
+        ...event,
+      });
+    await send({ hook_event_name: "SessionStart", source: "startup" });
+    await send({ hook_event_name: "UserPromptSubmit", prompt: "go" });
+    await send({ hook_event_name: "Stop" });
+    await agent.reconcile();
+    await agent.flush();
+
+    // When for one check its registry file names another session with the same process, which sends it home
+    fake.updateSession("plain", { sessionId: "other" });
+    await agent.reconcile();
+    await agent.flush();
+    expect(
+      (await officeSessions(new Date(0))).find(
+        (desk) => desk.sessionId === "plain",
+      ),
+    ).toMatchObject({ state: "wentHome" });
+
+    // And the next check finds its own entry back on the same live process
+    fake.updateSession("other", { sessionId: "plain" });
+    await agent.reconcile();
+    await agent.flush();
+
+    // Then it is back at work, with no end time
+    const desk = (await officeSessions(new Date(0))).find(
+      (candidate) => candidate.sessionId === "plain",
+    );
+    expect(desk).toMatchObject({ state: "idle" });
+    expect(desk).not.toHaveProperty("endedAt");
+  }, 60_000);
+});

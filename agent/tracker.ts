@@ -144,6 +144,8 @@ interface Tracked {
   unwritten: StepDoc[];
   endedAt?: number;
   endedHookTs?: number;
+  /** What ended the session, set with `endedAt`: only an end made by a reconcile check is undone when its process turns out alive. */
+  endedBy?: EndedBy;
   /** Wall-clock time of the newest event received, for evicting held sessions. */
   lastActivityAt: number;
   /** Counts every change to the turn state, so a late Haiku verdict can tell its turn is still the current one. */
@@ -154,7 +156,7 @@ interface Tracked {
   lastHookTs: number;
   /** `hookTs` of the newest event that changed the state; a registry status only overrides hooks older than itself. */
   stateHookTs: number;
-  /** The process behind the session, as the registry last recorded it. */
+  /** The process behind the session, as the registry last recorded it; after a check ends the session, the process that check judged gone. */
   process?: { pid?: number; procStart?: string };
   /** The last process a check found alive, kept apart from `process` so one misread entry cannot erase it. */
   seenAlive?: { pid: number; procStart?: string };
@@ -241,6 +243,9 @@ const MAX_UNWRITTEN_STEPS = 500;
 const HELD_TTL_MS = 10 * 60_000;
 /** How long a window the office opened may go without a registry entry or hook before its desk shows Not running. */
 const LAUNCH_WAIT_LIMIT_MS = 30 * 60_000;
+
+/** What ended a session: a reconcile check, its end hook, the agent finding it gone at start-up, a dismiss, or a launch that never registered. */
+type EndedBy = "reconcile" | "endHook" | "restart" | "dismiss" | "launchGaveUp";
 
 /** What a second look at a process found. */
 interface Recheck {
@@ -446,6 +451,7 @@ export class SessionTracker {
       ) {
         tracked.endedAt = endedAt;
         tracked.endedHookTs = endedAt;
+        tracked.endedBy = "restart";
       } else if (desk.launchWait === undefined) {
         // No entry can be called missing without a readable registry, so the desk keeps running until a pass can tell.
         tracked.unverified = true;
@@ -563,16 +569,18 @@ export class SessionTracker {
       tracked.launchWait = undefined;
       tracked.interactive = true;
       tracked.endedAt = this.options.now();
+      tracked.endedBy = "dismiss";
     } else if (tracked.endedAt !== undefined) {
       // The went-home time is the dismiss, not when the window closed.
       tracked.endedAt = this.options.now();
       tracked.endedHookTs = undefined;
+      tracked.endedBy = "dismiss";
     }
     this.publish(sessionId, tracked);
   }
 
   /**
-   * Corrects what hooks could not see: a session whose process is gone goes home, and a fresher registry status replaces a stale state.
+   * Corrects what hooks could not see: a session whose process is gone goes home, one a check wrongly ended comes back, and a fresher registry status replaces a stale state.
    * @param entries - The registry as it is now.
    * @param isRunning - Whether a recorded process is still the one running.
    * @param probe - Confirms a process the pass calls gone before its session ends; absent in tests whose processes all run.
@@ -622,6 +630,7 @@ export class SessionTracker {
           );
           tracked.endedAt = this.options.now();
           tracked.endedHookTs = this.options.now();
+          tracked.endedBy = "reconcile";
           this.publish(sessionId, tracked);
           continue;
         }
@@ -679,6 +688,10 @@ export class SessionTracker {
         );
         tracked.endedAt = this.options.now();
         tracked.endedHookTs = this.options.now();
+        tracked.endedBy = "reconcile";
+        // The process judged gone (the one seen alive when the entry gave no pid), so a later check can tell when that same process is listed alive again.
+        tracked.process =
+          process?.pid !== undefined ? process : (recheck?.process ?? process);
         // Nothing will report the tools that were mid-run when the process vanished.
         this.addSteps(tracked, sessionId, closeRunning(tracked.steps));
         this.publish(sessionId, tracked);
@@ -803,13 +816,14 @@ export class SessionTracker {
     tracked.launchWait = undefined;
     tracked.interactive = true;
     tracked.endedAt = this.options.now();
+    tracked.endedBy = "launchGaveUp";
     // No end hook time, so any later SessionStart brings the desk back.
     tracked.endedHookTs = undefined;
     this.publish(sessionId, tracked);
   }
 
   /**
-   * Brings a kept desk that shows Not running back to running when a live shown registry entry of another process has its id.
+   * Brings an ended desk back when a live shown registry entry has its id: a kept desk for another process (a resume), and any desk a check ended for the very process it judged gone (a wrong end).
    * @param sessionId - The session.
    * @param tracked - Its state.
    * @param entries - The registry as it is now.
@@ -821,18 +835,19 @@ export class SessionTracker {
     entries: RegistryEntry[],
     isRunning: IsRunning,
   ): void {
-    if (!tracked.kept) return;
+    const endedByCheck = tracked.endedBy === "reconcile";
+    if (!tracked.kept && !endedByCheck) return;
     const entry = pickEntry(
       entries.filter(
         (candidate) =>
           candidate.sessionId === sessionId &&
           isShownEntry(candidate) &&
           isRunning(candidate) &&
-          // The process whose end hook just fired may still be listed for a moment; only another process is a resume.
-          !(
-            candidate.pid === tracked.process?.pid &&
-            candidate.procStart === tracked.process?.procStart
-          ),
+          // The process whose end hook just fired may still be listed for a moment, so for other ends only another process is a resume.
+          (candidate.pid === tracked.process?.pid &&
+          candidate.procStart === tracked.process?.procStart
+            ? endedByCheck
+            : tracked.kept !== undefined),
       ),
     );
     if (!entry) return;
@@ -849,6 +864,7 @@ export class SessionTracker {
   private reopen(tracked: Tracked, status?: RegistryEntry["status"]): void {
     tracked.endedAt = undefined;
     tracked.endedHookTs = undefined;
+    tracked.endedBy = undefined;
     tracked.memory = status
       ? applyRegistryStatus(initialStateMemory(), status)
       : initialStateMemory();
@@ -981,6 +997,7 @@ export class SessionTracker {
       }
       tracked.endedAt = undefined;
       tracked.endedHookTs = undefined;
+      tracked.endedBy = undefined;
       // A resume may run in a new process; the old pid is dead, so the new one is learned from the registry.
       const entry = this.entryOf(event.session_id);
       tracked.process = entry
@@ -1069,6 +1086,7 @@ export class SessionTracker {
     if (event.hook_event_name === "SessionEnd") {
       tracked.endedAt = this.options.now();
       tracked.endedHookTs = event.hookTs;
+      tracked.endedBy = "endHook";
     }
   }
 
