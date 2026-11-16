@@ -5,6 +5,8 @@ import { useTestAuth } from "@/test/use-test-auth";
 import { useTestMongo } from "@/test/use-test-mongo";
 
 const OWNER = "Owner@Example.com";
+// Every account reaches better-auth through Google sign-in.
+const GOOGLE_SIGN_UP = { method: "oauth", oauth: { providerId: "google" } };
 
 /** Counts the rows better-auth keeps about people. */
 async function authRowCounts() {
@@ -35,11 +37,14 @@ describe("who can get into the office", () => {
     const { internalAdapter } = await (await getAuth()).$context;
 
     // When a stranger's verified Google account tries to sign up
-    const created = await internalAdapter.createUser({
-      email: "stranger@example.com",
-      emailVerified: true,
-      name: "Stranger",
-    });
+    const created = await internalAdapter.createUser(
+      {
+        email: "stranger@example.com",
+        emailVerified: true,
+        name: "Stranger",
+      },
+      GOOGLE_SIGN_UP,
+    );
 
     // Then nothing is stored
     expect(created).toBeNull();
@@ -51,11 +56,14 @@ describe("who can get into the office", () => {
     const { internalAdapter } = await (await getAuth()).$context;
 
     // When the owner signs in
-    const user = await internalAdapter.createUser({
-      email: "owner@example.com",
-      emailVerified: true,
-      name: "Owner",
-    });
+    const user = await internalAdapter.createUser(
+      {
+        email: "owner@example.com",
+        emailVerified: true,
+        name: "Owner",
+      },
+      GOOGLE_SIGN_UP,
+    );
     const session = user && (await internalAdapter.createSession(user.id));
 
     // Then the user and a session exist
@@ -68,11 +76,14 @@ describe("who can get into the office", () => {
     const { internalAdapter } = await (await getAuth()).$context;
 
     // When it tries to sign up
-    const created = await internalAdapter.createUser({
-      email: OWNER,
-      emailVerified: false,
-      name: "Impostor",
-    });
+    const created = await internalAdapter.createUser(
+      {
+        email: OWNER,
+        emailVerified: false,
+        name: "Impostor",
+      },
+      GOOGLE_SIGN_UP,
+    );
 
     // Then it is refused and nothing is stored
     expect(created).toBeNull();

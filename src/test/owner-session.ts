@@ -5,21 +5,25 @@ import { getAuth } from "@/lib/auth";
 export const SESSION_COOKIE_NAME = "better-auth.session_token";
 
 /**
- * Creates a user and a session through better-auth's own path and returns the signed session cookie.
+ * Opens a session through better-auth's own path, creating the user unless one already has this email, and returns the signed session cookie.
  * @param email - The user's email.
- * @param emailVerified - Whether Google verified the email.
- * @returns The request headers carrying the cookie, or `null` when better-auth refused the account.
+ * @param emailVerified - Whether Google verified the email, used only when the user is created.
+ * @returns The request headers carrying the cookie, or `null` when better-auth refused the account or session.
  */
 export async function sessionHeadersFor(
   email: string,
   emailVerified = true,
 ): Promise<Headers | null> {
   const { internalAdapter } = await (await getAuth()).$context;
-  const user = await internalAdapter.createUser({
-    email,
-    emailVerified,
-    name: email,
-  });
+  // better-auth keeps user emails unique, so a second session for the same person reuses its row.
+  const existing = await internalAdapter.findUserByEmail(email);
+  const user =
+    existing?.user ??
+    (await internalAdapter.createUser(
+      { email, emailVerified, name: email },
+      // The office signs in with Google only.
+      { method: "oauth", oauth: { providerId: "google" } },
+    ));
   if (!user) return null;
   const session = await internalAdapter.createSession(user.id);
   if (!session) return null;
