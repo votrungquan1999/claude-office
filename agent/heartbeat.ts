@@ -1,5 +1,4 @@
 import type { Collection } from "mongodb";
-import type { AgentCodeReport } from "./agent-code";
 
 export interface HeartbeatOptions {
   machines: Collection;
@@ -15,8 +14,8 @@ export interface HeartbeatOptions {
   onWriteOk?: () => void;
   /** The agent was not started by launchd, so it never exits for a restart. */
   startedByHand?: boolean;
-  /** What code the agent runs, re-read before every beat. */
-  code?: () => Promise<AgentCodeReport>;
+  /** Short commit of the code the agent loaded; absent outside a readable git checkout. */
+  agentCommit?: string;
   /** Runs after every beat's own writes; owns its error handling. */
   afterBeat?: () => Promise<void>;
 }
@@ -48,7 +47,6 @@ export function startHeartbeat(options: HeartbeatOptions): Heartbeat {
   let startRecorded = false;
   const beat = async () => {
     try {
-      const code = await options.code?.();
       // The database stamps the time, so a Mac with a wrong clock cannot look offline or alive by mistake.
       await machines.updateOne(
         { machineId },
@@ -59,11 +57,12 @@ export function startHeartbeat(options: HeartbeatOptions): Heartbeat {
             ...(options.startedByHand === undefined
               ? {}
               : { startedByHand: options.startedByHand }),
-            ...(code ? { restartNeeded: code.restartNeeded } : {}),
-            ...(code?.agentCommit ? { agentCommit: code.agentCommit } : {}),
+            ...(options.agentCommit
+              ? { agentCommit: options.agentCommit }
+              : {}),
           },
           // A commit left by an earlier agent must not be shown for this one.
-          ...(code && !code.agentCommit ? { $unset: { agentCommit: "" } } : {}),
+          ...(options.agentCommit ? {} : { $unset: { agentCommit: "" } }),
           $currentDate: startRecorded
             ? { lastSeenAt: true }
             : { lastSeenAt: true, agentStartedAt: true },

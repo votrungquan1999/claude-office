@@ -1,12 +1,5 @@
 import { execFileSync } from "node:child_process";
-import {
-  chmodSync,
-  mkdirSync,
-  mkdtempSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -44,19 +37,12 @@ function makeCheckout(): string {
   return repo;
 }
 
-/** Commits a change to one file of the checkout and returns the new short commit. */
-function commitFile(repo: string, file: string): string {
+/** Commits a change to one file of the checkout. */
+function commitFile(repo: string, file: string): void {
   mkdirSync(dirname(join(repo, file)), { recursive: true });
   writeFileSync(join(repo, file), `${Math.random()}\n`);
   git(repo, ["add", file]);
   git(repo, ["commit", "-q", "-m", `change ${file}`]);
-  return git(repo, ["rev-parse", "--short", "HEAD"]);
-}
-
-/** The file of a loose git object in a test checkout. */
-function objectFile(repo: string, name: string): string {
-  const sha = git(repo, ["rev-parse", name]);
-  return join(repo, ".git", "objects", sha.slice(0, 2), sha.slice(2));
 }
 
 afterEach(() => {
@@ -66,7 +52,7 @@ afterEach(() => {
 describe("a Mac reports which agent code it runs", () => {
   const { setUpMac } = useMacHarness();
 
-  it("reports the loaded commit and start time, says Restart needed only once the checkout holds newer agent code, and a new agent clears it", async () => {
+  it("reports the commit it loaded and its start time, keeps them while the checkout moves on, and a new agent reports the newest", async () => {
     // Given a Mac whose agent loaded the checkout's current commit
     const repo = makeCheckout();
     const loaded = git(repo, ["rev-parse", "--short", "HEAD"]);
@@ -74,28 +60,19 @@ describe("a Mac reports which agent code it runs", () => {
     const machines = (await getDb()).collection("machines");
     const record = () => machines.findOne({ machineId: "machine-air" });
 
-    // Then it reports that commit, when it started, and no restart needed
+    // Then it reports that commit and when it started
     const started = await record();
     expect(started?.agentCommit).toBe(loaded);
     expect(started?.agentStartedAt).toBeInstanceOf(Date);
-    expect(started?.restartNeeded).toBe(false);
 
-    // When the checkout gains a commit that changes only the docs
-    commitFile(repo, "docs/notes.md");
-    await first.agent.heartbeat();
-
-    // Then no restart is needed
-    expect((await record())?.restartNeeded).toBe(false);
-
-    // When a commit changes code the agent loads
+    // When the checkout gains a commit that changes agent code
     commitFile(repo, "src/shared/session.ts");
     await first.agent.heartbeat();
 
-    // Then a restart is needed, and the loaded commit and start time stay the same
-    const waiting = await record();
-    expect(waiting?.restartNeeded).toBe(true);
-    expect(waiting?.agentCommit).toBe(loaded);
-    expect(waiting?.agentStartedAt).toEqual(started?.agentStartedAt);
+    // Then the loaded commit and start time stay the same
+    const later = await record();
+    expect(later?.agentCommit).toBe(loaded);
+    expect(later?.agentStartedAt).toEqual(started?.agentStartedAt);
 
     // When a new agent starts on the same checkout
     await first.agent.stop();
@@ -103,55 +80,11 @@ describe("a Mac reports which agent code it runs", () => {
     const newest = git(repo, ["rev-parse", "--short", "HEAD"]);
     await setUpMac("machine-air", "Air", { repoDir: repo, fake: first.fake });
 
-    // Then it reports the newest commit, a later start time and no restart needed
+    // Then it reports the newest commit and a later start time
     const restarted = await record();
     expect(restarted?.agentCommit).toBe(newest);
     expect(restarted?.agentStartedAt.getTime()).toBeGreaterThan(
       started?.agentStartedAt.getTime(),
     );
-    expect(restarted?.restartNeeded).toBe(false);
-  }, 60_000);
-
-  it("keeps its last answer when git fails for a moment, and says Restart needed when the loaded commit is gone", async () => {
-    // Given a Mac whose agent loaded the checkout's commit, and a later commit that changes only the docs
-    const repo = makeCheckout();
-    const loaded = git(repo, ["rev-parse", "HEAD"]);
-    const mac = await setUpMac("machine-air", "Air", { repoDir: repo });
-    const machines = (await getDb()).collection("machines");
-    const restartNeeded = async () =>
-      (await machines.findOne({ machineId: "machine-air" }))?.restartNeeded;
-    commitFile(repo, "docs/notes.md");
-    await mac.agent.heartbeat();
-    expect(await restartNeeded()).toBe(false);
-
-    // When git cannot read the new commit's files for one check
-    const docsTree = objectFile(repo, "HEAD^{tree}");
-    chmodSync(docsTree, 0o000);
-    await mac.agent.heartbeat();
-    chmodSync(docsTree, 0o444);
-
-    // Then no restart is needed still
-    expect(await restartNeeded()).toBe(false);
-
-    // When the loaded commit is gone from the checkout
-    const loadedCommit = objectFile(repo, loaded);
-    renameSync(loadedCommit, `${loadedCommit}.away`);
-    await mac.agent.heartbeat();
-    renameSync(`${loadedCommit}.away`, loadedCommit);
-
-    // Then a restart is needed
-    expect(await restartNeeded()).toBe(true);
-
-    // When a commit changes agent code, and then git cannot read the checkout's HEAD for one check
-    commitFile(repo, "agent/tracker.ts");
-    await mac.agent.heartbeat();
-    expect(await restartNeeded()).toBe(true);
-    const head = join(repo, ".git", "HEAD");
-    chmodSync(head, 0o000);
-    await mac.agent.heartbeat();
-    chmodSync(head, 0o644);
-
-    // Then a restart is still needed
-    expect(await restartNeeded()).toBe(true);
   }, 60_000);
 });

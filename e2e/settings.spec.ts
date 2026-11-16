@@ -293,10 +293,9 @@ test("Cmd+K does nothing while the Settings dialog is open", async ({
 });
 
 /**
- * Gives the Macs the agent records the Macs group lists: Air runs 0.5.0 and has newer agent code waiting, Mini runs an older agent.
- * @param restartNeeded - Whether Air's checkout holds newer agent code.
+ * Gives the Macs the agent records the Macs group lists: Air runs 0.5.0, Mini runs an older agent.
  */
-async function seedAgents(restartNeeded: boolean) {
+async function seedAgents() {
   await withE2eDb(async (db) => {
     await db.collection("machines").updateOne(
       { machineId: "air" },
@@ -307,7 +306,6 @@ async function seedAgents(restartNeeded: boolean) {
           agentVersion: "0.5.0",
           agentCommit: "abc1234",
           agentStartedAt: new Date("2026-11-16T09:30:00Z"),
-          restartNeeded,
         },
       },
       { upsert: true },
@@ -329,23 +327,19 @@ async function seedAgents(restartNeeded: boolean) {
 test.describe("the Macs group", () => {
   test.use({ timezoneId: "UTC" });
 
-  test("lists each Mac with its agent's version, code and start time, says Restart needed for a Mac with newer agent code, and marks the Settings button until it is restarted", async ({
+  test("lists each Mac with its agent's version, code and start time", async ({
     context,
     page,
   }) => {
-    // Given Air with newer agent code waiting and Mini on an older agent
-    await seedAgents(true);
+    // Given Air on 0.5.0 and Mini on an older agent
+    await seedAgents();
     await signInAsOwner(context);
     await openOffice(page);
 
-    // Then the Settings button carries the restart mark
-    const button = page.getByRole("button", { name: /^Settings/ });
-    await expect(page.getByTestId("settings-restart-mark")).toBeVisible();
-
     // When the owner opens the settings
-    await button.click();
+    await page.getByRole("button", { name: "Settings" }).click();
 
-    // Then the Macs group lists both Macs, and only Air needs a restart
+    // Then the Macs group lists both Macs with what each agent reports
     const macs = page
       .getByRole("dialog", { name: "Settings" })
       .getByRole("region", { name: "Macs" });
@@ -354,16 +348,7 @@ test.describe("the Macs group", () => {
     await expect(air).toContainText("Agent 0.5.0");
     await expect(air).toContainText("Code abc1234");
     await expect(air).toContainText("Started 16 Nov, 09:30");
-    await expect(air).toContainText("Restart needed");
     await expect(mini).toContainText("Agent 0.4.0");
-    await expect(mini).not.toContainText("Restart needed");
-
-    // When Air's agent reports it runs the newest code
-    await seedAgents(false);
-
-    // Then Restart needed and the mark go away
-    await expect(air).not.toContainText("Restart needed");
-    await expect(page.getByTestId("settings-restart-mark")).toHaveCount(0);
   });
 
   test.describe("on a phone", () => {
@@ -373,23 +358,20 @@ test.describe("the Macs group", () => {
       isMobile: true,
     });
 
-    test("the phone's settings sheet has the same Macs group and the Settings button the same mark", async ({
+    test("the phone's settings sheet has the same Macs group", async ({
       context,
       page,
     }) => {
-      // Given Air with newer agent code waiting
-      await seedAgents(true);
+      // Given Air on 0.5.0
+      await seedAgents();
       await signInAsOwner(context);
       await page.goto("/");
       await expect(page.getByTestId("phone-list")).toBeVisible();
 
-      // Then the Settings button carries the restart mark
-      await expect(page.getByTestId("settings-restart-mark")).toBeVisible();
-
       // When the owner opens the settings sheet
-      await page.getByRole("button", { name: /^Settings/ }).tap();
+      await page.getByRole("button", { name: "Settings" }).tap();
 
-      // Then it lists Air with its agent and Restart needed
+      // Then it lists Air with its agent
       const air = page
         .getByRole("dialog", { name: "Settings" })
         .getByRole("region", { name: "Macs" })
@@ -398,7 +380,6 @@ test.describe("the Macs group", () => {
       await expect(air).toContainText("Agent 0.5.0");
       await expect(air).toContainText("Code abc1234");
       await expect(air).toContainText("Started 16 Nov, 09:30");
-      await expect(air).toContainText("Restart needed");
     });
   });
 });
@@ -410,8 +391,8 @@ test.describe("restarting a Mac's agent", () => {
     context,
     page,
   }) => {
-    // Given Air's launchd-run agent on 0.5.0 with newer agent code waiting
-    await seedAgents(true);
+    // Given Air's launchd-run agent on 0.5.0
+    await seedAgents();
     await withE2eDb((db) =>
       db
         .collection("machines")
@@ -419,7 +400,7 @@ test.describe("restarting a Mac's agent", () => {
     );
     await signInAsOwner(context);
     await openOffice(page);
-    await page.getByRole("button", { name: /^Settings/ }).click();
+    await page.getByRole("button", { name: "Settings" }).click();
     const air = page
       .getByRole("region", { name: "Macs" })
       .getByRole("listitem")
@@ -451,7 +432,6 @@ test.describe("restarting a Mac's agent", () => {
           $set: {
             agentStartedAt: new Date("2026-11-16T09:31:00Z"),
             agentCommit: "def5678",
-            restartNeeded: false,
             restartRequested: false,
             lastSeenAt: new Date(),
           },
@@ -459,11 +439,10 @@ test.describe("restarting a Mac's agent", () => {
       ),
     );
 
-    // Then Air shows the new start time and code, no Restarting… and no Restart needed, and the button is back
+    // Then Air shows the new start time and code, no Restarting…, and the button is back
     await expect(air).toContainText("Started 16 Nov, 09:31");
     await expect(air).toContainText("Code def5678");
     await expect(air).not.toContainText("Restarting…");
-    await expect(air).not.toContainText("Restart needed");
     await expect(
       air.getByRole("button", { name: "Restart agent" }),
     ).toBeEnabled();
@@ -474,7 +453,7 @@ test.describe("restarting a Mac's agent", () => {
     page,
   }) => {
     // Given Air's agent started by hand, Mini's on 0.4.0, and Studio quiet for ten minutes
-    await seedAgents(true);
+    await seedAgents();
     await withE2eDb(async (db) => {
       await db
         .collection("machines")
@@ -491,7 +470,7 @@ test.describe("restarting a Mac's agent", () => {
     await openOffice(page);
 
     // When the owner opens the settings
-    await page.getByRole("button", { name: /^Settings/ }).click();
+    await page.getByRole("button", { name: "Settings" }).click();
     const macs = page.getByRole("region", { name: "Macs" });
     const row = (name: string) =>
       macs.getByRole("listitem").filter({ hasText: name });

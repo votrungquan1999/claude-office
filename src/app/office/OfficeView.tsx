@@ -832,7 +832,6 @@ export function OfficeView() {
         onOpenDrawer={toggleDrawer}
         drawerButtonRef={drawerButtonRef}
         {...settings.stripProps}
-        settingsAlert={machines.some((machine) => machine.restartNeeded)}
         collapsedMacs={collapsedMacs}
         onToggleMac={toggleMac}
         onRename={(machineId, path, name) =>

@@ -6,7 +6,7 @@ import { MongoClient } from "mongodb";
 import { z } from "zod";
 import { ensureIndexes } from "../src/db/indexes";
 import type { CommandDocument } from "../src/shared/commands";
-import { watchAgentCode } from "./agent-code";
+import { readAgentCommit } from "./agent-code";
 import {
   createCommandPoller,
   type DismissWaits,
@@ -269,7 +269,7 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
   // launchd names each job it starts in XPC_SERVICE_NAME; a Terminal-started agent inherits Terminal's own name.
   const runByLaunchd =
     options.runByLaunchd ?? process.env.XPC_SERVICE_NAME === LAUNCH_AGENT_LABEL;
-  const codeWatch = await watchAgentCode(options.repoDir ?? OWN_REPO_DIR);
+  const agentCommit = await readAgentCommit(options.repoDir ?? OWN_REPO_DIR);
   const heartbeat = startHeartbeat({
     machines: db.collection("machines"),
     sessions: db.collection("sessions"),
@@ -277,7 +277,7 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
     machineName,
     agentVersion: options.agentVersion ?? readPackageVersion(),
     startedByHand: !runByLaunchd,
-    code: codeWatch.check,
+    agentCommit,
     afterBeat: () =>
       refreshFolders(
         db.collection<FolderDocument>("folders"),

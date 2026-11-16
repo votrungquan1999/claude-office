@@ -92,8 +92,6 @@ export const machineDtoSchema = z.object({
   agentCommit: z.string().optional(),
   /** When the running agent started, by the database clock; absent from agents before 0.5.0. */
   agentStartedAt: z.string().optional(),
-  /** The Mac's checkout holds newer agent code than the running agent loaded. */
-  restartNeeded: z.literal(true).optional(),
   /** The agent was started by hand, not by launchd, so it never exits for a restart. */
   startedByHand: z.literal(true).optional(),
 });

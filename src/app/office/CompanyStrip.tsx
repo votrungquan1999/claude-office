@@ -20,8 +20,6 @@ export interface CompanyStripProps {
   settingsButtonRef?: Ref<HTMLButtonElement>;
   /** Whether the settings are open. */
   settingsOpen?: boolean;
-  /** A Mac's agent needs a restart; the Settings button carries a mark. */
-  settingsAlert?: boolean;
   /** Macs whose group is folded to one label. */
   collapsedMacs: ReadonlySet<string>;
   /** Asks to fold or open a Mac's group. */
@@ -103,7 +101,6 @@ export function CompanyStrip({
   onOpenSettings,
   settingsButtonRef,
   settingsOpen = false,
-  settingsAlert = false,
   collapsedMacs,
   onToggleMac,
   onRename,
@@ -309,13 +306,11 @@ export function CompanyStrip({
             ref={settingsButtonRef}
             type="button"
             data-testid="open-settings"
-            aria-label={
-              settingsAlert ? "Settings, a Mac needs a restart" : "Settings"
-            }
+            aria-label="Settings"
             aria-haspopup="dialog"
             aria-expanded={settingsOpen}
             onClick={onOpenSettings}
-            className={`relative shrink-0 border-2 border-border bg-btn-bg text-sm hover:bg-btn-hover ${phone ? "grid min-h-[44px] min-w-[44px] place-items-center" : "h-40 px-10"}`}
+            className={`shrink-0 border-2 border-border bg-btn-bg text-sm hover:bg-btn-hover ${phone ? "grid min-h-[44px] min-w-[44px] place-items-center" : "h-40 px-10"}`}
           >
             <svg
               aria-hidden="true"
@@ -330,13 +325,6 @@ export function CompanyStrip({
               <rect x="9" y="2" width="4" height="4" fill="currentColor" />
               <rect x="3" y="10" width="4" height="4" fill="currentColor" />
             </svg>
-            {settingsAlert && (
-              <span
-                aria-hidden="true"
-                data-testid="settings-restart-mark"
-                className="absolute -top-4 -right-4 size-10 border-2 border-bg bg-warning"
-              />
-            )}
           </button>
         )}
       </div>

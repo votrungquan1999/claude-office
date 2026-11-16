@@ -70,7 +70,7 @@ function restartLine(
 }
 
 /**
- * The Macs group of the settings: each Mac's agent, whether it needs a restart, and the button that restarts it.
+ * The Macs group of the settings: each Mac's agent and the button that restarts it.
  * @param props - The Macs, the server's time and the restarts.
  * @returns The group.
  */
@@ -98,16 +98,9 @@ export function MacsSettings({
                 key={machine.machineId}
                 className="flex flex-col gap-4 border-2 border-border bg-btn-bg px-10 py-6"
               >
-                <div className="flex items-center justify-between gap-8">
-                  <span className="truncate font-bold">
-                    {machine.machineName}
-                  </span>
-                  {machine.restartNeeded && (
-                    <span className="shrink-0 text-xs font-bold text-warning">
-                      Restart needed
-                    </span>
-                  )}
-                </div>
+                <span className="truncate font-bold">
+                  {machine.machineName}
+                </span>
                 <span className="text-xs text-text-muted">
                   {agentLine(machine)}
                 </span>
