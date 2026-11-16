@@ -43,7 +43,6 @@ interface PhoneListProps {
   serverOffsetMs: number;
   onSelect: (key: string) => void;
   onMoveToIdle: (key: string) => void;
-  onMoveToReview: (key: string) => void;
   /** Lights up the employee of the row being dragged; null when the drag ends. */
   onDragHover: (key: string | null) => void;
   /** Moves a row to the place of the row it was dropped on; called once per drop. */
@@ -76,7 +75,6 @@ export function PhoneList({
   serverOffsetMs,
   onSelect,
   onMoveToIdle,
-  onMoveToReview,
   onDragHover,
   onMove,
   moveError,
@@ -140,7 +138,6 @@ export function PhoneList({
             onSelectDeparture={onSelectDeparture}
             onSelectElsewhere={needsYou.onSelect}
             onMoveToIdle={onMoveToIdle}
-            onMoveToReview={onMoveToReview}
           />
         ) : (
           <>
@@ -209,7 +206,6 @@ export function PhoneList({
                         serverOffsetMs={serverOffsetMs}
                         onSelect={onSelect}
                         onMoveToIdle={onMoveToIdle}
-                        onMoveToReview={onMoveToReview}
                         onRequestRename={() => {}}
                       />
                     ))}

@@ -819,7 +819,6 @@ export function OfficeView() {
     serverOffsetMs,
     onSelect: (key: string) => selectEmployee(key, "list"),
     onMoveToIdle: (key: string) => void moveToIdle(key),
-    onMoveToReview: (key: string) => void moveIdleToReview(key),
     onMove: (key: string, overKey: string) => void moveRow(key, overKey),
     moveError: rankError,
     onDragHover: (key: string | null) => {

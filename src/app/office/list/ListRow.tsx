@@ -33,8 +33,6 @@ export interface ListRowProps {
   onSelect: (key: string) => void;
   /** Moves the employee's Review or Waiting for you to Idle. */
   onMoveToIdle: (key: string) => void;
-  /** Moves the Idle employee to Review. */
-  onMoveToReview: (key: string) => void;
   /** Asks for the rename dialog of this employee. */
   onRequestRename: (key: string) => void;
   /** On a phone: touch-sized buttons, a grip that only shows, and no repo tags or rename button. */
@@ -93,7 +91,6 @@ export function ListRow({
   serverOffsetMs,
   onSelect,
   onMoveToIdle,
-  onMoveToReview,
   onRequestRename,
   phone = false,
   why,
@@ -250,16 +247,6 @@ export function ListRow({
           className={`shrink-0 self-center border-2 border-room-review px-8 text-xs hover:bg-btn-hover ${phone ? "h-44 min-w-44" : "h-30"}`}
         >
           Idle
-        </button>
-      )}
-      {band.key === "idle" && (
-        <button
-          type="button"
-          aria-label="Move to Review"
-          onClick={() => onMoveToReview(key)}
-          className={`shrink-0 self-center border-2 border-room-review px-8 text-xs hover:bg-btn-hover ${phone ? "h-44 min-w-44" : "h-30"}`}
-        >
-          Review
         </button>
       )}
       {!phone && (

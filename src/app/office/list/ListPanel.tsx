@@ -61,7 +61,6 @@ interface ListPanelProps {
   serverOffsetMs: number;
   onSelect: (key: string) => void;
   onMoveToIdle: (key: string) => void;
-  onMoveToReview: (key: string) => void;
   onRename: (key: string, name: string) => Promise<boolean>;
 }
 
@@ -90,7 +89,6 @@ export function ListPanel({
   serverOffsetMs,
   onSelect,
   onMoveToIdle,
-  onMoveToReview,
   onRename,
 }: ListPanelProps) {
   const wentHomeOpen = fold.folds.wentHome;
@@ -219,7 +217,6 @@ export function ListPanel({
                   serverOffsetMs={serverOffsetMs}
                   onSelect={onSelect}
                   onMoveToIdle={onMoveToIdle}
-                  onMoveToReview={onMoveToReview}
                   onRequestRename={setRenamingKey}
                 />
               ))}

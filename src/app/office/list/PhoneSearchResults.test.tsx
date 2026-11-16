@@ -18,7 +18,6 @@ function show(allCompanies: boolean) {
       onSelectDeparture={() => {}}
       onSelectElsewhere={() => {}}
       onMoveToIdle={() => {}}
-      onMoveToReview={() => {}}
     />,
   );
 }

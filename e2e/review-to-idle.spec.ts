@@ -313,7 +313,7 @@ test.describe("the Idle quick action on a Waiting for you row", () => {
 test.describe("moving an Idle employee to Review", () => {
   test.use({ viewport: { width: 1280, height: 800 }, hasTouch: false });
 
-  test("from its row shows Review and Needs you at once and on a phone after its next poll, and its card moves it back and forth", async ({
+  test("has no Review quick action on its rows, and its card shows Review and Needs you at once and on a phone after its next poll, and moves it back and forth", async ({
     browser,
     context,
     page,
@@ -355,15 +355,26 @@ test.describe("moving an Idle employee to Review", () => {
     try {
       await phone.goto("/");
       const phoneRow = phone.getByTestId("list-row");
-      await expect(
-        phoneRow.getByRole("button", { name: "Move to Review" }),
-      ).toBeVisible();
+      await expect(phoneRow).toBeVisible();
       await page.goto("/");
       await waitForEmployees(page, 1);
       const row = page.getByTestId("list-everyone").getByTestId("list-row");
 
-      // When the owner presses Review on its row
-      await row.getByRole("button", { name: "Move to Review" }).click();
+      // Then neither its row nor its phone row offers Move to Review
+      await expect(
+        row.getByRole("button", { name: "Move to Review" }),
+      ).toHaveCount(0);
+      await expect(
+        phoneRow.getByRole("button", { name: "Move to Review" }),
+      ).toHaveCount(0);
+
+      // When the owner presses Move to Review on its card
+      const id = await page.evaluate(
+        () => window.__officeTestHooks?.getCharacters()[0].id ?? -1,
+      );
+      await clickEmployee(page, id);
+      const panel = page.getByTestId("details-panel");
+      await panel.getByRole("button", { name: "Move to Review" }).click();
 
       // Then this device shows it in Review and in Needs you at once, with one request
       const tab = page.getByTestId("company-tab");
@@ -383,11 +394,6 @@ test.describe("moving an Idle employee to Review", () => {
       ).toBeVisible({ timeout: 15_000 });
 
       // When the owner moves it to Idle from its card, then to Review again
-      const id = await page.evaluate(
-        () => window.__officeTestHooks?.getCharacters()[0].id ?? -1,
-      );
-      await clickEmployee(page, id);
-      const panel = page.getByTestId("details-panel");
       await panel.getByRole("button", { name: "Move to Idle" }).click();
       await expect(tab.getByLabel("1 idle")).toBeVisible();
       await panel.getByRole("button", { name: "Move to Review" }).click();
