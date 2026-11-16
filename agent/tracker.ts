@@ -148,7 +148,7 @@ interface Tracked {
   endedBy?: EndedBy;
   /** Wall-clock time of the newest event received, for evicting held sessions. */
   lastActivityAt: number;
-  /** Counts every change to the turn state, so a late Haiku verdict can tell its turn is still the current one. */
+  /** Counts every change to the turn state except an idle status after the turn already ended, so a late Haiku verdict can tell its turn is still the current one. */
   epoch: number;
   /** What the plain rule found for the turn's Stops, before the classifier downgrade; a follow-up Stop carries it. */
   plainResult: TurnResult;
@@ -156,6 +156,8 @@ interface Tracked {
   lastHookTs: number;
   /** `hookTs` of the newest event that changed the state; a registry status only overrides hooks older than itself. */
   stateHookTs: number;
+  /** `statusUpdatedAt` of the registry status applied since a hook last changed the state, so a check does not apply the same status again. */
+  statusTs: number;
   /** The process behind the session, as the registry last recorded it; after a check ends the session, the process that check judged gone. */
   process?: { pid?: number; procStart?: string };
   /** The last process a check found alive, kept apart from `process` so one misread entry cannot erase it. */
@@ -706,7 +708,8 @@ export class SessionTracker {
       // Claude Code's own status wins only when it is newer than anything the hooks said.
       if (
         entry?.status &&
-        (entry.statusUpdatedAt ?? -Infinity) > tracked.stateHookTs
+        (entry.statusUpdatedAt ?? -Infinity) >
+          Math.max(tracked.stateHookTs, tracked.statusTs)
       ) {
         // Idle after a turn the hooks never saw end: the transcript tail sorts how it ended.
         const turnEnded =
@@ -714,7 +717,11 @@ export class SessionTracker {
         const ended = turnEnded
           ? readTranscriptSeed(this.options.home, sessionId)
           : undefined;
-        tracked.epoch += 1;
+        // Idle after a turn that already ended starts nothing new, so a pending Haiku answer for that turn still applies.
+        if (entry.status !== "idle" || tracked.memory.base !== "waiting") {
+          tracked.epoch += 1;
+        }
+        tracked.statusTs = entry.statusUpdatedAt ?? -Infinity;
         tracked.memory = ended
           ? initialStateMemory(this.firstResult(ended.result))
           : applyRegistryStatus(tracked.memory, entry.status);
@@ -875,6 +882,7 @@ export class SessionTracker {
       ? applyRegistryStatus(initialStateMemory(), status)
       : initialStateMemory();
     tracked.stateHookTs = -Infinity;
+    tracked.statusTs = -Infinity;
   }
 
   private entryOf(sessionId: string): RegistryEntry | undefined {
@@ -960,6 +968,7 @@ export class SessionTracker {
         plainResult: "nothing",
         lastHookTs: -Infinity,
         stateHookTs: -Infinity,
+        statusTs: -Infinity,
         cwdHookTs: -Infinity,
         bridgeHookTs: -Infinity,
         interactive: false,
@@ -1068,6 +1077,8 @@ export class SessionTracker {
     // An event that left the memory untouched (an idle prompt) must not outrank a newer registry status.
     if (next !== tracked.memory) {
       tracked.stateHookTs = Math.max(tracked.stateHookTs, event.hookTs);
+      // A newer registry status than this hook applies again over the state the hook set.
+      tracked.statusTs = -Infinity;
     }
     tracked.memory = next;
     if (!late && !event.agent_id && event.hook_event_name === "Stop") {

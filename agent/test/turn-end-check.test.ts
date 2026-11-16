@@ -330,9 +330,8 @@ describe("a finished turn is checked with Haiku", () => {
     expect((await officeSessions())[0]?.state).toBe("idle");
   });
 
-  it("checks the transcript's last answer when the registry says a turn ended that no hook reported", async () => {
-    // Given a Haiku that says ASKS and a running session whose Stop never arrived
-    const anthropic = await startFakeAnthropic(fakeHaiku(() => answer("ASKS")));
+  /** One running session in the middle of a turn, whose process the Mac's checks find alive. */
+  async function startLiveSession(anthropic: { baseUrl: string }) {
     const { fake, agent } = await setUpMac("machine-air", "Air", {
       anthropic: { baseUrl: anthropic.baseUrl, apiKey: KEY },
     });
@@ -348,6 +347,13 @@ describe("a finished turn is checked with Haiku", () => {
     await send({ hook_event_name: "SessionStart", source: "startup" });
     await send({ hook_event_name: "UserPromptSubmit", prompt: "plan it" });
     await agent.flush();
+    return { fake, agent, send };
+  }
+
+  it("checks the transcript's last answer when the registry says a turn ended that no hook reported", async () => {
+    // Given a Haiku that says ASKS and a running session whose Stop never arrived
+    const anthropic = await startFakeAnthropic(fakeHaiku(() => answer("ASKS")));
+    const { fake, agent } = await startLiveSession(anthropic);
     fake.addTranscript("s1", [
       { type: "user", message: { content: "plan it" } },
       {
@@ -366,5 +372,92 @@ describe("a finished turn is checked with Haiku", () => {
 
     // Then the desk waits for the owner
     expect((await officeSessions())[0]?.state).toBe("waitingForYou");
+  }, 60_000);
+
+  it("goes to Review when Haiku answers after checks that read the idle status Claude Code writes just after the Stop", async () => {
+    // Given a Haiku that holds its REPORTS answer until released
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const anthropic = await startFakeAnthropic(
+      fakeHaiku(() => gate.then(() => answer("REPORTS"))),
+    );
+    const { fake, agent, send } = await startLiveSession(anthropic);
+
+    // When the turn ends with a result and Claude Code marks the session idle a few ms after the Stop
+    await send({
+      hook_event_name: "Stop",
+      last_assistant_message: "Done, all tests pass.",
+    });
+    await agent.applyEvents();
+    fake.updateSession("s1", {
+      status: "idle",
+      statusUpdatedAt: Date.now() + 5,
+    });
+
+    // And the Mac checks its sessions twice before Haiku answers
+    await agent.reconcile();
+    await agent.reconcile();
+    await agent.applyEvents();
+    expect((await officeSessions())[0]?.state).toBe("idle");
+    release();
+    await agent.flush();
+
+    // Then the desk goes to Review
+    expect((await officeSessions())[0]?.state).toBe("review");
+  }, 60_000);
+
+  it("ignores a late Haiku answer for a turn when the registry reported a newer turn that has since ended", async () => {
+    // Given a Haiku that holds its REPORTS answer about the first turn and answers NOTHING to anything else at once
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const anthropic = await startFakeAnthropic((request) => {
+      if (String(request.body.system).includes("task title")) {
+        return answer("Plan it");
+      }
+      const message = (request.body.messages as Array<{ content: string }>)[0];
+      return message.content.includes("Done")
+        ? gate.then(() => answer("REPORTS"))
+        : answer("NOTHING");
+    });
+    const { fake, agent, send } = await startLiveSession(anthropic);
+    await send({
+      hook_event_name: "Stop",
+      last_assistant_message: "Done, all tests pass.",
+    });
+    await agent.applyEvents();
+
+    // When the registry says busy (a new turn whose prompt no hook reported), then idle with that turn's own answer
+    fake.updateSession("s1", {
+      status: "busy",
+      statusUpdatedAt: Date.now() + 5,
+    });
+    await agent.reconcile();
+    await agent.applyEvents();
+    expect((await officeSessions())[0]?.state).toBe("thinking");
+    fake.addTranscript("s1", [
+      { type: "user", message: { content: "go on" } },
+      {
+        type: "assistant",
+        message: { content: [{ type: "text", text: "Ok, all set." }] },
+      },
+    ]);
+    fake.updateSession("s1", {
+      status: "idle",
+      statusUpdatedAt: Date.now() + 10,
+    });
+    await agent.reconcile();
+    await vi.waitFor(() => expect(anthropic.requests).toHaveLength(3));
+    await pause(100);
+
+    // And Haiku's answer for the first turn arrives
+    release();
+    await agent.flush();
+
+    // Then the desk is not moved to the first turn's answer
+    expect((await officeSessions())[0]?.state).toBe("idle");
   }, 60_000);
 });
