@@ -186,13 +186,13 @@ interface Tracked {
 function storedResult(seed: SeedSession): TurnResult | undefined {
   const stored: string | undefined = seed.storedState;
   if (stored === undefined) return undefined;
-  if (stored === "waitingForYou") return "asks";
-  if (stored === "review") {
-    // The owner moved that very Review to Idle; a later Review has another time and is not cleared.
+  if (stored === "review" || stored === "waitingForYou") {
+    // The owner moved that very Review or question to Idle; a later one has another time and is not cleared.
     const cleared =
       seed.storedReviewSeenAt !== undefined &&
       seed.storedReviewSeenAt === seed.storedStateSince;
-    return cleared ? "nothing" : "reports";
+    if (cleared) return "nothing";
+    return stored === "review" ? "reports" : "asks";
   }
   // "waiting" is the old name of Idle.
   return stored === "idle" || stored === "waiting" ? "nothing" : undefined;
@@ -375,17 +375,20 @@ export class SessionTracker {
       const sameRoom =
         seed.storedState !== undefined &&
         roomOf(seed.storedState) === tracked.publishedRoom;
-      // A Review the owner moved to Idle keeps counting Idle from the move, also after a second restart.
+      // A Review or Waiting for you the owner moved to Idle keeps counting Idle from the move, also after a second restart.
       const movedAt =
         storedTurn === "nothing" &&
         seed.storedReviewClearedAt !== undefined &&
         (seed.storedState === "review" ||
+          seed.storedState === "waitingForYou" ||
           seed.storedStateSince === seed.storedReviewClearedAt)
           ? seed.storedReviewClearedAt
           : undefined;
-      // A Review keeps its stored time: Move to Idle names a Review by it.
+      // A Review or Waiting for you keeps its stored time: Move to Idle names it by that time.
       const sameReview =
-        seed.storedState === "review" && tracked.memory.state === "review"
+        (seed.storedState === "review" ||
+          seed.storedState === "waitingForYou") &&
+        tracked.memory.state === seed.storedState
           ? seed.storedStateSince
           : undefined;
       // So does an Idle the owner moved to Review, whose move is keyed to that time.

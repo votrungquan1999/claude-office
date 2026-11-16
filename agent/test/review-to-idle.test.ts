@@ -14,7 +14,7 @@ describe("a Review the owner moved to Idle, when the Mac's agent restarts", () =
   const { setUpMac } = useMacHarness();
   const processes = useLiveProcesses();
 
-  /** Stores a Review row with the given mark, restarts the agent over the same finished conversation and returns the state the agent then stored. */
+  /** Stores a Review row with the given mark, restarts the agent over the same conversation (finished unless a registry status says otherwise) and returns the state the agent then stored. */
   async function restartOverReview(
     mark:
       | { reviewSeenAt: Date; reviewClearedAt?: Date }
@@ -24,6 +24,7 @@ describe("a Review the owner moved to Idle, when the Mac's agent restarts", () =
       state: "review",
       stateSince: REVIEW_SINCE,
     },
+    status: "idle" | "busy" = "idle",
   ) {
     const db = await getDb();
     await db.collection("sessions").insertOne({
@@ -44,7 +45,7 @@ describe("a Review the owner moved to Idle, when the Mac's agent restarts", () =
           cwd: "/work/a",
           pid: live.pid,
           procStart: live.procStart,
-          status: "idle",
+          status,
         });
         fake.addTranscript("s1", [
           { type: "user", cwd: "/work/a", message: { content: "do it" } },
@@ -108,6 +109,43 @@ describe("a Review the owner moved to Idle, when the Mac's agent restarts", () =
 
     // Then it is the same Idle, dated when it began, so the owner's move still names it
     expect([row?.state, row?.stateSince]).toEqual(["idle", REVIEW_SINCE]);
+  }, 60_000);
+
+  it("stores Idle from the move for a Waiting for you the owner moved to Idle", async () => {
+    // When the agent restarts over a Waiting for you the owner moved to Idle at 09:30
+    const row = await restartOverReview(
+      { reviewSeenAt: REVIEW_SINCE, reviewClearedAt: MOVED_AT },
+      { state: "waitingForYou", stateSince: REVIEW_SINCE },
+    );
+
+    // Then it stores Idle, counted from the move
+    expect([row?.state, row?.stateSince]).toEqual(["idle", MOVED_AT]);
+  }, 60_000);
+
+  it("stores Thinking for a Waiting for you the owner moved to Idle whose conversation is busy again", async () => {
+    // When the agent restarts over a moved Waiting for you whose registry entry says busy
+    const row = await restartOverReview(
+      { reviewSeenAt: REVIEW_SINCE, reviewClearedAt: MOVED_AT },
+      { state: "waitingForYou", stateSince: REVIEW_SINCE },
+      "busy",
+    );
+
+    // Then the move no longer holds it: it is busy with no step running, so Thinking, as any such employee
+    expect(row?.state).toBe("thinking");
+  }, 60_000);
+
+  it("keeps the stored time of a Waiting for you the owner has not moved to Idle, so a Move to Idle sent with it still matches", async () => {
+    // When the agent restarts over a Waiting for you with no mark
+    const row = await restartOverReview(
+      {},
+      { state: "waitingForYou", stateSince: REVIEW_SINCE },
+    );
+
+    // Then it is the same question, dated when it began, not when the registry last changed status
+    expect([row?.state, row?.stateSince]).toEqual([
+      "waitingForYou",
+      REVIEW_SINCE,
+    ]);
   }, 60_000);
 
   it("stores Review when the mark names an earlier Review than the one stored", async () => {
