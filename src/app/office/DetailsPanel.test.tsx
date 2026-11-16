@@ -979,19 +979,20 @@ describe("the details panel", () => {
     expect((button as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it("offers Move to Idle for a Review employee whose Mac is offline, and for no other state", () => {
-    // Given a Review employee on an offline Mac
-    open(session({ state: "review" }), ["m1"]);
+  it("offers Move to Idle for a Review or Waiting for you employee whose Mac is offline, and for no other state", () => {
+    // Given a Review or Waiting for you employee on an offline Mac
+    for (const state of ["review", "waitingForYou"] as const) {
+      open(session({ state }), ["m1"]);
 
-    // Then the band says the Mac is offline and Move to Idle is still there
-    expect(screen.getByTestId("state-pill").textContent).toBe("Mac offline");
-    expect(screen.getByRole("button", { name: "Move to Idle" })).toBeTruthy();
-    cleanup();
+      // Then the band says the Mac is offline and Move to Idle is still there
+      expect(screen.getByTestId("state-pill").textContent).toBe("Mac offline");
+      expect(screen.getByRole("button", { name: "Move to Idle" })).toBeTruthy();
+      cleanup();
+    }
 
     // And no other state offers it
     for (const state of [
       "idle",
-      "waitingForYou",
       "needsPermission",
       "working",
       "wentHome",

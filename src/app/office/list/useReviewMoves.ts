@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { SessionState } from "@/shared/session-state";
 import type { SessionMap } from "../officeStore";
 import {
   applyReviewMoves,
@@ -18,7 +19,7 @@ interface ReviewMovesInput {
 }
 
 /**
- * Moving Reviews to Idle and an Idle to Review: shows the move at once, sends one request, and takes it back when refused.
+ * Moving Reviews and Waiting for you employees to Idle and an Idle to Review: shows the move at once, sends one request, and takes it back when refused.
  * @param input - The sessions, the pending moves and the clock offset.
  * @returns The move handlers and which moves the last refusal took back.
  */
@@ -36,39 +37,41 @@ export function useReviewMoves({
   }>({ keys: new Set(), all: false, to: "idle" });
 
   /**
-   * The employee to move when the owner sees it in the given state, named by the time the answers hold.
+   * The employee to move when the owner sees it in one of the given states, named by the time the answers hold.
    * @param key - The employee's `sessionKey`.
-   * @param shownState - The state the button moves it out of.
-   * @returns Its machine, session and `stateSince`, or undefined when it is not shown in that state.
+   * @param shownStates - The states the button moves it out of.
+   * @returns Its machine, session, the state it is shown in and its `stateSince`, or undefined when it is not shown in one of those states.
    */
-  const targetOf = (key: string, shownState: "idle" | "review") => {
+  const targetOf = (key: string, shownStates: readonly SessionState[]) => {
     const session = applyReviewMoves(getSessions(), getMoves()).get(key);
-    if (session?.state !== shownState || !session.stateSince) return undefined;
+    if (!session?.stateSince || !shownStates.includes(session.state))
+      return undefined;
     // A move no answer has shown yet names the employee by the time it was made from.
     const stateSince = getMoves().get(key)?.stateSince ?? session.stateSince;
     return {
       machineId: session.machineId,
       sessionId: session.sessionId,
+      from: session.state,
       stateSince,
     };
   };
 
   /**
-   * Moves Review employees to Idle with one request.
-   * @param keys - The `sessionKey`s to move; any that is no longer in Review is skipped.
+   * Moves Review and Waiting for you employees to Idle with one request.
+   * @param keys - The `sessionKey`s to move; any that is no longer in Review or Waiting for you is skipped.
    * @param all - Whether the owner moved a whole list, so a refusal is shown for the list and not for one card.
    */
   const moveReviewsToIdle = async (keys: string[], all = false) => {
     const items = keys.flatMap((key) => {
-      const target = targetOf(key, "review");
+      const target = targetOf(key, ["review", "waitingForYou"]);
       return target ? [{ key, ...target }] : [];
     });
     if (items.length === 0) return;
     setRefused({ keys: new Set(), all: false, to: "idle" });
     const movedAt = new Date(Date.now() + serverOffsetMs).toISOString();
     const next = new Map(getMoves());
-    for (const { key, stateSince } of items)
-      next.set(key, { to: "idle", stateSince, movedAt });
+    for (const { key, from, stateSince } of items)
+      next.set(key, { from, to: "idle", stateSince, movedAt });
     setMoves(next);
     const marked = await postReviewSeen({
       items: items.map(({ machineId, sessionId, stateSince }) => ({
@@ -101,13 +104,13 @@ export function useReviewMoves({
    * @param key - The `sessionKey` to move; skipped when it is no longer Idle.
    */
   const moveIdleToReview = async (key: string) => {
-    const target = targetOf(key, "idle");
+    const target = targetOf(key, ["idle"]);
     if (!target) return;
-    const { machineId, sessionId, stateSince } = target;
+    const { machineId, sessionId, from, stateSince } = target;
     const movedAt = new Date(Date.now() + serverOffsetMs).toISOString();
     setRefused({ keys: new Set(), all: false, to: "review" });
     setMoves(
-      new Map(getMoves()).set(key, { to: "review", stateSince, movedAt }),
+      new Map(getMoves()).set(key, { from, to: "review", stateSince, movedAt }),
     );
     const marked = await postMoveToReview({ machineId, sessionId, stateSince });
     if (marked !== undefined && marked > 0) return;

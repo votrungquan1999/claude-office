@@ -21,7 +21,12 @@ const moved = (session: SessionDto) =>
   new Map([
     [
       sessionKey(session),
-      { to: "idle" as const, stateSince: REVIEW_SINCE, movedAt: MOVED_AT },
+      {
+        from: "review" as const,
+        to: "idle" as const,
+        stateSince: REVIEW_SINCE,
+        movedAt: MOVED_AT,
+      },
     ],
   ]);
 
@@ -73,7 +78,12 @@ describe("an Idle moved to Review on this device", () => {
     const moves = new Map([
       [
         sessionKey(idle),
-        { to: "review" as const, stateSince: REVIEW_SINCE, movedAt: MOVED_AT },
+        {
+          from: "idle" as const,
+          to: "review" as const,
+          stateSince: REVIEW_SINCE,
+          movedAt: MOVED_AT,
+        },
       ],
     ]);
 
@@ -95,7 +105,12 @@ describe("an Idle moved to Review on this device", () => {
     const moves = new Map([
       [
         sessionKey(idle),
-        { to: "review" as const, stateSince: REVIEW_SINCE, movedAt: MOVED_AT },
+        {
+          from: "idle" as const,
+          to: "review" as const,
+          stateSince: REVIEW_SINCE,
+          movedAt: MOVED_AT,
+        },
       ],
     ]);
 
@@ -108,5 +123,34 @@ describe("an Idle moved to Review on this device", () => {
         mapOf({ ...idle, stateSince: "2026-11-09T10:00:00.000Z" }),
       ).size,
     ).toBe(0);
+  });
+});
+
+describe("a Waiting for you moved to Idle on this device", () => {
+  it("shows as Idle timed from the move while that Waiting for you is shown, and as it is once an answer shows a later question", () => {
+    // Given the owner moved an employee waiting for a reply
+    const waiting = { ...review("a"), state: "waitingForYou" as const };
+    const moves = new Map([
+      [
+        sessionKey(waiting),
+        {
+          from: "waitingForYou" as const,
+          to: "idle" as const,
+          stateSince: REVIEW_SINCE,
+          movedAt: MOVED_AT,
+        },
+      ],
+    ]);
+
+    // Then it reads Idle from the move, and the move is kept until an answer moves on
+    expect(
+      applyReviewMoves(mapOf(waiting), moves).get(sessionKey(waiting)),
+    ).toMatchObject({ state: "idle", stateSince: MOVED_AT });
+    expect(settleReviewMoves(moves, mapOf(waiting)).size).toBe(1);
+    const later = { ...waiting, stateSince: "2026-11-09T10:00:00.000Z" };
+    expect(
+      applyReviewMoves(mapOf(later), moves).get(sessionKey(later))?.state,
+    ).toBe("waitingForYou");
+    expect(settleReviewMoves(moves, mapOf(later)).size).toBe(0);
   });
 });

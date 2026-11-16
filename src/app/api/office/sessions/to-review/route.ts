@@ -28,9 +28,9 @@ export async function POST(request: NextRequest) {
       // Only the Idle the owner saw; a row that moved on keeps its state
       $or: [
         { state: "idle", stateSince: seen },
-        // A Review moved to Idle, named by its Idle time or, by a device that has not polled since, its Review time
+        // A Review or Waiting for you moved to Idle, named by its Idle time or, by a device that has not polled since, its own time
         {
-          state: "review",
+          state: { $in: ["review", "waitingForYou"] },
           $or: [{ reviewClearedAt: seen }, { stateSince: seen }],
           $expr: { $eq: ["$reviewSeenAt", "$stateSince"] },
         },
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
           changedAt: "$$NOW",
         },
       },
-      // Taking the Idle mark away is what shows a cleared Review again
+      // Taking the Idle mark away is what shows the cleared state again
       { $unset: ["reviewSeenAt", "reviewClearedAt"] },
     ],
   );

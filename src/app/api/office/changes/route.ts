@@ -32,7 +32,7 @@ interface SessionRow {
   tags?: Array<{ name: string; key: string; parent?: string }>;
   hadPrompt?: boolean;
   stateSince?: Date;
-  /** The `stateSince` of the Review the owner moved to Idle. */
+  /** The `stateSince` of the Review or Waiting for you the owner moved to Idle. */
   reviewSeenAt?: Date;
   /** When the owner moved it, by the database clock. */
   reviewClearedAt?: Date;
@@ -73,9 +73,9 @@ interface MachineRow {
  */
 function toDto(row: SessionRow): SessionDto {
   const live = !row.endedAt;
-  // The mark names the Review it cleared; a later Review has another time and shows again.
+  // The mark names the Review or Waiting for you it cleared; a later one has another time and shows again.
   const cleared =
-    row.state === "review" &&
+    (row.state === "review" || row.state === "waitingForYou") &&
     row.reviewSeenAt !== undefined &&
     row.reviewSeenAt.getTime() === row.stateSince?.getTime();
   // The owner moved this very Idle to Review; the next turn gives it another time and ends the move.

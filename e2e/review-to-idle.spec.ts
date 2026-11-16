@@ -151,6 +151,95 @@ test.describe("moving a Review employee to Idle", () => {
   });
 });
 
+test.describe("moving a Waiting for you employee to Idle", () => {
+  test.use({ viewport: { width: 1280, height: 800 }, hasTouch: false });
+
+  test("from its card shows Idle at once and after a reload, and Move to Review brings Waiting for you back", async ({
+    context,
+    page,
+  }) => {
+    // Given an employee on an online Mac waiting for the owner's reply
+    await withE2eDb(async (db) => {
+      await seedFolders(db.collection("folders"), [
+        { machineId: "air", path: "/Users/q/personal" },
+      ]);
+      await seedSessions(db.collection("sessions"), [
+        {
+          sessionId: "w1",
+          machineId: "air",
+          machineName: "Air",
+          cwd: "/Users/q/personal",
+          startCwd: "/Users/q/personal",
+          state: "waitingForYou",
+          deskName: "Audit signup emails",
+          stateSince: new Date(Date.now() - 18 * 60_000),
+        },
+      ]);
+    });
+    await seedOnlineMachine("air", "Air");
+    await signInAsOwner(context);
+    const requests: string[] = [];
+    page.on("request", (request) => {
+      if (request.url().includes("/api/office/sessions/review-seen"))
+        requests.push(request.postData() ?? "");
+    });
+
+    try {
+      await page.goto("/");
+      await waitForEmployees(page, 1);
+      const id = await page.evaluate(
+        () => window.__officeTestHooks?.getCharacters()[0].id ?? -1,
+      );
+      await clickEmployee(page, id);
+      const panel = page.getByTestId("details-panel");
+      await expect(panel.getByTestId("move-to-idle-note")).toHaveText(
+        "Moving to Idle leaves its question for later. It stays in your list, in the same place.",
+      );
+
+      // When the owner presses Move to Idle on its card
+      await panel.getByRole("button", { name: "Move to Idle" }).click();
+
+      // Then it shows Idle at once, with one request, and still after a reload
+      const tab = page.getByTestId("company-tab");
+      await expect(tab.getByLabel("0 waiting for you")).toBeVisible();
+      await expect(tab.getByLabel("1 idle")).toBeVisible();
+      expect(requests).toHaveLength(1);
+      await page.reload();
+      await expect(
+        page.getByTestId("company-tab").getByLabel("1 idle"),
+      ).toBeVisible();
+
+      // When the owner presses Move to Review on its card
+      await waitForEmployees(page, 1);
+      await clickEmployee(
+        page,
+        await page.evaluate(
+          () => window.__officeTestHooks?.getCharacters()[0].id ?? -1,
+        ),
+      );
+      await page
+        .getByTestId("details-panel")
+        .getByRole("button", { name: "Move to Review" })
+        .click();
+
+      // Then it is waiting for the owner again, and still after a reload
+      await expect(
+        page.getByTestId("company-tab").getByLabel("1 waiting for you"),
+      ).toBeVisible();
+      await page.reload();
+      await expect(
+        page.getByTestId("company-tab").getByLabel("1 waiting for you"),
+      ).toBeVisible();
+    } finally {
+      await withE2eDb(async (db) => {
+        await seedFolders(db.collection("folders"), []);
+        await db.collection("sessions").deleteMany({});
+        await db.collection("machines").deleteMany({});
+      });
+    }
+  });
+});
+
 test.describe("moving an Idle employee to Review", () => {
   test.use({ viewport: { width: 1280, height: 800 }, hasTouch: false });
 

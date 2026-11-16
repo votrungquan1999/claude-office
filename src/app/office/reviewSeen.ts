@@ -3,13 +3,16 @@ import type {
   ReviewSeenRequest,
   SessionDto,
 } from "@/shared/session";
+import type { SessionState } from "@/shared/session-state";
 import type { SessionMap } from "./officeStore";
 
-/** A Review the owner moved to Idle, or an Idle moved to Review, on this device that no answer has confirmed yet. */
+/** A Review or Waiting for you the owner moved to Idle, or an Idle moved to Review, on this device that no answer has confirmed yet. */
 export interface ReviewMove {
+  /** The state the owner moved it out of, as the answers carry it. */
+  from: SessionState;
   /** Where the owner moved it. */
   to: "idle" | "review";
-  /** The `stateSince` of the Review (or Idle) the owner saw. */
+  /** The `stateSince` of the state the owner saw. */
   stateSince: string;
   /** When the owner moved it, on the server's clock. */
   movedAt: string;
@@ -18,20 +21,19 @@ export interface ReviewMove {
 /** The pending moves, keyed by `sessionKey`. */
 export type ReviewMoves = ReadonlyMap<string, ReviewMove>;
 
-/** Whether the session is still in the very Review (or Idle) the owner moved. */
+/** Whether the session is still in the very state the owner moved it out of. */
 function isStillSeen(
   session: SessionDto | undefined,
   move: ReviewMove,
 ): session is SessionDto {
-  const from = move.to === "idle" ? "review" : "idle";
-  return session?.state === from && session.stateSince === move.stateSince;
+  return session?.state === move.from && session.stateSince === move.stateSince;
 }
 
 /**
  * Shows each pending move as the state the owner picked.
  * @param sessions - The sessions the answers carried.
  * @param moves - The moves waiting for an answer.
- * @returns The sessions with every moved Review shown as Idle, timed from the move, and every moved Idle shown as Review.
+ * @returns The sessions with every moved Review or Waiting for you shown as Idle, timed from the move, and every moved Idle shown as Review.
  */
 export function applyReviewMoves(
   sessions: SessionMap,
@@ -56,7 +58,7 @@ export function applyReviewMoves(
  * Drops the moves an answer has caught up with.
  * @param moves - The moves waiting for an answer.
  * @param sessions - The sessions the answers carried.
- * @returns The moves whose Review (or Idle) is still the one shown.
+ * @returns The moves whose moved-from state is still the one shown.
  */
 export function settleReviewMoves(
   moves: ReviewMoves,
@@ -68,9 +70,9 @@ export function settleReviewMoves(
 }
 
 /**
- * Sends the Reviews the owner moved to Idle to the server.
- * @param request - The Reviews, each with the `stateSince` the owner saw.
- * @returns How many Reviews the server marked (fewer than sent when some had already moved on), or undefined on any refusal or network failure.
+ * Sends the Reviews and Waiting for you employees the owner moved to Idle to the server.
+ * @param request - The employees, each with the `stateSince` the owner saw.
+ * @returns How many the server marked (fewer than sent when some had already moved on), or undefined on any refusal or network failure.
  */
 export async function postReviewSeen(
   request: ReviewSeenRequest,

@@ -52,7 +52,7 @@ interface DetailsPanelProps {
   onDismiss?: (endRunning: boolean) => void;
   /** Sends the owner's name for the employee; resolves true when the server stored it. */
   onRename?: (name: string) => Promise<boolean>;
-  /** Moves the employee's Review to Idle; the button waits until the returned promise settles. */
+  /** Moves the employee's Review or Waiting for you to Idle; the button waits until the returned promise settles. */
   onMoveToIdle?: () => void | Promise<void>;
   /** Why the last move to Idle was refused; absent when it was not. */
   moveToIdleError?: string;
@@ -373,7 +373,7 @@ function Card({
               : "Starting on the Mac."}
           </p>
         )}
-        {session.state === "review" && (
+        {(session.state === "review" || session.state === "waitingForYou") && (
           <div className="flex shrink-0 flex-col gap-1">
             <button
               type="button"
@@ -396,8 +396,9 @@ function Card({
               </p>
             )}
             <p data-testid="move-to-idle-note" className="text-xs">
-              Moving to Idle means you have seen the result. It stays in your
-              list, in the same place.
+              {session.state === "review"
+                ? "Moving to Idle means you have seen the result. It stays in your list, in the same place."
+                : "Moving to Idle leaves its question for later. It stays in your list, in the same place."}
             </p>
           </div>
         )}

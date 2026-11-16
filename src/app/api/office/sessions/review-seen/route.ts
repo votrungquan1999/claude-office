@@ -5,9 +5,9 @@ import { requireOwner } from "@/lib/require-owner";
 import { reviewSeenRequestSchema } from "@/shared/session";
 
 /**
- * The owner has looked at one or more Review employees and moves them to Idle; an Idle the owner moved to Review goes back to that Idle.
- * @param request - The request carrying the Reviews the owner saw.
- * @returns How many were marked (fewer than sent is normal: those rows had already left that Review); 401 when not the owner, 400 for a malformed body.
+ * The owner moves one or more Review or Waiting for you employees to Idle; an Idle the owner moved to Review goes back to that Idle.
+ * @param request - The request carrying the Review and Waiting for you employees the owner saw.
+ * @returns How many were marked (fewer than sent is normal: those rows had already left that state); 401 when not the owner, 400 for a malformed body.
  */
 export async function POST(request: NextRequest) {
   if (!(await requireOwner(request.headers))) {
@@ -26,11 +26,11 @@ export async function POST(request: NextRequest) {
       ({ machineId, sessionId, stateSince }): AnyBulkWriteOperation[] => [
         {
           updateOne: {
-            // Only the Review the owner saw; a row that moved on keeps its state
+            // Only the Review or Waiting for you the owner saw; a row that moved on keeps its state
             filter: {
               machineId,
               sessionId,
-              state: "review",
+              state: { $in: ["review", "waitingForYou"] },
               stateSince: new Date(stateSince),
             },
             update: {
