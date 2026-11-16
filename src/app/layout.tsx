@@ -20,7 +20,8 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     title: "Office",
-    statusBarStyle: "black-translucent",
+    // An opaque bar: under a translucent one iOS lays the page out one status bar short and leaves a strip at the bottom.
+    statusBarStyle: "black",
   },
   formatDetection: { telephone: false },
 };

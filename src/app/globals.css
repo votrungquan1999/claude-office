@@ -10,16 +10,6 @@
 :root {
   /* With viewport-fit=cover the page starts under the iPhone status bar; 0 in desktop browsers. */
   --safe-top: env(safe-area-inset-top, 0px);
-}
-
-/* iOS blurs about 40pt below the status bar in a Home Screen app, and the inset can read 0 there. */
-@media (display-mode: standalone) and (pointer: coarse) {
-  :root {
-    --safe-top: calc(env(safe-area-inset-top, 0px) + 24px);
-  }
-}
-
-:root {
 
   /* Core palette */
   --color-bg: #1e1e2e;
