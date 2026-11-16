@@ -29,7 +29,7 @@ export function RequestPopup({ request }: RequestPopupProps) {
         i
       </button>
       {open && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center p-12">
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-12 pt-[calc(12px+var(--safe-top))]">
           {/* A click outside the popup lands on this layer; the keyboard closes with Escape or the × button. */}
           <button
             type="button"

@@ -122,7 +122,7 @@ export function HireDialog({
       onKeyDown={(event) => {
         if (event.key === "Escape") onClose();
       }}
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-12"
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-12 pt-[calc(12px+var(--safe-top))]"
     >
       <form
         onSubmit={(event) => {

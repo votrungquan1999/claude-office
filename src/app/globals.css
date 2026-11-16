@@ -8,6 +8,9 @@
 }
 
 :root {
+  /* With viewport-fit=cover the page starts under the iPhone status bar; 0 in desktop browsers. */
+  --safe-top: env(safe-area-inset-top, 0px);
+
   /* Core palette */
   --color-bg: #1e1e2e;
   --color-bg-dark: #181828;
@@ -132,14 +135,6 @@
   /* Pulsing dot animation (DebugView, ToolOverlay) */
   .pixel-pulse {
     animation: pixel-pulse 1.5s ease-in-out infinite;
-  }
-
-  /* Top-anchored floating chrome (Settings, view toggle, connection pill):
-     in a Home-Screen PWA with viewport-fit=cover the page starts under the
-     iOS status bar, so the usual 8px top offset lands beneath the clock.
-     env() is 0 in browser tabs and on desktop, where this equals top-8. */
-  .mobile-safe-top {
-    top: calc(env(safe-area-inset-top, 0px) + 8px);
   }
 
   /* Scroll containers whose overflow is obvious from clipped content (the

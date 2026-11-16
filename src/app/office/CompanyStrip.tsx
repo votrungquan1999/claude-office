@@ -127,7 +127,7 @@ export function CompanyStrip({
     <nav
       aria-label="Companies"
       data-testid="company-strip"
-      className="flex h-56 w-full shrink-0 items-stretch whitespace-nowrap border-b-2 border-border bg-bg-dark"
+      className="flex h-[calc(56px+var(--safe-top))] w-full shrink-0 items-stretch whitespace-nowrap border-b-2 border-border bg-bg-dark pt-[var(--safe-top)]"
     >
       {/* Only the tabs scroll, so All companies never leaves the bar's edge. */}
       <div

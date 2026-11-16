@@ -40,7 +40,7 @@ export function DesktopSettings({
         role="dialog"
         aria-modal="true"
         aria-label="Settings"
-        className="fixed top-[60px] right-8 z-[70] flex max-h-[calc(100dvh-76px)] w-[420px] max-w-[calc(100%-16px)] flex-col overflow-y-auto gap-12 border-2 border-border bg-bg p-12 text-sm"
+        className="fixed top-[calc(60px+var(--safe-top))] right-8 z-[70] flex max-h-[calc(100dvh-76px-var(--safe-top))] w-[420px] max-w-[calc(100%-16px)] flex-col overflow-y-auto gap-12 border-2 border-border bg-bg p-12 text-sm"
       >
         <div className="flex items-center justify-between gap-8">
           <h2 className="text-lg font-bold">Settings</h2>

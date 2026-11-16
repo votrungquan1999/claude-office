@@ -33,7 +33,7 @@ export function DismissPopup({
   useEscape(onCancel);
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center p-12">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-12 pt-[calc(12px+var(--safe-top))]">
       <button
         type="button"
         data-testid="dismiss-backdrop"
