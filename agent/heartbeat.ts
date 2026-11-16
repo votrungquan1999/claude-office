@@ -1,4 +1,5 @@
 import type { Collection } from "mongodb";
+import type { AgentCodeReport } from "./agent-code";
 
 export interface HeartbeatOptions {
   machines: Collection;
@@ -12,6 +13,8 @@ export interface HeartbeatOptions {
   log: (message: string) => void;
   /** Called after a beat that landed. */
   onWriteOk?: () => void;
+  /** What code the agent runs, re-read before every beat. */
+  code?: () => Promise<AgentCodeReport>;
   /** Runs after every beat's own writes; owns its error handling. */
   afterBeat?: () => Promise<void>;
 }
@@ -39,17 +42,30 @@ export function startHeartbeat(options: HeartbeatOptions): Heartbeat {
     intervalMs,
     log,
   } = options;
+  // The start time is stamped by the first beat that lands, so the page sees a new agent by a new time.
+  let startRecorded = false;
   const beat = async () => {
     try {
+      const code = await options.code?.();
       // The database stamps the time, so a Mac with a wrong clock cannot look offline or alive by mistake.
       await machines.updateOne(
         { machineId },
         {
-          $set: { machineName, agentVersion },
-          $currentDate: { lastSeenAt: true },
+          $set: {
+            machineName,
+            agentVersion,
+            ...(code ? { restartNeeded: code.restartNeeded } : {}),
+            ...(code?.agentCommit ? { agentCommit: code.agentCommit } : {}),
+          },
+          // A commit left by an earlier agent must not be shown for this one.
+          ...(code && !code.agentCommit ? { $unset: { agentCommit: "" } } : {}),
+          $currentDate: startRecorded
+            ? { lastSeenAt: true }
+            : { lastSeenAt: true, agentStartedAt: true },
         },
         { upsert: true },
       );
+      startRecorded = true;
       // An idle open session is never rewritten, so its last-seen time is renewed here, at most once a day.
       await sessions.updateMany(
         {

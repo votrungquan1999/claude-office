@@ -60,6 +60,9 @@ interface MachineRow {
   machineName: string;
   lastSeenAt: Date;
   agentVersion?: string;
+  agentCommit?: string;
+  agentStartedAt?: Date;
+  restartNeeded?: boolean;
 }
 
 /**
@@ -193,6 +196,11 @@ export async function GET(request: NextRequest) {
       machineName: machine.machineName,
       lastSeenAt: machine.lastSeenAt.toISOString(),
       ...(machine.agentVersion ? { agentVersion: machine.agentVersion } : {}),
+      ...(machine.agentCommit ? { agentCommit: machine.agentCommit } : {}),
+      ...(machine.agentStartedAt
+        ? { agentStartedAt: machine.agentStartedAt.toISOString() }
+        : {}),
+      ...(machine.restartNeeded ? { restartNeeded: true as const } : {}),
     })),
     folders: folders.map(
       ({

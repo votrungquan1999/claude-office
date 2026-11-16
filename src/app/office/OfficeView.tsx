@@ -835,6 +835,7 @@ export function OfficeView() {
         onOpenDrawer={toggleDrawer}
         drawerButtonRef={drawerButtonRef}
         {...settings.stripProps}
+        settingsAlert={machines.some((machine) => machine.restartNeeded)}
         collapsedMacs={collapsedMacs}
         onToggleMac={toggleMac}
         onRename={(machineId, path, name) =>
@@ -971,7 +972,11 @@ export function OfficeView() {
             />
           )}
           {settings.open && (
-            <SettingsSheet phone={isPhone} onClose={settings.close} />
+            <SettingsSheet
+              phone={isPhone}
+              machines={machines}
+              onClose={settings.close}
+            />
           )}
           {/* Not on a phone (the bottom bar has its own Hire); hidden while a right panel or a details sheet is open, so it never sits over or beside them. */}
           {!isPhone &&

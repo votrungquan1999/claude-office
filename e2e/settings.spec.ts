@@ -291,3 +291,114 @@ test("Cmd+K does nothing while the Settings dialog is open", async ({
     page.getByRole("dialog", { name: "Find an employee" }),
   ).toHaveCount(0);
 });
+
+/**
+ * Gives the Macs the agent records the Macs group lists: Air runs 0.5.0 and has newer agent code waiting, Mini runs an older agent.
+ * @param restartNeeded - Whether Air's checkout holds newer agent code.
+ */
+async function seedAgents(restartNeeded: boolean) {
+  await withE2eDb(async (db) => {
+    await db.collection("machines").updateOne(
+      { machineId: "air" },
+      {
+        $set: {
+          machineName: "Air",
+          lastSeenAt: new Date(),
+          agentVersion: "0.5.0",
+          agentCommit: "abc1234",
+          agentStartedAt: new Date("2026-11-16T09:30:00Z"),
+          restartNeeded,
+        },
+      },
+      { upsert: true },
+    );
+    await db.collection("machines").updateOne(
+      { machineId: "mini" },
+      {
+        $set: {
+          machineName: "Mini",
+          lastSeenAt: new Date(),
+          agentVersion: "0.4.0",
+        },
+      },
+      { upsert: true },
+    );
+  });
+}
+
+test.describe("the Macs group", () => {
+  test.use({ timezoneId: "UTC" });
+
+  test("lists each Mac with its agent's version, code and start time, says Restart needed for a Mac with newer agent code, and marks the Settings button until it is restarted", async ({
+    context,
+    page,
+  }) => {
+    // Given Air with newer agent code waiting and Mini on an older agent
+    await seedAgents(true);
+    await signInAsOwner(context);
+    await openOffice(page);
+
+    // Then the Settings button carries the restart mark
+    const button = page.getByRole("button", { name: /^Settings/ });
+    await expect(page.getByTestId("settings-restart-mark")).toBeVisible();
+
+    // When the owner opens the settings
+    await button.click();
+
+    // Then the Macs group lists both Macs, and only Air needs a restart
+    const macs = page
+      .getByRole("dialog", { name: "Settings" })
+      .getByRole("region", { name: "Macs" });
+    const air = macs.getByRole("listitem").filter({ hasText: "Air" });
+    const mini = macs.getByRole("listitem").filter({ hasText: "Mini" });
+    await expect(air).toContainText("Agent 0.5.0");
+    await expect(air).toContainText("Code abc1234");
+    await expect(air).toContainText("Started 16 Nov, 09:30");
+    await expect(air).toContainText("Restart needed");
+    await expect(mini).toContainText("Agent 0.4.0");
+    await expect(mini).not.toContainText("Restart needed");
+
+    // When Air's agent reports it runs the newest code
+    await seedAgents(false);
+
+    // Then Restart needed and the mark go away
+    await expect(air).not.toContainText("Restart needed");
+    await expect(page.getByTestId("settings-restart-mark")).toHaveCount(0);
+  });
+
+  test.describe("on a phone", () => {
+    test.use({
+      viewport: { width: 393, height: 852 },
+      hasTouch: true,
+      isMobile: true,
+    });
+
+    test("the phone's settings sheet has the same Macs group and the Settings button the same mark", async ({
+      context,
+      page,
+    }) => {
+      // Given Air with newer agent code waiting
+      await seedAgents(true);
+      await signInAsOwner(context);
+      await page.goto("/");
+      await expect(page.getByTestId("phone-list")).toBeVisible();
+
+      // Then the Settings button carries the restart mark
+      await expect(page.getByTestId("settings-restart-mark")).toBeVisible();
+
+      // When the owner opens the settings sheet
+      await page.getByRole("button", { name: /^Settings/ }).tap();
+
+      // Then it lists Air with its agent and Restart needed
+      const air = page
+        .getByRole("dialog", { name: "Settings" })
+        .getByRole("region", { name: "Macs" })
+        .getByRole("listitem")
+        .filter({ hasText: "Air" });
+      await expect(air).toContainText("Agent 0.5.0");
+      await expect(air).toContainText("Code abc1234");
+      await expect(air).toContainText("Started 16 Nov, 09:30");
+      await expect(air).toContainText("Restart needed");
+    });
+  });
+});

@@ -6,6 +6,7 @@ import { MongoClient } from "mongodb";
 import { z } from "zod";
 import { ensureIndexes } from "../src/db/indexes";
 import type { CommandDocument } from "../src/shared/commands";
+import { watchAgentCode } from "./agent-code";
 import {
   createCommandPoller,
   type DismissWaits,
@@ -53,6 +54,9 @@ import { createWriteWatchdog } from "./write-watchdog";
 import { SessionWriter } from "./writer";
 
 const packageJsonSchema = z.object({ version: z.string() });
+
+/** The checkout this file was loaded from. */
+const OWN_REPO_DIR = fileURLToPath(new URL("..", import.meta.url));
 
 /** The version in the repo's package.json, which the agent runs from. */
 function readPackageVersion(): string {
@@ -106,6 +110,8 @@ export interface AgentOptions {
   agentVersion?: string;
   /** How often the web's orders are looked for. */
   commandPollMs?: number;
+  /** The checkout the agent loaded its code from; the repo this file lives in when absent. */
+  repoDir?: string;
   log?: (message: string) => void;
 }
 
@@ -253,12 +259,14 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
     trustUnreadable = !trust;
     return trust;
   };
+  const codeWatch = await watchAgentCode(options.repoDir ?? OWN_REPO_DIR);
   const heartbeat = startHeartbeat({
     machines: db.collection("machines"),
     sessions: db.collection("sessions"),
     machineId,
     machineName,
     agentVersion: options.agentVersion ?? readPackageVersion(),
+    code: codeWatch.check,
     afterBeat: () =>
       refreshFolders(
         db.collection<FolderDocument>("folders"),

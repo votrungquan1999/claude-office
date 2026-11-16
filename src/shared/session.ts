@@ -88,6 +88,12 @@ export const machineDtoSchema = z.object({
   lastSeenAt: z.string(),
   /** The agent's version; absent from agents older than the one that reports it. */
   agentVersion: z.string().optional(),
+  /** Short commit of the code the agent loaded; absent from agents before 0.5.0 and outside a git checkout. */
+  agentCommit: z.string().optional(),
+  /** When the running agent started, by the database clock; absent from agents before 0.5.0. */
+  agentStartedAt: z.string().optional(),
+  /** The Mac's checkout holds newer agent code than the running agent loaded. */
+  restartNeeded: z.literal(true).optional(),
 });
 
 export type MachineDto = z.infer<typeof machineDtoSchema>;

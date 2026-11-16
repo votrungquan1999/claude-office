@@ -1,17 +1,21 @@
+import type { MachineDto } from "@/shared/session";
 import { ToggleSwitch } from "../ToggleSwitch";
 import { useEscape } from "../useEscape";
 import { storeDeviceSettings, useDeviceSettings } from "./deviceSettings";
+import { MacsSettings } from "./MacsSettings";
 
 interface DesktopSettingsProps {
+  /** Every Mac, for the Macs group. */
+  machines: MachineDto[];
   onClose: () => void;
 }
 
 /**
- * The Mac's settings dialog: how the list starts, what the tab says and what Needs you lists.
- * @param props - What to do on close.
+ * The Mac's settings dialog: how the list starts, what the tab says, what Needs you lists and each Mac's agent.
+ * @param props - The Macs and what to do on close.
  * @returns A scrim and the dialog under the Settings button.
  */
-export function DesktopSettings({ onClose }: DesktopSettingsProps) {
+export function DesktopSettings({ machines, onClose }: DesktopSettingsProps) {
   const settings = useDeviceSettings();
   useEscape(onClose);
   return (
@@ -26,7 +30,7 @@ export function DesktopSettings({ onClose }: DesktopSettingsProps) {
         role="dialog"
         aria-modal="true"
         aria-label="Settings"
-        className="fixed top-[60px] right-8 z-[70] flex w-[420px] max-w-[calc(100%-16px)] flex-col gap-12 border-2 border-border bg-bg p-12 text-sm"
+        className="fixed top-[60px] right-8 z-[70] flex max-h-[calc(100dvh-76px)] w-[420px] max-w-[calc(100%-16px)] flex-col overflow-y-auto gap-12 border-2 border-border bg-bg p-12 text-sm"
       >
         <div className="flex items-center justify-between gap-8">
           <h2 className="text-lg font-bold">Settings</h2>
@@ -101,6 +105,7 @@ export function DesktopSettings({ onClose }: DesktopSettingsProps) {
             }
           />
         </div>
+        <MacsSettings machines={machines} />
       </div>
     </>
   );

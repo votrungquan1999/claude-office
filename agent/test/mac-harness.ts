@@ -67,6 +67,8 @@ export interface MacHarness {
       agentVersion?: string;
       /** Receives the agent's log lines; they go to stderr when absent. */
       log?: (message: string) => void;
+      /** The checkout the agent reports its code from; this repo when absent. */
+      repoDir?: string;
     },
   ): Promise<{
     fake: FakeHome;
@@ -151,6 +153,7 @@ export function useMacHarness(): MacHarness {
         anthropicRetryMs: options?.anthropic?.retryMs,
         anthropicTimeoutMs: options?.anthropic?.timeoutMs,
         log: options?.log,
+        repoDir: options?.repoDir,
       });
       cleanups.push(() => agent.stop());
       return { fake, agent, terminal };

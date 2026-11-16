@@ -1,3 +1,4 @@
+import type { MachineDto } from "@/shared/session";
 import { ToggleSwitch } from "../ToggleSwitch";
 import { useEscape } from "../useEscape";
 import {
@@ -5,8 +6,11 @@ import {
   storeDeviceSettings,
   useDeviceSettings,
 } from "./deviceSettings";
+import { MacsSettings } from "./MacsSettings";
 
 interface PhoneSettingsProps {
+  /** Every Mac, for the Macs group. */
+  machines: MachineDto[];
   onClose: () => void;
 }
 
@@ -29,11 +33,11 @@ const VIEWS: Array<{
 ];
 
 /**
- * The phone's settings sheet: whether it shows the list or the stacked rooms.
- * @param props - What to do on close.
+ * The phone's settings sheet: whether it shows the list or the stacked rooms, and each Mac's agent.
+ * @param props - The Macs and what to do on close.
  * @returns A scrim over the screen and the bottom sheet.
  */
-export function PhoneSettings({ onClose }: PhoneSettingsProps) {
+export function PhoneSettings({ machines, onClose }: PhoneSettingsProps) {
   const { phoneView: view, needsYouOtherCompanies } = useDeviceSettings();
   useEscape(onClose);
   return (
@@ -97,6 +101,7 @@ export function PhoneSettings({ onClose }: PhoneSettingsProps) {
             }
           />
         </div>
+        <MacsSettings machines={machines} />
         <p className="text-xs text-text-muted">
           Changes this phone only; the Mac keeps the office and the list.
         </p>
