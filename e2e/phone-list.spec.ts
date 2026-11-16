@@ -282,6 +282,40 @@ test("tapping a row, in Everyone or in Needs you, opens the employee's details s
   await expect(panel).toContainText("Beta asks");
 });
 
+test("a row shows its name on its own line and its repo tags on the line below", async ({
+  context,
+  page,
+}) => {
+  // Given an employee with two repo tags
+  await seed([
+    {
+      sessionId: "a",
+      cwd: PERSONAL,
+      startCwd: PERSONAL,
+      deskName: "Audit the signup emails",
+      tags: [
+        { name: "api", key: "aaaaaaaaaaaa" },
+        { name: "web", key: "bbbbbbbbbbbb" },
+      ],
+    },
+  ]);
+  await signInAsOwner(context);
+
+  // When the owner opens the office on the phone
+  await page.goto("/");
+  const row = page.getByTestId("phone-list").getByTestId("list-row");
+  await expect(row.getByTestId("list-row-name")).toHaveText(
+    "Audit the signup emails",
+  );
+
+  // Then the row shows its first tag and +1 below the name
+  await expect(row.getByTestId("list-row-tag")).toHaveText("#api");
+  await expect(row).toContainText("+1");
+  const name = await row.getByTestId("list-row-name").boundingBox();
+  const tag = await row.getByTestId("list-row-tag").boundingBox();
+  expect(tag?.y).toBeGreaterThanOrEqual((name?.y ?? 0) + (name?.height ?? 0));
+});
+
 test("the repo pill narrows Everyone but never Needs you", async ({
   context,
   page,

@@ -331,6 +331,37 @@ test.describe("the list beside the office on a desktop", () => {
       "personal · 1 employee",
     );
   });
+
+  test("a row's name has the whole line and its repo tags sit on the line below", async ({
+    context,
+    page,
+  }) => {
+    // Given an employee with two repo tags
+    await seed([
+      {
+        sessionId: "a",
+        deskName: "Audit the signup emails",
+        tags: [
+          { name: "api", key: "aaaaaaaaaaaa" },
+          { name: "web", key: "bbbbbbbbbbbb" },
+        ],
+      },
+    ]);
+    await signInAsOwner(context);
+
+    // When the owner opens the office
+    await page.goto("/");
+    await waitForEmployees(page, 1);
+    const row = page.getByTestId("list-row");
+    const name = await row.getByTestId("list-row-name").boundingBox();
+    const tag = await row.getByTestId("list-row-tag").boundingBox();
+    const status = await row.getByTestId("list-row-status").boundingBox();
+
+    // Then the name is as wide as the status line, and the tag starts below it
+    expect(name?.width).toBeCloseTo(status?.width ?? 0, 0);
+    expect(tag?.y).toBeGreaterThanOrEqual((name?.y ?? 0) + (name?.height ?? 0));
+    await expect(row).toContainText("+1");
+  });
 });
 
 test.describe("the list beside the office on an iPad", () => {

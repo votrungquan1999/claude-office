@@ -35,7 +35,7 @@ export interface ListRowProps {
   onMoveToIdle: (key: string) => void;
   /** Asks for the rename dialog of this employee. */
   onRequestRename: (key: string) => void;
-  /** On a phone: touch-sized buttons, a grip that only shows, and no repo tags or rename button. */
+  /** On a phone: touch-sized buttons, a grip that only shows, and no rename button. */
   phone?: boolean;
   /** Why a search found this employee; its line shows under the row's own and the grip hides. */
   why?: EmployeeMatch;
@@ -214,25 +214,25 @@ export function ListRow({
           >
             {name}
           </span>
-          {tags.length > 0 && !phone && (
-            <span className="flex shrink-0 gap-4 text-xs">
-              {tags.slice(0, SHOWN_TAGS).map((tag) => (
-                <span
-                  key={tag.key}
-                  data-testid="list-row-tag"
-                  className="max-w-[112px] truncate bg-bg-thumb px-4"
-                >
-                  #{tagLabels.get(tag.key) ?? tag.name}
-                </span>
-              ))}
-              {tags.length > SHOWN_TAGS && (
-                <span className="bg-bg-thumb px-4">
-                  +{tags.length - SHOWN_TAGS}
-                </span>
-              )}
-            </span>
-          )}
         </span>
+        {tags.length > 0 && (
+          <span className="flex w-full min-w-0 gap-4 text-xs">
+            {tags.slice(0, SHOWN_TAGS).map((tag) => (
+              <span
+                key={tag.key}
+                data-testid="list-row-tag"
+                className="min-w-0 truncate bg-bg-thumb px-4"
+              >
+                #{tagLabels.get(tag.key) ?? tag.name}
+              </span>
+            ))}
+            {tags.length > SHOWN_TAGS && (
+              <span className="shrink-0 bg-bg-thumb px-4">
+                +{tags.length - SHOWN_TAGS}
+              </span>
+            )}
+          </span>
+        )}
         <span data-testid="list-row-status" className="w-full truncate text-xs">
           <span className={style.text}>{band.text}</span>
           {rest && <span className="text-text-muted"> · {rest}</span>}
