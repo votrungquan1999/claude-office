@@ -124,6 +124,10 @@ export interface CommandPollerOptions {
   windowRecordMs?: number;
   /** Checks the tracked sessions against the registry and process table now. */
   reconcile?: () => Promise<void>;
+  /** Whether the owner asked this agent to restart; read before every claim. */
+  restartRequested?: () => Promise<boolean>;
+  /** Called, instead of claiming, once a restart is asked for. */
+  onRestartRequested?: () => void;
   now: () => number;
   log: (message: string) => void;
 }
@@ -678,8 +682,15 @@ export function createCommandPoller(
 
   /** Overlapping polls share one drain, so two orders never run side by side. */
   let inFlight: Promise<void> | undefined;
+  /** Runs waiting orders until none is left, or until a restart is asked for; that check sits between orders, so no order is cut off. */
   const drain = async () => {
-    for (let order = await claim(); order; order = await claim()) {
+    for (;;) {
+      if (await options.restartRequested?.()) {
+        options.onRestartRequested?.();
+        return;
+      }
+      const order = await claim();
+      if (!order) return;
       await run(order);
     }
   };

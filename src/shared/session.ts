@@ -94,6 +94,8 @@ export const machineDtoSchema = z.object({
   agentStartedAt: z.string().optional(),
   /** The Mac's checkout holds newer agent code than the running agent loaded. */
   restartNeeded: z.literal(true).optional(),
+  /** The agent was started by hand, not by launchd, so it never exits for a restart. */
+  startedByHand: z.literal(true).optional(),
 });
 
 export type MachineDto = z.infer<typeof machineDtoSchema>;

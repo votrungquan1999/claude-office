@@ -3,19 +3,29 @@ import { ToggleSwitch } from "../ToggleSwitch";
 import { useEscape } from "../useEscape";
 import { storeDeviceSettings, useDeviceSettings } from "./deviceSettings";
 import { MacsSettings } from "./MacsSettings";
+import type { AgentRestarts } from "./useAgentRestarts";
 
 interface DesktopSettingsProps {
   /** Every Mac, for the Macs group. */
   machines: MachineDto[];
+  /** The server's time, which judges whether a Mac is online. */
+  serverNow: string;
+  /** The restarts asked for from this page. */
+  restarts: AgentRestarts;
   onClose: () => void;
 }
 
 /**
  * The Mac's settings dialog: how the list starts, what the tab says, what Needs you lists and each Mac's agent.
- * @param props - The Macs and what to do on close.
+ * @param props - The Macs with their restarts and what to do on close.
  * @returns A scrim and the dialog under the Settings button.
  */
-export function DesktopSettings({ machines, onClose }: DesktopSettingsProps) {
+export function DesktopSettings({
+  machines,
+  serverNow,
+  restarts,
+  onClose,
+}: DesktopSettingsProps) {
   const settings = useDeviceSettings();
   useEscape(onClose);
   return (
@@ -105,7 +115,11 @@ export function DesktopSettings({ machines, onClose }: DesktopSettingsProps) {
             }
           />
         </div>
-        <MacsSettings machines={machines} />
+        <MacsSettings
+          machines={machines}
+          serverNow={serverNow}
+          restarts={restarts}
+        />
       </div>
     </>
   );

@@ -402,3 +402,110 @@ test.describe("the Macs group", () => {
     });
   });
 });
+
+test.describe("restarting a Mac's agent", () => {
+  test.use({ timezoneId: "UTC" });
+
+  test("pressing Restart agent turns on the Mac's restart signal and shows Restarting… until the Mac reports a new start time", async ({
+    context,
+    page,
+  }) => {
+    // Given Air's launchd-run agent on 0.5.0 with newer agent code waiting
+    await seedAgents(true);
+    await withE2eDb((db) =>
+      db
+        .collection("machines")
+        .updateOne({ machineId: "air" }, { $set: { startedByHand: false } }),
+    );
+    await signInAsOwner(context);
+    await openOffice(page);
+    await page.getByRole("button", { name: /^Settings/ }).click();
+    const air = page
+      .getByRole("region", { name: "Macs" })
+      .getByRole("listitem")
+      .filter({ hasText: "Air" });
+
+    // When the owner presses Restart agent for Air
+    await air.getByRole("button", { name: "Restart agent" }).click();
+
+    // Then Air shows Restarting…, its button waits, and its signal is on
+    await expect(air).toContainText("Restarting…");
+    await expect(
+      air.getByRole("button", { name: "Restart agent" }),
+    ).toBeDisabled();
+    await expect
+      .poll(() =>
+        withE2eDb(
+          async (db) =>
+            (await db.collection("machines").findOne({ machineId: "air" }))
+              ?.restartRequested,
+        ),
+      )
+      .toBe(true);
+
+    // When Air's new agent starts on the newest code and turns the signal off
+    await withE2eDb((db) =>
+      db.collection("machines").updateOne(
+        { machineId: "air" },
+        {
+          $set: {
+            agentStartedAt: new Date("2026-11-16T09:31:00Z"),
+            agentCommit: "def5678",
+            restartNeeded: false,
+            restartRequested: false,
+            lastSeenAt: new Date(),
+          },
+        },
+      ),
+    );
+
+    // Then Air shows the new start time and code, no Restarting… and no Restart needed, and the button is back
+    await expect(air).toContainText("Started 16 Nov, 09:31");
+    await expect(air).toContainText("Code def5678");
+    await expect(air).not.toContainText("Restarting…");
+    await expect(air).not.toContainText("Restart needed");
+    await expect(
+      air.getByRole("button", { name: "Restart agent" }),
+    ).toBeEnabled();
+  });
+
+  test("Restart agent is off, with the reason, for an agent started by hand, one older than 0.5.0 and an offline Mac", async ({
+    context,
+    page,
+  }) => {
+    // Given Air's agent started by hand, Mini's on 0.4.0, and Studio quiet for ten minutes
+    await seedAgents(true);
+    await withE2eDb(async (db) => {
+      await db
+        .collection("machines")
+        .updateOne({ machineId: "air" }, { $set: { startedByHand: true } });
+      await db.collection("machines").insertOne({
+        machineId: "studio",
+        machineName: "Studio",
+        lastSeenAt: new Date(Date.now() - 10 * 60_000),
+        agentVersion: "0.5.0",
+        startedByHand: false,
+      });
+    });
+    await signInAsOwner(context);
+    await openOffice(page);
+
+    // When the owner opens the settings
+    await page.getByRole("button", { name: /^Settings/ }).click();
+    const macs = page.getByRole("region", { name: "Macs" });
+    const row = (name: string) =>
+      macs.getByRole("listitem").filter({ hasText: name });
+
+    // Then each Restart agent button is off and says why
+    for (const [name, reason] of [
+      ["Air", "Started by hand on the Mac; restart it there."],
+      ["Mini", "This agent is older than 0.5.0; restart it on the Mac once."],
+      ["Studio", "That Mac is offline."],
+    ]) {
+      await expect(
+        row(name).getByRole("button", { name: "Restart agent" }),
+      ).toBeDisabled();
+      await expect(row(name)).toContainText(reason);
+    }
+  });
+});

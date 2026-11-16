@@ -36,6 +36,7 @@ import {
 import { listRegistry } from "./registry";
 import { createRepoResolver } from "./repo-resolver";
 import { startListener } from "./server";
+import { LAUNCH_AGENT_LABEL } from "./setup/install-launchd";
 import { TaskNamer } from "./task-namer";
 import {
   createOsascriptControl,
@@ -112,6 +113,12 @@ export interface AgentOptions {
   commandPollMs?: number;
   /** The checkout the agent loaded its code from; the repo this file lives in when absent. */
   repoDir?: string;
+  /** Whether launchd runs this agent; only then may it exit for a restart. Read from the environment when absent. */
+  runByLaunchd?: boolean;
+  /** Ends the process once the agent has stopped for a restart; the default exits so launchd starts it again. */
+  onRestart?: () => void;
+  /** How long a restart may take to drain before the agent exits anyway; 30 s when absent. */
+  restartDeadlineMs?: number;
   log?: (message: string) => void;
 }
 
@@ -259,6 +266,9 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
     trustUnreadable = !trust;
     return trust;
   };
+  // launchd names each job it starts in XPC_SERVICE_NAME; a Terminal-started agent inherits Terminal's own name.
+  const runByLaunchd =
+    options.runByLaunchd ?? process.env.XPC_SERVICE_NAME === LAUNCH_AGENT_LABEL;
   const codeWatch = await watchAgentCode(options.repoDir ?? OWN_REPO_DIR);
   const heartbeat = startHeartbeat({
     machines: db.collection("machines"),
@@ -266,6 +276,7 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
     machineId,
     machineName,
     agentVersion: options.agentVersion ?? readPackageVersion(),
+    startedByHand: !runByLaunchd,
     code: codeWatch.check,
     afterBeat: () =>
       refreshFolders(
@@ -316,6 +327,23 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
   );
   reconcileTimer.unref();
 
+  // Turned off before the first poll reads it: a signal the previous agent exited for never restarts this one.
+  const machines = db.collection("machines");
+  await machines.updateOne(
+    { machineId },
+    { $set: { restartRequested: false } },
+  );
+  let restarting = false;
+  /** Whether the owner asked for a restart this agent can do; one started by hand never exits for it. */
+  const restartRequested = async () => {
+    if (!runByLaunchd || restarting) return restarting;
+    const machine = await machines.findOne(
+      { machineId },
+      { projection: { restartRequested: 1 } },
+    );
+    return machine?.restartRequested === true;
+  };
+
   // Orders the previous run claimed are over: no window is opened late.
   const commands = db.collection<CommandDocument>("commands");
   await failInterrupted(commands, machineId);
@@ -340,9 +368,65 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
     processTable: options.processTable,
     windowRecordMs: options.windowRecordMs,
     reconcile,
+    restartRequested,
+    onRestartRequested: () => void restart(),
     now,
     log,
   });
+
+  const token = randomBytes(24).toString("hex");
+  const listener = await startListener(token, (body) => tracker.ingest(body));
+  writeAgentFile(home, {
+    pid: process.pid,
+    port: listener.port,
+    token,
+    procStart: readProcessStart(process.pid),
+  });
+
+  /** Stops every timer, the listener and the database connection. */
+  const stop = async () => {
+    rmSync(join(officeDir(home), "agent.json"), { force: true });
+    await listener.close();
+    kanban.stop();
+    clearInterval(reconcileTimer);
+    clearInterval(staleTimer);
+    clearInterval(commandTimer);
+    heartbeat.stop();
+    tracker.stop();
+    writer.stop();
+    await client.close();
+  };
+
+  /** Exits for a restart once the window lookups and pending writes are done, or at the deadline; launchd starts the new agent. */
+  const restart = async () => {
+    if (restarting) return;
+    restarting = true;
+    clearInterval(commandTimer);
+    log(
+      "claude-office agent: restart asked from the office; exiting so launchd starts it again",
+    );
+    let exited = false;
+    /** Ends the process once, whether the drain or the deadline gets there first. */
+    const exit = () => {
+      if (exited) return;
+      exited = true;
+      clearTimeout(deadline);
+      (options.onRestart ?? (() => process.exit(0)))();
+    };
+    // A stalled drain (for example a database that stops answering) would otherwise leave an agent that takes no orders and never exits.
+    const deadline = setTimeout(exit, options.restartDeadlineMs ?? 30_000);
+    deadline.unref();
+    try {
+      await commandPoller.idle();
+      await tracker.flush();
+      await stop();
+    } finally {
+      // Exits even when a last write fails: the new agent's start-up seed restores the states.
+      exit();
+    }
+  };
+
+  // Started last, so a poll that finds the signal on always has the restart to run.
   const commandTimer = setInterval(
     () =>
       void commandPoller
@@ -353,15 +437,6 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
     options.commandPollMs ?? 1000,
   );
   commandTimer.unref();
-
-  const token = randomBytes(24).toString("hex");
-  const listener = await startListener(token, (body) => tracker.ingest(body));
-  writeAgentFile(home, {
-    pid: process.pid,
-    port: listener.port,
-    token,
-    procStart: readProcessStart(process.pid),
-  });
 
   return {
     port: listener.port,
@@ -377,17 +452,6 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
     },
     heartbeat: heartbeat.beat,
     checkWriteHealth: watchdog.check,
-    async stop() {
-      rmSync(join(officeDir(home), "agent.json"), { force: true });
-      await listener.close();
-      kanban.stop();
-      clearInterval(reconcileTimer);
-      clearInterval(staleTimer);
-      clearInterval(commandTimer);
-      heartbeat.stop();
-      tracker.stop();
-      writer.stop();
-      await client.close();
-    },
+    stop,
   };
 }

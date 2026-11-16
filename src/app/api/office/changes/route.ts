@@ -63,6 +63,7 @@ interface MachineRow {
   agentCommit?: string;
   agentStartedAt?: Date;
   restartNeeded?: boolean;
+  startedByHand?: boolean;
 }
 
 /**
@@ -201,6 +202,7 @@ export async function GET(request: NextRequest) {
         ? { agentStartedAt: machine.agentStartedAt.toISOString() }
         : {}),
       ...(machine.restartNeeded ? { restartNeeded: true as const } : {}),
+      ...(machine.startedByHand ? { startedByHand: true as const } : {}),
     })),
     folders: folders.map(
       ({

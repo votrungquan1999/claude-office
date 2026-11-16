@@ -15,6 +15,16 @@ export const MIN_AGENT_VERSION = "0.3.0";
 /** The first agent version whose Dismiss ends the conversation and closes its window; older agents only stop keeping the employee. */
 export const DISMISS_MIN_AGENT_VERSION = "0.4.0";
 
+/** The first agent version that restarts itself when the owner asks from Settings. */
+export const RESTART_MIN_AGENT_VERSION = "0.5.0";
+
+/** Why the owner cannot restart a Mac's agent from the page. */
+export enum AgentRestartBlock {
+  Offline = "offline",
+  Outdated = "outdated",
+  StartedByHand = "startedByHand",
+}
+
 /** Reads "major.minor.patch" into numbers; undefined for anything else. */
 function parseVersion(version: string): number[] | undefined {
   const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
@@ -85,4 +95,24 @@ export function offlineMachineIds(
  */
 export function dismissClosesWindow(agentVersion: string | undefined): boolean {
   return !isOlderThan(agentVersion, DISMISS_MIN_AGENT_VERSION);
+}
+
+/**
+ * Whether the owner can restart a Mac's agent from the page.
+ * @param machine - The Mac's record, or undefined when it has none.
+ * @param serverNow - The server's time; never the browser's clock.
+ * @returns Why it cannot be restarted, or undefined when it can.
+ */
+export function agentRestartBlock(
+  machine: MachineDto | undefined,
+  serverNow: string,
+): AgentRestartBlock | undefined {
+  if (macBlock(machine, serverNow) === MacBlock.Offline || !machine) {
+    return AgentRestartBlock.Offline;
+  }
+  if (isOlderThan(machine.agentVersion, RESTART_MIN_AGENT_VERSION)) {
+    return AgentRestartBlock.Outdated;
+  }
+  // Nothing would start it again after it exits.
+  return machine.startedByHand ? AgentRestartBlock.StartedByHand : undefined;
 }

@@ -77,6 +77,7 @@ import { RoomSigns } from "./RoomSigns";
 import { settleReviewMoves } from "./reviewSeen";
 import { useDeviceSettings } from "./settings/deviceSettings";
 import { SettingsSheet } from "./settings/SettingsSheet";
+import { useAgentRestarts } from "./settings/useAgentRestarts";
 import { useSettingsPanel } from "./settings/useSettingsPanel";
 import { TagFilter } from "./TagFilter";
 import { useOfficeChanges } from "./useOfficeChanges";
@@ -648,6 +649,7 @@ export function OfficeView() {
     .find((entry) => entry.company.key === companyKey)?.company;
   // Judged on the server's clock, like the offline badge.
   const serverNowIso = new Date(now.getTime() + serverOffsetMs).toISOString();
+  const agentRestarts = useAgentRestarts(now.getTime());
   const hireMacs: HireMac[] = machines.map((machine) => ({
     machineId: machine.machineId,
     machineName: machine.machineName,
@@ -975,6 +977,8 @@ export function OfficeView() {
             <SettingsSheet
               phone={isPhone}
               machines={machines}
+              serverNow={serverNowIso}
+              restarts={agentRestarts}
               onClose={settings.close}
             />
           )}

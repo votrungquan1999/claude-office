@@ -13,6 +13,8 @@ export interface HeartbeatOptions {
   log: (message: string) => void;
   /** Called after a beat that landed. */
   onWriteOk?: () => void;
+  /** The agent was not started by launchd, so it never exits for a restart. */
+  startedByHand?: boolean;
   /** What code the agent runs, re-read before every beat. */
   code?: () => Promise<AgentCodeReport>;
   /** Runs after every beat's own writes; owns its error handling. */
@@ -54,6 +56,9 @@ export function startHeartbeat(options: HeartbeatOptions): Heartbeat {
           $set: {
             machineName,
             agentVersion,
+            ...(options.startedByHand === undefined
+              ? {}
+              : { startedByHand: options.startedByHand }),
             ...(code ? { restartNeeded: code.restartNeeded } : {}),
             ...(code?.agentCommit ? { agentCommit: code.agentCommit } : {}),
           },

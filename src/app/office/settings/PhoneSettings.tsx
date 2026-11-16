@@ -7,10 +7,15 @@ import {
   useDeviceSettings,
 } from "./deviceSettings";
 import { MacsSettings } from "./MacsSettings";
+import type { AgentRestarts } from "./useAgentRestarts";
 
 interface PhoneSettingsProps {
   /** Every Mac, for the Macs group. */
   machines: MachineDto[];
+  /** The server's time, which judges whether a Mac is online. */
+  serverNow: string;
+  /** The restarts asked for from this page. */
+  restarts: AgentRestarts;
   onClose: () => void;
 }
 
@@ -34,10 +39,15 @@ const VIEWS: Array<{
 
 /**
  * The phone's settings sheet: whether it shows the list or the stacked rooms, and each Mac's agent.
- * @param props - The Macs and what to do on close.
+ * @param props - The Macs with their restarts and what to do on close.
  * @returns A scrim over the screen and the bottom sheet.
  */
-export function PhoneSettings({ machines, onClose }: PhoneSettingsProps) {
+export function PhoneSettings({
+  machines,
+  serverNow,
+  restarts,
+  onClose,
+}: PhoneSettingsProps) {
   const { phoneView: view, needsYouOtherCompanies } = useDeviceSettings();
   useEscape(onClose);
   return (
@@ -101,7 +111,11 @@ export function PhoneSettings({ machines, onClose }: PhoneSettingsProps) {
             }
           />
         </div>
-        <MacsSettings machines={machines} />
+        <MacsSettings
+          machines={machines}
+          serverNow={serverNow}
+          restarts={restarts}
+        />
         <p className="text-xs text-text-muted">
           Changes this phone only; the Mac keeps the office and the list.
         </p>

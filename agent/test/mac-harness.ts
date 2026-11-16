@@ -69,6 +69,14 @@ export interface MacHarness {
       log?: (message: string) => void;
       /** The checkout the agent reports its code from; this repo when absent. */
       repoDir?: string;
+      /** Whether the agent runs as if launchd started it; started by hand when absent. */
+      runByLaunchd?: boolean;
+      /** Called instead of exiting when the agent stops for a restart. */
+      onRestart?: () => void;
+      /** How long a restart may take before the agent exits anyway. */
+      restartDeadlineMs?: number;
+      /** How long after opening a window the agent keeps looking for its terminal device. */
+      windowRecordMs?: number;
     },
   ): Promise<{
     fake: FakeHome;
@@ -137,7 +145,7 @@ export function useMacHarness(): MacHarness {
         terminalControl: terminal.control,
         processTable: terminal.readProcessTable,
         // A test opener that writes no terminal record is given up on quickly.
-        windowRecordMs: 200,
+        windowRecordMs: options?.windowRecordMs ?? 200,
         dismissWaits: {
           termGraceMs: 300,
           childGraceMs: 300,
@@ -154,6 +162,9 @@ export function useMacHarness(): MacHarness {
         anthropicTimeoutMs: options?.anthropic?.timeoutMs,
         log: options?.log,
         repoDir: options?.repoDir,
+        runByLaunchd: options?.runByLaunchd ?? false,
+        onRestart: options?.onRestart ?? (() => {}),
+        restartDeadlineMs: options?.restartDeadlineMs,
       });
       cleanups.push(() => agent.stop());
       return { fake, agent, terminal };
