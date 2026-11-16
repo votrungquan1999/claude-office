@@ -15,7 +15,7 @@
 /* iOS blurs about 40pt below the status bar in a Home Screen app, and the inset can read 0 there. */
 @media (display-mode: standalone) and (pointer: coarse) {
   :root {
-    --safe-top: calc(env(safe-area-inset-top, 0px) + 40px);
+    --safe-top: calc(env(safe-area-inset-top, 0px) + 24px);
   }
 }
 
