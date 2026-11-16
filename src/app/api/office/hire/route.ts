@@ -37,7 +37,9 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
-  const { machineId, folder, firstMessage } = body.data;
+  const { machineId, folder } = body.data;
+  const firstMessage =
+    "firstMessage" in body.data ? body.data.firstMessage : undefined;
   const refusal = await refuseUnlessMacOnline(machineId);
   if (refusal) return refusal;
   const db = await getDb();

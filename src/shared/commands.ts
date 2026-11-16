@@ -57,12 +57,25 @@ export const firstMessageSchema = z
   .max(MAX_FIRST_MESSAGE_CHARS)
   .refine((message) => message.trim() !== "");
 
-/** The owner's request to hire an employee. */
-export const hireRequestSchema = z.object({
+/** The owner's request to hire an employee with a first message. */
+const messageHireRequestSchema = z.object({
   machineId: z.string().min(1),
   folder: z.string().min(1),
   firstMessage: firstMessageSchema,
 });
+
+/** The owner's request to hire an employee with no first message: Claude opens and waits, as when run by hand. */
+const blankHireRequestSchema = z.object({
+  machineId: z.string().min(1),
+  folder: z.string().min(1),
+  blank: z.literal(true),
+});
+
+/** The owner's request to hire an employee: either a first message or `blank: true`. */
+export const hireRequestSchema = z.union([
+  messageHireRequestSchema,
+  blankHireRequestSchema,
+]);
 
 export type HireRequest = z.infer<typeof hireRequestSchema>;
 

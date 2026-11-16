@@ -12,7 +12,8 @@ export const hireOrderSchema = z.object({
   kind: z.literal(CommandKind.Hire),
   sessionId: sessionIdSchema,
   folder: folderSchema,
-  firstMessage: firstMessageSchema,
+  /** Absent for a blank hire. */
+  firstMessage: firstMessageSchema.optional(),
 });
 
 export type HireOrder = z.infer<typeof hireOrderSchema>;

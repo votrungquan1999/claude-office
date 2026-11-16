@@ -20,7 +20,7 @@ export type HireResult = OrderResult<OrderResponse>;
 
 /**
  * Sends one hire to the server.
- * @param request - The Mac, the folder and the first message.
+ * @param request - The Mac, the folder and the first message, or `blank: true` for none.
  * @returns The order, or the refusal's text.
  */
 export async function postHire(request: HireRequest): Promise<HireResult> {

@@ -169,6 +169,58 @@ test("a hire stays in the dialog until its order resolves: not sent after 30 s, 
   });
 });
 
+test("ticking Blank greys out the first message, keeps what was typed without sending it, and hires with no first message", async ({
+  context,
+  page,
+}) => {
+  // Given the online Mac runs an agent that takes blank hires, and the dialog is open with nothing typed
+  await withE2eDb(async (db) => {
+    await db
+      .collection("machines")
+      .updateOne({ machineId: "m-up" }, { $set: { agentVersion: "0.5.0" } });
+  });
+  await signInAsOwner(context);
+  await page.goto("/");
+  await waitForEmployees(page, 1);
+  await page.getByTestId("hire-button").click();
+  const message = page.getByTestId("hire-message");
+  const submit = page.getByTestId("hire-submit");
+  const blank = page.getByRole("checkbox", { name: "Blank" });
+
+  // When the owner ticks Blank, Hire can be pressed with no message; unticked, it cannot
+  await blank.check();
+  await expect(submit).toBeEnabled();
+  await blank.uncheck();
+  await expect(submit).toBeDisabled();
+
+  // When the owner types a message and then ticks Blank
+  await message.fill("Draft I changed my mind about");
+  await blank.check();
+
+  // Then the message box is greyed out with the text still in it
+  await expect(message).toBeDisabled();
+  await expect(message).toHaveValue("Draft I changed my mind about");
+
+  // When the owner unticks it, the message is editable again with the same text
+  await blank.uncheck();
+  await expect(message).toBeEnabled();
+  await expect(message).toHaveValue("Draft I changed my mind about");
+
+  // When the owner ticks Blank again, clears nothing, and hires
+  await blank.check();
+  await submit.click();
+
+  // Then one order for that Mac and folder exists, with no first message
+  await expect.poll(async () => (await readCommands()).length).toBe(1);
+  const [order] = await readCommands();
+  expect(order).toMatchObject({
+    machineId: "m-up",
+    folder: "/work/app",
+    status: "pending",
+  });
+  expect(order).not.toHaveProperty("firstMessage");
+});
+
 test("the dialog warns that a hire will wait at the Mac when the chosen folder is not trusted, and not for a trusted or unjudged one", async ({
   context,
   page,

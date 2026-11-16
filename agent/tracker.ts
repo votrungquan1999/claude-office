@@ -476,8 +476,8 @@ export class SessionTracker {
     sessionId: string;
     folder: string;
     launchedAt: number;
-    /** The first message, used only to name the desk. */
-    message: string;
+    /** The first message, used only to name the desk; absent for a blank hire. */
+    message?: string;
     /** Whether Claude Code trusts the folder; undefined when the Mac cannot tell. */
     trusted: boolean | undefined;
   }): void {
@@ -489,9 +489,12 @@ export class SessionTracker {
     tracked.kept = "hired";
     // An unknown trust is shown as waiting: a window stopped at the question is the one thing the owner must act on.
     tracked.launchWait = hire.trusted === true ? "starting" : "waiting";
-    tracked.firstMessage = firstRealMessage(hire.message);
-    tracked.request = requestOf(hire.message);
-    tracked.pasteHead = pasteHeadOf(hire.message);
+    // A blank hire is named like any session: from its first typed prompt, else the folder.
+    if (hire.message !== undefined) {
+      tracked.firstMessage = firstRealMessage(hire.message);
+      tracked.request = requestOf(hire.message);
+      tracked.pasteHead = pasteHeadOf(hire.message);
+    }
     this.publish(hire.sessionId, tracked);
   }
 

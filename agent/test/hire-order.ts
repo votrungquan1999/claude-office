@@ -40,6 +40,30 @@ export async function postHire(
 }
 
 /**
+ * The owner's blank hire request, with no first message, as the browser sends it.
+ * @param machineId - The Mac to hire on.
+ * @param folder - One of the Mac's known folders.
+ * @returns The route's response and, when accepted, its parsed answer.
+ */
+export async function postBlankHire(machineId: string, folder: string) {
+  const headers = new Headers((await sessionHeadersFor(OWNER)) ?? undefined);
+  headers.set("content-type", "application/json");
+  const response = await hire(
+    new NextRequest("http://localhost:4710/api/office/hire", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ machineId, folder, blank: true }),
+    }),
+  );
+  return {
+    response,
+    body: response.ok
+      ? orderResponseSchema.parse(await response.json())
+      : undefined,
+  };
+}
+
+/**
  * The owner hires into a new folder of a Mac and the agent opens the window.
  * @param mac - A Mac started as `machine-air` by the harness.
  * @param message - The first message.

@@ -3,7 +3,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { getDb } from "@/db/mongo";
-import { postHire } from "./hire-order";
+import { postBlankHire, postHire } from "./hire-order";
 import { useLiveProcesses } from "./live-process";
 import { useMacHarness } from "./mac-harness";
 
@@ -116,6 +116,64 @@ describe("hiring an employee from the office", () => {
       kept: "hired",
       bridgeSessionId: "bridge-hired",
     });
+  });
+
+  it("opens Claude with Remote Control and no first message for a blank hire, and the desk shows in that folder with no name or request", async () => {
+    // Given an online Mac whose folder exists and which knows the owner's folder
+    const mac = await onlineMac();
+    const { folder } = mac;
+
+    // When the owner hires blank and the agent picks the order up
+    const { response, body } = await postBlankHire("machine-air", folder);
+    expect(response.status).toBe(200);
+    await mac.agent.pollCommands();
+    await mac.agent.flush();
+
+    // Then the window runs claude with Remote Control and the session id only, as typed by hand, still recording its device and pid
+    expect(mac.terminal.opened).toHaveLength(1);
+    const [script] = mac.terminal.opened;
+    const lines = readFileSync(script, "utf8").split("\n");
+    expect(lines.at(-2)).toMatch(
+      new RegExp(
+        `^exec '[^']+' --remote-control --session-id ${body?.sessionId}$`,
+      ),
+    );
+    expect(lines.some((line) => line.startsWith("tty > "))).toBe(true);
+    expect(lines.some((line) => line.includes(".pid'"))).toBe(true);
+    expect(lines.some((line) => line.includes("msg"))).toBe(false);
+    expect(existsSync(script.replace(/\.command$/, ".msg"))).toBe(false);
+
+    // And the order is done and never held a message
+    const order = await (await getDb())
+      .collection("commands")
+      .findOne({ _id: body?.orderId as never });
+    expect(order?.status).toBe("done");
+    expect(order).not.toHaveProperty("firstMessage");
+
+    // When Claude Code starts in the window and registers, with no /rename name
+    const running = await processes.live();
+    mac.terminal.startSession(body?.sessionId ?? "", {
+      cwd: folder,
+      pid: running.pid,
+      procStart: running.procStart,
+      bridgeSessionId: "bridge-blank",
+      name: "",
+    });
+    await mac.agent.reconcile();
+    await mac.agent.flush();
+
+    // Then the desk is in that folder, marked hired, with its Remote Control link and no name, request or prompt yet
+    const desks = await officeSessions();
+    expect(desks).toHaveLength(1);
+    expect(desks[0]).toMatchObject({
+      sessionId: body?.sessionId,
+      startCwd: folder,
+      kept: "hired",
+      bridgeSessionId: "bridge-blank",
+    });
+    expect(desks[0]).not.toHaveProperty("deskName");
+    expect(desks[0]).not.toHaveProperty("request");
+    expect(desks[0]?.hadPrompt).not.toBe(true);
   });
 
   const sessionIds = new Map<string, string>();

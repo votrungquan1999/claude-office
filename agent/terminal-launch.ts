@@ -13,7 +13,8 @@ export interface HireLaunch {
   sessionId: string;
   folder: string;
   claudePath: string;
-  message: string;
+  /** Absent for a blank hire. */
+  message?: string;
 }
 
 const run = promisify(execFile);
@@ -78,23 +79,29 @@ function recordTty(ttyFile: string): string[] {
 /**
  * The script a hired window runs; the message is read from its own file, which the script then deletes, and is never written here.
  * @param launch - The hire.
- * @param messageFile - Where the message was stored.
+ * @param messageFile - Where the message was stored; undefined for a blank hire, which starts claude with no prompt.
+ * @param ttyFile - Where the script records its terminal device (and, beside it, its pid).
  * @returns The script text.
  */
 export function buildHireScript(
   launch: Pick<HireLaunch, "sessionId" | "folder" | "claudePath">,
-  messageFile: string,
+  messageFile: string | undefined,
   ttyFile?: string,
 ): string {
+  const command = `exec ${shellQuote(launch.claudePath)} --remote-control --session-id ${idWord(launch.sessionId)}`;
   return [
     "#!/bin/zsh",
     `cd ${shellQuote(launch.folder)} || exit 1`,
     ...(ttyFile ? recordTty(ttyFile) : []),
-    `msg=$(cat ${shellQuote(messageFile)})`,
-    // The message is private, so it leaves the disk the moment it is read.
-    `rm -f ${shellQuote(messageFile)}`,
-    // The `--` keeps a message that starts with "-" from being read as an option.
-    `exec ${shellQuote(launch.claudePath)} --remote-control --session-id ${idWord(launch.sessionId)} -- "$msg"`,
+    ...(messageFile === undefined
+      ? [command]
+      : [
+          `msg=$(cat ${shellQuote(messageFile)})`,
+          // The message is private, so it leaves the disk the moment it is read.
+          `rm -f ${shellQuote(messageFile)}`,
+          // The `--` keeps a message that starts with "-" from being read as an option.
+          `${command} -- "$msg"`,
+        ]),
     "",
   ].join("\n");
 }
@@ -138,17 +145,22 @@ export function writeWakeFile(
 }
 
 /**
- * Writes the private script and message files of a hire.
+ * Writes the private script and message files of a hire; a blank hire has no message file.
  * @param launch - The hire.
  * @returns The path of the script to open.
  */
 export function writeHireFiles(launch: HireLaunch): string {
-  const messageFile = launchFile(launch.home, launch.sessionId, "msg");
+  const messageFile =
+    launch.message === undefined
+      ? undefined
+      : launchFile(launch.home, launch.sessionId, "msg");
   const script = launchFile(launch.home, launch.sessionId, "command");
   mkdirSync(launchDir(launch.home), { recursive: true, mode: 0o700 });
   // An earlier window's device and id would pass for this window's.
   removeWindowRecord(launch.home, launch.sessionId);
-  writeFileAtomic(messageFile, launch.message, 0o600);
+  if (messageFile !== undefined && launch.message !== undefined) {
+    writeFileAtomic(messageFile, launch.message, 0o600);
+  }
   writeFileAtomic(
     script,
     buildHireScript(

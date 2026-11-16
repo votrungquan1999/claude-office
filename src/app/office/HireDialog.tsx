@@ -52,7 +52,7 @@ const HIRE_WORDS: OrderOutcomeWords = {
 };
 
 /**
- * Asks the owner for a Mac, a known folder and a first message, then follows the order until it resolves.
+ * Asks the owner for a Mac, a known folder and a first message (or Blank, for none), then follows the order until it resolves.
  * @param props - The Macs, the known folders and what to pick first.
  * @returns The dialog; it closes itself once the Mac opened the window.
  */
@@ -71,6 +71,7 @@ export function HireDialog({
   );
   const [pickedFolder, setPickedFolder] = useState(initialFolder ?? "");
   const [message, setMessage] = useState("");
+  const [blank, setBlank] = useState(false);
   const [orderId, setOrderId] = useState<string | null>(null);
   const [refusal, setRefusal] = useState<string | null>(null);
   // True from the click until the server answers, so a second click cannot send a second order.
@@ -97,16 +98,20 @@ export function HireDialog({
   );
   const sending = posting || phase.phase === "pending";
   const canSubmit =
-    !sending && pickedMac !== "" && folder !== "" && message.trim() !== "";
+    !sending &&
+    pickedMac !== "" &&
+    folder !== "" &&
+    (blank || message.trim() !== "");
 
   const submit = async () => {
     setRefusal(null);
     setPosting(true);
-    const result = await postHire({
-      machineId: pickedMac,
-      folder,
-      firstMessage: message,
-    });
+    // A blank hire leaves the typed text in the box, unsent.
+    const result = await postHire(
+      blank
+        ? { machineId: pickedMac, folder, blank: true }
+        : { machineId: pickedMac, folder, firstMessage: message },
+    );
     setPosting(false);
     if (result.ok) setOrderId(result.order.orderId);
     else setRefusal(result.error);
@@ -189,11 +194,21 @@ export function HireDialog({
             // biome-ignore lint/a11y/noAutofocus: a modal dialog's first field takes focus
             autoFocus
             value={message}
-            disabled={sending}
+            disabled={sending || blank}
             rows={4}
             onChange={(event) => setMessage(event.target.value)}
             className="border-2 border-border bg-bg-dark p-6"
           />
+        </label>
+        <label className="flex items-center gap-6">
+          <input
+            type="checkbox"
+            data-testid="hire-blank"
+            checked={blank}
+            disabled={sending}
+            onChange={(event) => setBlank(event.target.checked)}
+          />
+          Blank
         </label>
         {untrusted && (
           <p data-testid="hire-trust-warning" className="text-xs">

@@ -4,7 +4,13 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { getDb } from "@/db/mongo";
 import { WINDOW_NOTES } from "../window-close";
-import { hireOnto, postDismiss, postHire, postWake } from "./hire-order";
+import {
+  hireOnto,
+  postBlankHire,
+  postDismiss,
+  postHire,
+  postWake,
+} from "./hire-order";
 import { useLiveProcesses } from "./live-process";
 import { type MacHarness, useMacHarness } from "./mac-harness";
 import { runHook } from "./run-hook";
@@ -879,6 +885,70 @@ describe("dismissing a hired or woken employee", () => {
         `${process.execPath} --remote-control --session-id ${id} -- Fix the login bug`,
       false,
     );
+
+    // When the owner dismisses it
+    const order = await dismiss(mac, sessionId);
+
+    // Then the conversation lives on, nothing was closed and the note says it was left running
+    expect(order).toMatchObject({ status: "done" });
+    expect(order?.note).toBe(WINDOW_NOTES.leftRunning);
+    expect(isAlive(conversation.pid)).toBe(true);
+    expect(mac.terminal.closes).toEqual([]);
+  }, 60_000);
+
+  /** A blank hire running in its own window, its process showing the bare command the script runs; no prompt yet. */
+  async function runningBlankHire(mac: Mac) {
+    const folder = mac.fake.makeFolder("blank");
+    await (await getDb()).collection("folders").insertOne({
+      machineId: "machine-air",
+      path: folder,
+      companyMode: true,
+      firstSeenAt: new Date(),
+    });
+    const { body } = await postBlankHire("machine-air", folder);
+    await mac.agent.pollCommands();
+    const sessionId = body?.sessionId ?? "";
+    const conversation = await processes.standIn({ sessionId });
+    mac.terminal.attach([conversation.pid]);
+    mac.terminal.showCommandLine(
+      conversation.pid,
+      `${process.execPath} --remote-control --session-id ${sessionId}`,
+    );
+    mac.terminal.startSession(sessionId, {
+      cwd: folder,
+      pid: conversation.pid,
+      procStart: conversation.procStart,
+    });
+    await mac.agent.reconcile();
+    await mac.agent.flush();
+    return { sessionId, conversation };
+  }
+
+  it("ends a blank hire that never took a prompt, proven by its pid record, closes its window and leaves no went-home entry", async () => {
+    // Given a blank hire running in the office's own window
+    const mac = await setUpMac("machine-air", "Air");
+    const { sessionId, conversation } = await runningBlankHire(mac);
+
+    // When the owner dismisses it
+    const order = await dismiss(mac, sessionId);
+
+    // Then the conversation ended and its window closed, with no note
+    expect(order).toMatchObject({ status: "done" });
+    expect(order).not.toHaveProperty("note");
+    expect(isAlive(conversation.pid)).toBe(false);
+    expect(mac.terminal.closes).toEqual([mac.terminal.windows[0]?.id]);
+
+    // And it is gone from the office and from today's departures
+    expect(await officeSessions(new Date(Date.now() - 3_600_000))).toEqual([]);
+  }, 60_000);
+
+  it("ends nothing for a desk with no launch records whose process runs the blank hire's bare command, since a person can type that by hand", async () => {
+    // Given a running blank hire whose launch records are gone
+    const mac = await setUpMac("machine-air", "Air");
+    const { sessionId, conversation } = await runningBlankHire(mac);
+    for (const extension of ["tty", "pid", "window"]) {
+      rmSync(recordFile(mac, sessionId, extension), { force: true });
+    }
 
     // When the owner dismisses it
     const order = await dismiss(mac, sessionId);
