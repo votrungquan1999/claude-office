@@ -32,7 +32,7 @@ test.afterEach(async () => {
 test.describe("the list beside the office on a desktop", () => {
   test.use({ viewport: { width: 1280, height: 800 }, hasTouch: false });
 
-  test("shows the company's employees in the owner's order, each row with its state word, time, context line and Remote Control link, and a Review row with an Idle button", async ({
+  test("shows the company's employees in the owner's order, each row with its state word, time, context line and Remote Control link, and a Review or Waiting for you row with an Idle button", async ({
     context,
     page,
   }) => {
@@ -153,17 +153,18 @@ test.describe("the list beside the office on a desktop", () => {
         .getByRole("link", { name: /Remote Control/ }),
     ).toHaveCount(0);
 
-    // And only the Review row has an Idle button
+    // And only the Review and Waiting for you rows have an Idle button
     await expect(
       page
         .getByTestId("list-everyone")
         .getByRole("button", { name: "Move to Idle" }),
-    ).toHaveCount(1);
-    await expect(
-      rows
-        .filter({ hasText: "Fourth placed" })
-        .getByRole("button", { name: "Move to Idle" }),
-    ).toBeVisible();
+    ).toHaveCount(2);
+    for (const name of ["Fourth placed", "Brand new"])
+      await expect(
+        rows
+          .filter({ hasText: name })
+          .getByRole("button", { name: "Move to Idle" }),
+      ).toBeVisible();
   });
 
   test("a desk that is not running, waiting at the Mac or starting never reads Idle, and has no Remote Control link", async ({

@@ -23,7 +23,7 @@ export interface NeedsYouSectionProps {
   serverOffsetMs: number;
   /** Opens the card of the original employee; the company is the one the row belongs to. */
   onSelect: (key: string, companyKey: string | null) => void;
-  /** Moves a Review employee to Idle. */
+  /** Moves a Review or Waiting for you employee to Idle. */
   onMoveToIdle: (key: string) => void;
   /** Moves every listed Review employee to Idle in one request. */
   onMoveAllToIdle: (items: ReviewItem[]) => void;
@@ -268,7 +268,7 @@ function NeedsYouRow({
           )}
         </span>
       </button>
-      {session.state === "review" && (
+      {(session.state === "review" || session.state === "waitingForYou") && (
         <button
           type="button"
           aria-label="Move to Idle"

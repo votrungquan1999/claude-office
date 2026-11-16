@@ -240,6 +240,76 @@ test.describe("moving a Waiting for you employee to Idle", () => {
   });
 });
 
+test.describe("the Idle quick action on a Waiting for you row", () => {
+  test.use({ viewport: { width: 1280, height: 800 }, hasTouch: false });
+
+  test("shows on its list row, its Needs you row and its phone row, and moves it to Idle", async ({
+    browser,
+    context,
+    page,
+  }) => {
+    // Given an employee on an online Mac waiting for the owner's reply, and a phone with the office open
+    await withE2eDb(async (db) => {
+      await seedFolders(db.collection("folders"), [
+        { machineId: "air", path: "/Users/q/personal" },
+      ]);
+      await seedSessions(db.collection("sessions"), [
+        {
+          sessionId: "w1",
+          machineId: "air",
+          machineName: "Air",
+          cwd: "/Users/q/personal",
+          startCwd: "/Users/q/personal",
+          state: "waitingForYou",
+          deskName: "Audit signup emails",
+          stateSince: new Date(Date.now() - 18 * 60_000),
+        },
+      ]);
+    });
+    await seedOnlineMachine("air", "Air");
+    await signInAsOwner(context);
+    const phoneContext = await browser.newContext({
+      baseURL: E2E_BASE_URL,
+      viewport: { width: 390, height: 844 },
+      hasTouch: true,
+    });
+    await signInAsOwner(phoneContext);
+    const phone = await phoneContext.newPage();
+
+    try {
+      await phone.goto("/");
+      const phoneIdle = phone
+        .getByTestId("list-row")
+        .getByRole("button", { name: "Move to Idle" });
+      await expect(phoneIdle).toBeVisible();
+      await page.goto("/");
+      await waitForEmployees(page, 1);
+      await expect(
+        page.getByTestId("needs-row").getByRole("button", {
+          name: "Move to Idle",
+        }),
+      ).toBeVisible();
+      const row = page.getByTestId("list-everyone").getByTestId("list-row");
+
+      // When the owner presses Idle on its list row
+      await row.getByRole("button", { name: "Move to Idle" }).click();
+
+      // Then it is Idle here at once, and on the phone after its next poll
+      const tab = page.getByTestId("company-tab");
+      await expect(tab.getByLabel("0 waiting for you")).toBeVisible();
+      await expect(tab.getByLabel("1 idle")).toBeVisible();
+      await expect(phoneIdle).toHaveCount(0, { timeout: 15_000 });
+    } finally {
+      await withE2eDb(async (db) => {
+        await seedFolders(db.collection("folders"), []);
+        await db.collection("sessions").deleteMany({});
+        await db.collection("machines").deleteMany({});
+      });
+      await phoneContext.close();
+    }
+  });
+});
+
 test.describe("moving an Idle employee to Review", () => {
   test.use({ viewport: { width: 1280, height: 800 }, hasTouch: false });
 

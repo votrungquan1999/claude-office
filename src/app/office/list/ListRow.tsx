@@ -31,7 +31,7 @@ export interface ListRowProps {
   serverOffsetMs: number;
   /** Opens the employee's card and selects it in the office. */
   onSelect: (key: string) => void;
-  /** Moves the employee's Review to Idle. */
+  /** Moves the employee's Review or Waiting for you to Idle. */
   onMoveToIdle: (key: string) => void;
   /** Moves the Idle employee to Review. */
   onMoveToReview: (key: string) => void;
@@ -242,7 +242,7 @@ export function ListRow({
         </span>
         {why && <MatchWhy match={why} />}
       </button>
-      {session.state === "review" && (
+      {(session.state === "review" || session.state === "waitingForYou") && (
         <button
           type="button"
           aria-label="Move to Idle"
