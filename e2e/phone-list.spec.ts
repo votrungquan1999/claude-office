@@ -1091,7 +1091,7 @@ test.describe("the phone's settings", () => {
     await expect(others).toContainText("Their review");
     await expect(needs).not.toContainText("Their review");
     await expect(
-      others.getByRole("button", { name: /Move all 1 Review to Idle/ }),
+      others.getByRole("button", { name: "Move to Idle" }),
     ).toBeVisible();
 
     // When the owner turns the switch off in the Settings sheet
@@ -1108,7 +1108,7 @@ test.describe("the phone's settings", () => {
     await expect(needs).toContainText("Own review");
     await expect(others).toHaveCount(0);
     await expect(
-      needs.getByRole("button", { name: /Move all 1 Review to Idle/ }),
+      needs.getByRole("button", { name: "Move to Idle" }),
     ).toBeVisible();
 
     // And the choice holds after a reload

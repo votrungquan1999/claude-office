@@ -31,10 +31,9 @@ export function useReviewMoves({
 }: ReviewMovesInput) {
   const [refused, setRefused] = useState<{
     keys: ReadonlySet<string>;
-    all: boolean;
     /** Where the refused move was going. */
     to: "idle" | "review";
-  }>({ keys: new Set(), all: false, to: "idle" });
+  }>({ keys: new Set(), to: "idle" });
 
   /**
    * The employee to move when the owner sees it in one of the given states, named by the time the answers hold.
@@ -59,15 +58,14 @@ export function useReviewMoves({
   /**
    * Moves Review and Waiting for you employees to Idle with one request.
    * @param keys - The `sessionKey`s to move; any that is no longer in Review or Waiting for you is skipped.
-   * @param all - Whether the owner moved a whole list, so a refusal is shown for the list and not for one card.
    */
-  const moveReviewsToIdle = async (keys: string[], all = false) => {
+  const moveReviewsToIdle = async (keys: string[]) => {
     const items = keys.flatMap((key) => {
       const target = targetOf(key, ["review", "waitingForYou"]);
       return target ? [{ key, ...target }] : [];
     });
     if (items.length === 0) return;
-    setRefused({ keys: new Set(), all: false, to: "idle" });
+    setRefused({ keys: new Set(), to: "idle" });
     const movedAt = new Date(Date.now() + serverOffsetMs).toISOString();
     const next = new Map(getMoves());
     for (const { key, from, stateSince } of items)
@@ -93,7 +91,6 @@ export function useReviewMoves({
     if (marked === undefined) {
       setRefused({
         keys: new Set(taken.map(({ key }) => key)),
-        all,
         to: "idle",
       });
     }
@@ -108,7 +105,7 @@ export function useReviewMoves({
     if (!target) return;
     const { machineId, sessionId, from, stateSince } = target;
     const movedAt = new Date(Date.now() + serverOffsetMs).toISOString();
-    setRefused({ keys: new Set(), all: false, to: "review" });
+    setRefused({ keys: new Set(), to: "review" });
     setMoves(
       new Map(getMoves()).set(key, { from, to: "review", stateSince, movedAt }),
     );
@@ -122,7 +119,7 @@ export function useReviewMoves({
     setMoves(reverted);
     // Marking nothing means the Idle had already moved on: the real state shows again with no failure message.
     if (marked === undefined) {
-      setRefused({ keys: new Set([key]), all: false, to: "review" });
+      setRefused({ keys: new Set([key]), to: "review" });
     }
   };
 

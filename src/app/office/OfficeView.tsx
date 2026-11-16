@@ -26,7 +26,6 @@ import {
 } from "@/office/wentHome";
 import { employeeName } from "@/shared/employee-name";
 import type { FolderDto } from "@/shared/folders";
-import type { ReviewItem } from "@/shared/needs-you";
 import { resolveSelection } from "@/shared/overview";
 import {
   type ChangesResponse,
@@ -804,11 +803,6 @@ export function OfficeView() {
       needsYou,
       viewedCompanyKey: companyKey,
       onSelect: selectNeedsYouRow,
-      onMoveAllToIdle: (items: ReviewItem[]) =>
-        void moveReviewsToIdle(items.map(sessionKey), true),
-      moveAllError: refused.all
-        ? "Could not move to Idle. Try again."
-        : undefined,
     },
     employees: everyone,
     selectedKey,
@@ -1047,7 +1041,6 @@ export function OfficeView() {
             }
             moveToIdleError={
               selectedKey &&
-              !refused.all &&
               refused.to === "idle" &&
               refused.keys.has(selectedKey)
                 ? "Could not move to Idle. Try again."

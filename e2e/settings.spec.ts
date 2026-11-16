@@ -153,14 +153,14 @@ test("turning other companies off removes the In other companies section, and th
   context,
   page,
 }) => {
-  // Given Needs you and "In other companies" each with a Move all for their one Review employee
+  // Given Needs you and "In other companies" each with one Review employee
   await signInAsOwner(context);
   await openOffice(page);
   const panel = page.getByTestId("list-panel");
   const others = panel.getByRole("region", { name: "In other companies" });
   await expect(others).toBeVisible();
   await expect(
-    others.getByRole("button", { name: "Move all 1 Review to Idle" }),
+    others.getByRole("button", { name: "Move to Idle" }),
   ).toBeVisible();
 
   // When the owner turns "Needs you includes other companies" off
@@ -171,12 +171,12 @@ test("turning other companies off removes the In other companies section, and th
   await expect(toggle).toHaveAttribute("aria-checked", "true");
   await toggle.click();
 
-  // Then the other section is gone and Needs you still moves only the viewed company
+  // Then the other section is gone and Needs you still lists the viewed company's Review
   await expect(others).toHaveCount(0);
   await expect(
     panel
       .getByTestId("needs-you")
-      .getByRole("button", { name: "Move all 1 Review to Idle" }),
+      .getByRole("button", { name: "Move to Idle" }),
   ).toBeVisible();
 
   // And the tab still counts both

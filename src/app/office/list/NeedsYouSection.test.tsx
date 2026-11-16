@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { type ReviewItem, selectNeedsYou } from "@/shared/needs-you";
+import { selectNeedsYou } from "@/shared/needs-you";
 import type { SessionDto } from "@/shared/session";
 import { NeedsYouSection } from "./NeedsYouSection";
 
@@ -40,7 +40,6 @@ function show(
     onSelect = () => {},
     selectedKey = null as string | null,
     scope = "own" as "own" | "others",
-    onMoveAllToIdle = (_items: ReviewItem[]) => {},
   } = {},
 ) {
   render(
@@ -52,7 +51,6 @@ function show(
       serverOffsetMs={0}
       onSelect={onSelect}
       onMoveToIdle={() => {}}
-      onMoveAllToIdle={onMoveAllToIdle}
       open={true}
       onToggle={() => {}}
     />,
@@ -114,40 +112,6 @@ describe("the Needs you section", () => {
       "Company m2",
       "Company m2",
       "Company m3",
-    ]);
-  });
-
-  it("moves only its own section's Review rows with Move all, hidden ones included", () => {
-    // Given five Review rows here (one beyond the cap), one Review row in another company, and a waiting one
-    const rows = [
-      ...["a", "b", "c", "d", "e"].map((id) =>
-        session(id, { state: "review" }),
-      ),
-      session("w"),
-      session("z", { machineId: "m2", state: "review" }),
-    ];
-    const moved: ReviewItem[][] = [];
-
-    // When the viewed company's section shows and its Move all is pressed
-    show(rows, { onMoveAllToIdle: (items) => moved.push(items) });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Move all 5 Review to Idle" }),
-    );
-    cleanup();
-
-    // And the other companies' section shows and its Move all is pressed
-    show(rows, {
-      scope: "others",
-      onMoveAllToIdle: (items) => moved.push(items),
-    });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Move all 1 Review to Idle" }),
-    );
-
-    // Then each press named only its own section's Review rows
-    expect(moved.map((items) => items.map((i) => i.sessionId))).toEqual([
-      ["a", "b", "c", "d", "e"],
-      ["z"],
     ]);
   });
 

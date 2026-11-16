@@ -80,7 +80,7 @@ describe("moving a list of Reviews when some already left Review", () => {
 
     // When the owner moves both
     await act(() =>
-      hook.result.current.moveReviewsToIdle([key, sessionKey(moved)], true),
+      hook.result.current.moveReviewsToIdle([key, sessionKey(moved)]),
     );
 
     // Then one request names only the Review row, and nothing was refused

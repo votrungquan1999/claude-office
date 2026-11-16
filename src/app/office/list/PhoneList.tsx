@@ -20,11 +20,7 @@ interface PhoneListProps {
   /** What the Needs you section lists, and how its rows open employees. */
   needsYou: Pick<
     NeedsYouSectionProps,
-    | "needsYou"
-    | "viewedCompanyKey"
-    | "onSelect"
-    | "onMoveAllToIdle"
-    | "moveAllError"
+    "needsYou" | "viewedCompanyKey" | "onSelect"
   >;
   /** The viewed company's live employees in the owner's order. */
   employees: SessionDto[];

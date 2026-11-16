@@ -1654,170 +1654,51 @@ test.describe("a Review copy in Needs you", () => {
   });
 });
 
-test.describe("Move all Review to Idle", () => {
+test.describe("Needs you with Review employees", () => {
   test.use({ viewport: { width: 1280, height: 800 }, hasTouch: false });
 
-  test("moves every Review employee of a section, also beyond the cap, with one request per section, and a second device follows", async ({
-    browser,
+  test("has no Move all button in Needs you or In other companies, and each Review copy keeps its own Idle button", async ({
     context,
     page,
   }) => {
-    // Given five Review employees here (one beyond the cap of four), one in another company, and a waiting one
+    // Given two Review employees here and one in another company
     await seedOtherCompanies();
-    const review = (name: string, extra: Record<string, unknown> = {}) => ({
-      sessionId: name,
-      deskName: `Task ${name}`,
-      state: "review",
-      stateSince: new Date(Date.now() - 5 * MIN),
-      ...extra,
-    });
     await seed([
-      ...["a", "b", "c", "d", "e"].map((name, i) =>
-        review(name, { rank: "bcdef"[i] }),
-      ),
-      review("lab", {
+      ...["a", "b"].map((name, i) => ({
+        sessionId: name,
+        deskName: `Task ${name}`,
+        state: "review",
+        stateSince: new Date(Date.now() - 5 * MIN),
+        rank: "bc"[i],
+      })),
+      {
+        sessionId: "lab",
+        deskName: "Task lab",
+        state: "review",
+        stateSince: new Date(Date.now() - 5 * MIN),
         machineId: "m2",
         machineName: "Zed Mac",
         cwd: "/Users/q/lab/x",
-      }),
-      { sessionId: "w", deskName: "Task W", state: "waitingForYou", rank: "g" },
+      },
     ]);
     await signInAsOwner(context);
-    const requests: string[] = [];
-    page.on("request", (request) => {
-      if (request.url().includes("/api/office/sessions/review-seen"))
-        requests.push(request.postData() ?? "");
-    });
-    const second = await browser.newContext({
-      baseURL: E2E_BASE_URL,
-      viewport: { width: 1280, height: 800 },
-      hasTouch: false,
-    });
-    await signInAsOwner(second);
-    const otherPage = await second.newPage();
-    try {
-      await otherPage.goto("/");
-      await waitForEmployees(otherPage, 6);
-      await page.goto("/");
-      await waitForEmployees(page, 6);
-      const moveOwn = page.getByRole("button", {
-        name: "Move all 5 Review to Idle",
-      });
-      const moveOthers = page.getByRole("button", {
-        name: "Move all 1 Review to Idle",
-      });
 
-      // When the owner presses this company's Move all once
-      await moveOwn.click();
-
-      // Then this company's Review employees read Idle with one request of five items, and the other company's button stays
-      await expect(
-        page.getByTestId("list-everyone").getByTestId("list-row-status"),
-      ).toHaveText([/^Idle/, /^Idle/, /^Idle/, /^Idle/, /^Idle/, /^Waiting/]);
-      await expect(moveOwn).toHaveCount(0);
-      await expect(moveOthers).toBeVisible();
-      expect(requests).toHaveLength(1);
-      expect(JSON.parse(requests[0]).items).toHaveLength(5);
-
-      // When the owner presses the other companies' Move all
-      await moveOthers.click();
-
-      // Then a second request carries that one item
-      await expect(moveOthers).toHaveCount(0);
-      expect(requests).toHaveLength(2);
-      expect(JSON.parse(requests[1]).items).toHaveLength(1);
-
-      // And a second device shows them Idle after its next poll
-      await expect(
-        otherPage.getByTestId("list-everyone").getByTestId("list-row-status"),
-      ).toHaveText([/^Idle/, /^Idle/, /^Idle/, /^Idle/, /^Idle/, /^Waiting/], {
-        timeout: 20_000,
-      });
-    } finally {
-      await second.close();
-    }
-  });
-});
-
-test.describe("Move all Review to Idle while Needs you is folded", () => {
-  test.use({ viewport: { width: 1280, height: 800 }, hasTouch: false });
-
-  test("the button stays in the folded header and moves the Review employees", async ({
-    context,
-    page,
-  }) => {
-    // Given two Review employees and Needs you folded
-    await seed(
-      ["a", "b"].map((name, i) => ({
-        sessionId: name,
-        deskName: `Task ${name}`,
-        state: "review",
-        stateSince: new Date(Date.now() - 5 * MIN),
-        rank: "bc"[i],
-      })),
-    );
-    await signInAsOwner(context);
+    // When the owner opens the office
     await page.goto("/");
     await waitForEmployees(page, 2);
-    await page.getByRole("button", { name: "Needs you", exact: true }).click();
+    const needs = page.getByTestId("needs-you");
+    const others = page.getByTestId("other-companies");
+    await expect(needs.getByTestId("needs-row")).toHaveCount(2);
+    await expect(others.getByTestId("needs-row")).toHaveCount(1);
+
+    // Then neither section offers a Move all, and every Review copy has its Idle button
+    await expect(page.getByRole("button", { name: /Move all/ })).toHaveCount(0);
     await expect(
-      page.getByTestId("needs-row").locator("visible=true"),
-    ).toHaveCount(0);
-    const moveAll = page.getByRole("button", {
-      name: "Move all 2 Review to Idle",
-    });
-    await expect(moveAll).toBeVisible();
-
-    // When the owner presses it
-    await moveAll.click();
-
-    // Then both employees read Idle and the button is gone
+      needs.getByRole("button", { name: "Move to Idle" }),
+    ).toHaveCount(2);
     await expect(
-      page.getByTestId("list-everyone").getByTestId("list-row-status"),
-    ).toHaveText([/^Idle/, /^Idle/]);
-    await expect(moveAll).toHaveCount(0);
-  });
-});
-
-test.describe("a refused Move all", () => {
-  test.use({ viewport: { width: 1280, height: 800 }, hasTouch: false });
-
-  test("puts every Review back and says so in the Needs you section", async ({
-    context,
-    page,
-  }) => {
-    // Given two Review employees and a server that refuses the move
-    await seed(
-      ["a", "b"].map((name, i) => ({
-        sessionId: name,
-        deskName: `Task ${name}`,
-        state: "review",
-        rank: "bc"[i],
-        stateSince: new Date(Date.now() - 5 * MIN),
-      })),
-    );
-    await signInAsOwner(context);
-    await page.route("**/api/office/sessions/review-seen", (route) =>
-      route.fulfill({ status: 500, body: "{}" }),
-    );
-    await page.goto("/");
-    await waitForEmployees(page, 2);
-
-    // When the owner presses Move all
-    await page
-      .getByRole("button", { name: "Move all 2 Review to Idle" })
-      .click();
-
-    // Then the section says it failed and both stay in Review
-    await expect(page.getByTestId("needs-you").getByRole("alert")).toHaveText(
-      "Could not move to Idle. Try again.",
-    );
-    await expect(
-      page.getByTestId("list-everyone").getByTestId("list-row-status"),
-    ).toHaveText([/^Review/, /^Review/]);
-    await expect(
-      page.getByRole("button", { name: "Move all 2 Review to Idle" }),
-    ).toBeVisible();
+      others.getByRole("button", { name: "Move to Idle" }),
+    ).toHaveCount(1);
   });
 });
 

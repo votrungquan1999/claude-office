@@ -3,7 +3,7 @@ import { CharacterMugShot } from "@/office/components/CharacterMugShot";
 import { remoteControlOf } from "@/office/remoteControl";
 import { lookOf } from "@/office/sceneSync";
 import { employeeName } from "@/shared/employee-name";
-import type { NeedsYou, ReviewItem } from "@/shared/needs-you";
+import type { NeedsYou } from "@/shared/needs-you";
 import { type SessionDto, sessionKey } from "@/shared/session";
 import { formatElapsed } from "../elapsed";
 import { useNow } from "../useNow";
@@ -25,11 +25,7 @@ export interface NeedsYouSectionProps {
   onSelect: (key: string, companyKey: string | null) => void;
   /** Moves a Review or Waiting for you employee to Idle. */
   onMoveToIdle: (key: string) => void;
-  /** Moves every listed Review employee to Idle in one request. */
-  onMoveAllToIdle: (items: ReviewItem[]) => void;
-  /** Why the last move of all Reviews was refused; absent when it was not. */
-  moveAllError?: string;
-  /** Whether the rows show; the header and Move all stay either way. */
+  /** Whether the rows show; the header stays either way. */
   open: boolean;
   onToggle: () => void;
   /** On a phone: touch-sized buttons, and the section never scrolls on its own because the list around it does. */
@@ -56,8 +52,6 @@ export function NeedsYouSection({
   serverOffsetMs,
   onSelect,
   onMoveToIdle,
-  onMoveAllToIdle,
-  moveAllError,
   open: sectionOpen,
   onToggle,
   phone = false,
@@ -80,19 +74,6 @@ export function NeedsYouSection({
           rows: needsYou.own,
         },
       ];
-  const reviewItems: ReviewItem[] = groups
-    .flatMap((group) => group.rows)
-    .flatMap((session) =>
-      session.state === "review" && session.stateSince
-        ? [
-            {
-              machineId: session.machineId,
-              sessionId: session.sessionId,
-              stateSince: session.stateSince,
-            },
-          ]
-        : [],
-    );
   const label = others ? "In other companies" : "Needs you";
   const prefix = others ? "other-companies" : "needs-you";
   const count = groups.reduce((sum, group) => sum + group.rows.length, 0);
@@ -166,21 +147,7 @@ export function NeedsYouSection({
         >
           {count}
         </span>
-        {reviewItems.length > 0 && (
-          <button
-            type="button"
-            onClick={() => onMoveAllToIdle(reviewItems)}
-            className={`ml-auto border-2 border-room-review px-8 text-xs hover:bg-btn-hover ${phone ? "min-h-44" : ""}`}
-          >
-            Move all {reviewItems.length} Review to Idle
-          </button>
-        )}
       </div>
-      {moveAllError && (
-        <p role="alert" className="px-12 pb-6 text-xs font-bold text-warning">
-          {moveAllError}
-        </p>
-      )}
       <ul
         id={`${prefix}-rows`}
         hidden={!sectionOpen}

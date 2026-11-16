@@ -25,13 +25,6 @@ export interface NeedsYouGroup {
   rows: SessionDto[];
 }
 
-/** One Review employee as the move-to-Idle request names it. */
-export interface ReviewItem {
-  machineId: string;
-  sessionId: string;
-  stateSince: string;
-}
-
 /** Everyone who needs the owner, as the Needs you section lists it. */
 export interface NeedsYou {
   /** The viewed company's employees in the owner's order. */
