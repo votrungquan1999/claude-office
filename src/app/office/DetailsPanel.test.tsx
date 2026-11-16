@@ -1303,6 +1303,47 @@ describe("renaming an employee from its card", () => {
     expect(onRename).not.toHaveBeenCalled();
   });
 
+  it("opens and closes the dialog again and again on an employee that has an original request", async () => {
+    // Given a card whose employee has an original request, so the card shows its info button
+    const onRename = vi.fn().mockResolvedValue(true);
+    openWithWake(
+      session({ ownerName: "Login fixer", request: "Fix the login bug" }),
+      { onRename },
+    );
+    const dialog = () =>
+      screen.queryByRole("dialog", { name: "Rename employee" });
+    const openDialog = () =>
+      fireEvent.click(screen.getByRole("button", { name: "Rename employee" }));
+
+    // When the owner saves a new name, then opens the dialog again and cancels, twice
+    openDialog();
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "Bug squasher" },
+    });
+    await act(async () => {
+      fireEvent.submit(
+        screen.getByLabelText("Name").closest("form") as HTMLFormElement,
+      );
+    });
+    expect(dialog()).toBeNull();
+    for (let round = 0; round < 2; round++) {
+      openDialog();
+      expect(screen.getAllByRole("dialog")).toHaveLength(1);
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+      // Then each Cancel closes the one dialog
+      expect(dialog()).toBeNull();
+    }
+
+    // And the info button still opens the original request
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show the original request" }),
+    );
+    expect(screen.getByTestId("request-text").textContent).toBe(
+      "Fix the login bug",
+    );
+  });
+
   it("keeps the dialog open with a one-line error when the server refuses the name, and closes once a retry is accepted", async () => {
     // Given a server that refuses the first save and takes the second
     const onRename = vi

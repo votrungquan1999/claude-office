@@ -345,7 +345,8 @@ function Card({
           )}
           {renaming && onRename && (
             <RenameEmployeeDialog
-              key={sessionKey(session)}
+              // Siblings need distinct keys, or React loses track of which one to remove
+              key={`rename-${sessionKey(session)}`}
               ownerName={session.ownerName}
               automaticName={automaticName}
               onSave={onRename}
@@ -353,7 +354,10 @@ function Card({
             />
           )}
           {session.request && (
-            <RequestPopup key={sessionKey(session)} request={session.request} />
+            <RequestPopup
+              key={`request-${sessionKey(session)}`}
+              request={session.request}
+            />
           )}
         </div>
         {box}
