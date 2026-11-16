@@ -20,7 +20,8 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   // A literal pattern: a variable here silently widens the matcher.
+  // Phones fetch the manifest and icons without the session cookie, so those stay outside the gate.
   matcher: [
-    "/((?!sign-in|api/auth|_next/|favicon\\.ico|assets/|fonts/|robots\\.txt|api/connect$|api/connect/collect$).*)",
+    "/((?!sign-in|api/auth|_next/|favicon\\.ico|icons/|manifest\\.webmanifest$|assets/|fonts/|robots\\.txt|api/connect$|api/connect/collect$).*)",
   ],
 };
