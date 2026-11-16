@@ -231,3 +231,78 @@ describe("a running employee that a periodic check wrongly ended", () => {
     expect(desk).not.toHaveProperty("endedAt");
   }, 60_000);
 });
+
+describe("an employee whose Claude really ended", () => {
+  const { setUpMac, officeSessions } = useMacHarness();
+  const processes = useLiveProcesses();
+
+  it("stays home or Not running through later checks after its window closed, its pid was reused or its end hook fired while its process is still listed", async () => {
+    // Given a hired employee and three plain sessions, all with a prompt and seen alive by a check
+    const mac = await setUpMac("machine-air", "Quan's MacBook Air");
+    const { folder, sessionId: hired } = await hireOnto(mac);
+    const [hiredProcess, closed, ending] = [
+      await processes.live(),
+      await processes.live(),
+      await processes.live(),
+    ];
+    mac.terminal.startSession(hired, {
+      cwd: folder,
+      pid: hiredProcess.pid,
+      procStart: hiredProcess.procStart,
+    });
+    mac.fake.addSession({
+      sessionId: "closed",
+      cwd: "/work/closed",
+      pid: closed.pid,
+      procStart: closed.procStart,
+    });
+    mac.fake.addSession({
+      sessionId: "ending",
+      cwd: "/work/ending",
+      pid: ending.pid,
+      procStart: ending.procStart,
+    });
+    mac.fake.addSession({
+      sessionId: "reused",
+      cwd: "/work/reused",
+      pid: process.pid,
+      procStart: "Mon Jan  1 00:00:00 2001",
+    });
+    const sessions = [
+      [hired, folder],
+      ["closed", "/work/closed"],
+      ["ending", "/work/ending"],
+      ["reused", "/work/reused"],
+    ];
+    for (const [sessionId, cwd] of sessions) {
+      const send = (event: Record<string, unknown>) =>
+        runHook(mac.fake.home, { session_id: sessionId, cwd, ...event });
+      await send({ hook_event_name: "SessionStart", source: "startup" });
+      await send({ hook_event_name: "UserPromptSubmit", prompt: "go" });
+    }
+    await mac.agent.reconcile();
+    await mac.agent.flush();
+
+    // When two windows close, one end hook fires while its process is still listed, and the Mac checks three times
+    await hiredProcess.kill();
+    await closed.kill();
+    await runHook(mac.fake.home, {
+      session_id: "ending",
+      cwd: "/work/ending",
+      hook_event_name: "SessionEnd",
+      reason: "other",
+    });
+    await mac.agent.flush();
+    for (let check = 0; check < 3; check++) await mac.agent.reconcile();
+    await mac.agent.flush();
+
+    // Then the hired one is still Not running and the others are still home
+    const desks = await officeSessions(new Date(0));
+    const desk = (sessionId: string) =>
+      desks.find((candidate) => candidate.sessionId === sessionId);
+    expect(desk(hired)).toMatchObject({ kept: "hired", notRunning: true });
+    expect(desk("closed")).toMatchObject({ state: "wentHome" });
+    expect(desk("ending")).toMatchObject({ state: "wentHome" });
+    expect(desk("reused")).toMatchObject({ state: "wentHome" });
+  }, 60_000);
+});
