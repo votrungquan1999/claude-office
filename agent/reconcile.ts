@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { Collection } from "mongodb";
 import { loadKept } from "./kept";
+import { readProcessStart } from "./process-start";
 import {
   isRegistryReadable,
   isShownEntry,
@@ -9,7 +10,7 @@ import {
   pickEntry,
   type RegistryEntry,
 } from "./registry";
-import type { SessionTracker, TagDoc } from "./tracker";
+import type { ProcessProbe, SessionTracker, TagDoc } from "./tracker";
 import { readTranscriptSeed } from "./transcript";
 import { EXPIRY_DAYS } from "./writer";
 
@@ -94,8 +95,20 @@ export function isRunning(
   table: ProcessTable,
 ): boolean {
   if (process.pid === undefined) return false;
-  const started = table.get(process.pid)?.started;
-  if (started === undefined) return false;
+  return matchesStart(process, table.get(process.pid)?.started);
+}
+
+/**
+ * Whether a start time read for a pid belongs to the process the registry recorded.
+ * @param process - The recorded process.
+ * @param started - The start time `ps` gives for its pid; undefined when no such process exists.
+ * @returns True when the pid is alive and not a later process that reused it.
+ */
+function matchesStart(
+  process: { pid?: number; procStart?: string },
+  started: string | undefined,
+): boolean {
+  if (process.pid === undefined || started === undefined) return false;
   if (process.procStart === undefined) return true;
   const recorded = normalize(process.procStart);
   // A start time in another locale cannot be compared, so such a session is judged by its pid alone.
@@ -126,9 +139,27 @@ export async function reconcileSessions(
   tracker: SessionTracker,
 ): Promise<void> {
   const table = await readProcessTable();
-  tracker.reconcile(listRegistry(home, argsFrom(table)), (process) =>
-    isRunning(process, table),
+  tracker.reconcile(
+    listRegistry(home, argsFrom(table)),
+    (process) => isRunning(process, table),
+    probeOf(table),
   );
+}
+
+/**
+ * A second look at processes a pass calls gone: its own `ps -p` for each, outside the pass's table.
+ * @param table - The process table of the pass.
+ * @returns The probe the tracker asks before it ends a session.
+ */
+function probeOf(table: ProcessTable): ProcessProbe {
+  return {
+    tableStart: (pid) => table.get(pid)?.started,
+    recheck(process) {
+      const started =
+        process.pid === undefined ? undefined : readProcessStart(process.pid);
+      return { running: matchesStart(process, started), started };
+    },
+  };
 }
 
 export interface SeedOptions {

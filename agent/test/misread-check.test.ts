@@ -1,0 +1,183 @@
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import { listRegistry } from "../registry";
+import { type ProcessProbe, SessionTracker } from "../tracker";
+import type { SessionDoc, SessionWriter } from "../writer";
+import { makeFakeHome } from "./fake-home";
+import { hireOnto } from "./hire-order";
+import { useLiveProcesses } from "./live-process";
+import { useMacHarness } from "./mac-harness";
+import { runHook } from "./run-hook";
+
+/**
+ * Rewrites a registry file with its pid as text, as a half-changed Claude Code format would leave it.
+ * @param home - The fake home.
+ * @param pid - The pid the file is named after.
+ */
+function spoilPid(home: string, pid: number): void {
+  const file = join(home, ".claude", "sessions", `${pid}.json`);
+  const entry = JSON.parse(readFileSync(file, "utf8"));
+  writeFileSync(file, JSON.stringify({ ...entry, pid: String(pid) }));
+}
+
+describe("a running employee resumed in a new process that one check misses", () => {
+  it("stays at work when its own ps finds the new process alive although the process seen alive before is gone", async () => {
+    // Given a plain session seen alive by a check as pid 100
+    const fake = makeFakeHome("m-resumed-misread");
+    const published: SessionDoc[] = [];
+    const writer = {
+      submit: (doc: SessionDoc) => published.push(doc),
+      flush: async () => {},
+    } as unknown as SessionWriter;
+    const tracker = new SessionTracker({
+      home: fake.home,
+      machineId: "m-resumed-misread",
+      machineName: "Resumed Mac",
+      reorderMs: 1,
+      now: () => 1_000_000_000_000,
+      writer,
+    });
+    fake.addSession({
+      sessionId: "plain",
+      cwd: "/work/plain",
+      pid: 100,
+      procStart: "Mon Nov 16 08:00:00 2026",
+    });
+    tracker.ingest({
+      hook_event_name: "SessionStart",
+      session_id: "plain",
+      cwd: "/work/plain",
+      source: "startup",
+      hookTs: 10,
+    });
+    await tracker.flush();
+    const alive = (pids: number[]): ProcessProbe => ({
+      tableStart: () => undefined,
+      recheck: (process) => ({
+        running: process.pid !== undefined && pids.includes(process.pid),
+      }),
+    });
+    tracker.reconcile(listRegistry(fake.home), () => true, alive([100]));
+
+    // When it is resumed in pid 200 without a SessionStart reaching the agent, and one check's table misses pid 200
+    fake.removeSession("plain");
+    fake.addSession({
+      sessionId: "plain",
+      cwd: "/work/plain",
+      pid: 200,
+      procStart: "Mon Nov 16 09:00:00 2026",
+    });
+    tracker.reconcile(listRegistry(fake.home), () => false, alive([200]));
+    await tracker.flush();
+
+    // Then it is still at work
+    const latest = published.filter((doc) => doc.sessionId === "plain").at(-1);
+    expect(latest).toMatchObject({ state: "idle" });
+    expect(latest).not.toHaveProperty("endedAt");
+    tracker.stop();
+    fake.remove();
+  });
+});
+
+describe("a running employee that one periodic check misreads", () => {
+  const { setUpMac, officeSessions } = useMacHarness();
+  const processes = useLiveProcesses();
+
+  it("keeps a hired employee and a plain session at work when their registry entries lose their pid for one check", async () => {
+    // Given a hired employee and a plain session, both running and seen alive by a check
+    const mac = await setUpMac("machine-air", "Quan's MacBook Air");
+    const { folder, sessionId: hired } = await hireOnto(mac);
+    const [hiredProcess, plainProcess] = [
+      await processes.live(),
+      await processes.live(),
+    ];
+    mac.terminal.startSession(hired, {
+      cwd: folder,
+      pid: hiredProcess.pid,
+      procStart: hiredProcess.procStart,
+    });
+    mac.fake.addSession({
+      sessionId: "plain",
+      cwd: "/work/plain",
+      pid: plainProcess.pid,
+      procStart: plainProcess.procStart,
+    });
+    await runHook(mac.fake.home, {
+      hook_event_name: "SessionStart",
+      session_id: hired,
+      cwd: folder,
+      source: "startup",
+    });
+    await runHook(mac.fake.home, {
+      hook_event_name: "SessionStart",
+      session_id: "plain",
+      cwd: "/work/plain",
+      source: "startup",
+    });
+    await mac.agent.reconcile();
+    await mac.agent.flush();
+
+    // When both registry files lose their pid and the Mac checks its sessions
+    spoilPid(mac.fake.home, hiredProcess.pid);
+    spoilPid(mac.fake.home, plainProcess.pid);
+    await mac.agent.reconcile();
+    await mac.agent.flush();
+
+    // Then both are still at work: the hired one is not marked Not running and the plain one has not gone home
+    const desks = await officeSessions();
+    const desk = (sessionId: string) =>
+      desks.find((candidate) => candidate.sessionId === sessionId);
+    expect(desk(hired)).toMatchObject({ state: "idle", kept: "hired" });
+    expect(desk(hired)).not.toHaveProperty("notRunning");
+    expect(desk("plain")).toMatchObject({ state: "idle" });
+    expect(desk("plain")).not.toHaveProperty("endedAt");
+  }, 60_000);
+
+  it("logs one line with the reason for each session a check ends, without its folder or message", async () => {
+    // Given a Mac whose agent log is captured, with a session about to die and one whose pid was reused
+    const lines: string[] = [];
+    const mac = await setUpMac("machine-air", "Quan's MacBook Air", {
+      log: (line) => lines.push(line),
+    });
+    const dying = await processes.live();
+    mac.fake.addSession({
+      sessionId: "died",
+      cwd: "/work/secret-folder",
+      pid: dying.pid,
+      procStart: dying.procStart,
+    });
+    mac.fake.addSession({
+      sessionId: "reused",
+      cwd: "/work/secret-folder",
+      pid: process.pid,
+      procStart: "Mon Jan  1 00:00:00 2001",
+    });
+    for (const sessionId of ["died", "reused"]) {
+      const send = (event: Record<string, unknown>) =>
+        runHook(mac.fake.home, {
+          session_id: sessionId,
+          cwd: "/work/secret-folder",
+          ...event,
+        });
+      await send({ hook_event_name: "SessionStart", source: "startup" });
+      await send({ hook_event_name: "UserPromptSubmit", prompt: "secret ask" });
+    }
+    await mac.agent.flush();
+
+    // When one process dies and the Mac checks its sessions
+    await dying.kill();
+    await mac.agent.reconcile();
+    await mac.agent.flush();
+
+    // Then each ended session has exactly one line naming it and its reason, and no line holds the folder or message
+    const about = (sessionId: string) =>
+      lines.filter((line) => line.includes(sessionId));
+    expect(about("died")).toHaveLength(1);
+    expect(about("died")[0]).toContain("gone");
+    expect(about("died")[0]).toContain(String(dying.pid));
+    expect(about("reused")).toHaveLength(1);
+    expect(about("reused")[0]).toContain("pid reused");
+    expect(lines.join("\n")).not.toContain("secret");
+  }, 60_000);
+});

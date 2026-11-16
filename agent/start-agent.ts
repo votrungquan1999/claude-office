@@ -199,6 +199,7 @@ export async function startAgent(options: AgentOptions): Promise<RunningAgent> {
   const kept = new KeptDesks();
   const tracker = new SessionTracker({
     onKeptMoved: (fromId, toId) => kept.moveKept(fromId, toId),
+    log,
     home,
     machineId,
     machineName,

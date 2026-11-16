@@ -113,6 +113,8 @@ export interface TrackerOptions {
   turnClassifier?: TurnClassifier;
   /** Told when a kept window's mark moves to another conversation. */
   onKeptMoved?: (fromId: string, toId: string) => void;
+  /** Receives one line for each session a reconcile pass ends; never a message or a folder. */
+  log?: (message: string) => void;
 }
 
 interface Tracked {
@@ -154,6 +156,8 @@ interface Tracked {
   stateHookTs: number;
   /** The process behind the session, as the registry last recorded it. */
   process?: { pid?: number; procStart?: string };
+  /** The last process a check found alive, kept apart from `process` so one misread entry cannot erase it. */
+  seenAlive?: { pid: number; procStart?: string };
   /** Repos worked in so far; only grows. */
   tags: TagDoc[];
   /** Set while the owner keeps the session at its desk. */
@@ -238,11 +242,31 @@ const HELD_TTL_MS = 10 * 60_000;
 /** How long a window the office opened may go without a registry entry or hook before its desk shows Not running. */
 const LAUNCH_WAIT_LIMIT_MS = 30 * 60_000;
 
+/** What a second look at a process found. */
+interface Recheck {
+  /** The process looked at. */
+  process: { pid: number; procStart?: string };
+  running: boolean;
+  /** Its start time as its own `ps -p` read it; undefined when no such process exists. */
+  started?: string;
+}
+
 /** Tells whether the process the registry recorded is still the one running. */
 export type IsRunning = (process: {
   pid?: number;
   procStart?: string;
 }) => boolean;
+
+/** A second look at a process a reconcile pass calls gone, outside that pass's process table. */
+export interface ProcessProbe {
+  /** The start time the pass's process table lists for a pid. */
+  tableStart(pid: number): string | undefined;
+  /** Looks the process up again on its own: whether it is still the recorded one, and the start time read. */
+  recheck(process: { pid?: number; procStart?: string }): {
+    running: boolean;
+    started?: string;
+  };
+}
 
 /**
  * Turns hook events into session snapshots: applies them in `hookTs` order after a short reorder
@@ -304,6 +328,11 @@ export class SessionTracker {
       const tracked = this.track(seed.sessionId);
       tracked.interactive = true;
       tracked.process = seed.process;
+      // Seeds are sessions found alive.
+      tracked.seenAlive =
+        seed.process?.pid === undefined
+          ? undefined
+          : { pid: seed.process.pid, procStart: seed.process.procStart };
       tracked.cwd = seed.cwd;
       tracked.startCwd = seed.startCwd;
       tracked.startedAt = seed.startedAt;
@@ -474,6 +503,7 @@ export class SessionTracker {
       // The old process is gone; the window about to register is a new one.
       this.reopen(tracked);
       tracked.process = undefined;
+      tracked.seenAlive = undefined;
       tracked.publishedRoom = undefined;
     } else {
       const { stored } = wake;
@@ -545,8 +575,13 @@ export class SessionTracker {
    * Corrects what hooks could not see: a session whose process is gone goes home, and a fresher registry status replaces a stale state.
    * @param entries - The registry as it is now.
    * @param isRunning - Whether a recorded process is still the one running.
+   * @param probe - Confirms a process the pass calls gone before its session ends; absent in tests whose processes all run.
    */
-  reconcile(entries: RegistryEntry[], isRunning: IsRunning): void {
+  reconcile(
+    entries: RegistryEntry[],
+    isRunning: IsRunning,
+    probe?: ProcessProbe,
+  ): void {
     this.isRunning = isRunning;
     for (const [sessionId, tracked] of this.sessions) {
       if (!tracked.interactive) {
@@ -579,6 +614,12 @@ export class SessionTracker {
       if (tracked.unverified && isRegistryReadable(this.options.home)) {
         tracked.unverified = undefined;
         if (!entry) {
+          this.logEnd(
+            sessionId,
+            "no registry entry after the agent restarted",
+            { process },
+            probe,
+          );
           tracked.endedAt = this.options.now();
           tracked.endedHookTs = this.options.now();
           this.publish(sessionId, tracked);
@@ -600,8 +641,11 @@ export class SessionTracker {
         tracked.bridgeSessionId = entry.bridgeSessionId;
         this.publish(sessionId, tracked);
       }
-      // /clear gives the same process a new session id without a SessionEnd for the old one.
-      const known = tracked.process;
+      // /clear gives the same process a new session id without a SessionEnd for the old one; an entry read without a pid still leaves the process seen alive to compare.
+      const known =
+        tracked.process?.pid !== undefined
+          ? tracked.process
+          : tracked.seenAlive;
       const replaced =
         !entry &&
         known?.pid !== undefined &&
@@ -620,7 +664,19 @@ export class SessionTracker {
       }
       // A resumed session whose process is not listed yet cannot be judged; the next pass will.
       if (!process && !replaced) continue;
-      if (replaced || !process || !isRunning(process)) {
+      const running = process !== undefined && isRunning(process);
+      if (running && process.pid !== undefined) {
+        tracked.seenAlive = { pid: process.pid, procStart: process.procStart };
+      }
+      const recheck =
+        running || replaced ? undefined : this.recheck(tracked, process, probe);
+      if (replaced || (!running && !recheck?.running)) {
+        this.logEnd(
+          sessionId,
+          replaced ? "replaced by another session in its process" : undefined,
+          recheck ?? { process },
+          probe,
+        );
         tracked.endedAt = this.options.now();
         tracked.endedHookTs = this.options.now();
         // Nothing will report the tools that were mid-run when the process vanished.
@@ -661,6 +717,61 @@ export class SessionTracker {
         this.publish(sessionId, tracked);
       }
     }
+  }
+
+  /**
+   * Looks again at a process a pass called gone, since one bad registry read or table read must not end a live session.
+   * @param tracked - The session's state.
+   * @param process - The process the pass judged.
+   * @param probe - The direct check; without one the pass's judgment stands.
+   * @returns The first process found still running, else the last one seen alive (else the judged one) as found gone; undefined when there is nothing to look at.
+   */
+  private recheck(
+    tracked: Tracked,
+    process: Tracked["process"],
+    probe: ProcessProbe | undefined,
+  ): Recheck | undefined {
+    if (!probe) return undefined;
+    const seen = tracked.seenAlive;
+    // A resume whose SessionStart never arrived runs in a new process, so the judged one is looked at too.
+    const judged =
+      process?.pid !== undefined &&
+      (process.pid !== seen?.pid || process.procStart !== seen?.procStart)
+        ? { pid: process.pid, procStart: process.procStart }
+        : undefined;
+    let first: Recheck | undefined;
+    for (const looked of [seen, judged]) {
+      if (!looked) continue;
+      const result = { process: looked, ...probe.recheck(looked) };
+      if (result.running) return result;
+      first ??= result;
+    }
+    return first;
+  }
+
+  /**
+   * Writes one line saying why a reconcile pass ended a session, so a wrong end can be traced; no message or folder is included.
+   * @param sessionId - The session.
+   * @param cause - Why the pass ended it, when not a process judged gone or reused.
+   * @param judged - The process judged gone and, when it was looked at again, the start time its own `ps -p` read.
+   * @param probe - Reads the start time the pass's table lists.
+   */
+  private logEnd(
+    sessionId: string,
+    cause: string | undefined,
+    judged: { process: Tracked["process"]; started?: string },
+    probe: ProcessProbe | undefined,
+  ): void {
+    const { log } = this.options;
+    if (!log) return;
+    const { process, started: psStart } = judged;
+    const pid = process?.pid;
+    const tableStart = pid === undefined ? undefined : probe?.tableStart(pid);
+    const reason =
+      cause ?? ((psStart ?? tableStart) === undefined ? "gone" : "pid reused");
+    log(
+      `claude-office agent: check ended session ${sessionId}: ${reason} (pid ${pid ?? "none"}, recorded start ${process?.procStart ?? "none"}, table start ${tableStart ?? "none"}, ps start ${psStart ?? "none"})`,
+    );
   }
 
   /**
@@ -766,6 +877,7 @@ export class SessionTracker {
     to.interactive = true;
     to.kept = from.kept;
     to.process = { pid: entry.pid, procStart: entry.procStart };
+    to.seenAlive = undefined;
     to.registryName = entry.name;
     to.bridgeSessionId = entry.bridgeSessionId;
     to.cwd ??= entry.cwd ?? from.cwd;
@@ -874,6 +986,7 @@ export class SessionTracker {
       tracked.process = entry
         ? { pid: entry.pid, procStart: entry.procStart }
         : undefined;
+      tracked.seenAlive = undefined;
       // The old window's link is dead; the new process's own id arrives from the registry or a later hook.
       tracked.bridgeSessionId = entry?.bridgeSessionId;
       tracked.bridgeHookTs = -Infinity;
@@ -1122,6 +1235,11 @@ export class SessionTracker {
     return undefined;
   }
 
+  /**
+   * Makes a desk follow a registry entry: its process, name, folder and Remote Control link.
+   * @param tracked - The desk's state.
+   * @param entry - The entry that speaks for the desk's process.
+   */
   private adoptEntry(tracked: Tracked, entry: RegistryEntry): void {
     tracked.interactive = true;
     tracked.startedAt = entry.startedAt ?? tracked.startedAt;
@@ -1129,6 +1247,11 @@ export class SessionTracker {
     if (entry.cwd) tracked.startCwd = entry.cwd;
     tracked.bridgeSessionId = entry.bridgeSessionId;
     tracked.process = { pid: entry.pid, procStart: entry.procStart };
+    // A desk adopted from a live entry has been seen alive, before any pass runs its main check.
+    tracked.seenAlive =
+      entry.pid !== undefined && this.isRunning?.(entry) === true
+        ? { pid: entry.pid, procStart: entry.procStart }
+        : undefined;
     tracked.launchWait = undefined;
   }
 
