@@ -66,6 +66,8 @@ describe("the login job", () => {
       expect(plist.Label).toBe(LAUNCH_AGENT_LABEL);
       expect(plist.RunAtLoad).toBe(true);
       expect(plist.KeepAlive).toBe(true);
+      // Background or unset would let a busy Mac starve the agent until it looks offline
+      expect(plist.ProcessType).toBe("Interactive");
       expect(plist.EnvironmentVariables).toEqual({
         PATH: "/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin",
         CLAUDE_OFFICE_REPO: REPO_ROOT,

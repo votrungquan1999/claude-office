@@ -105,7 +105,7 @@ ${args.map((arg) => `    <string>${escapeXml(arg)}</string>`).join("\n")}
   <key>ThrottleInterval</key>
   <integer>10</integer>
   <key>ProcessType</key>
-  <string>Background</string>
+  <string>Interactive</string>
   <key>StandardOutPath</key>
   <string>${escapeXml(log)}</string>
   <key>StandardErrorPath</key>
