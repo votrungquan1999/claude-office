@@ -36,7 +36,7 @@ function session(
 }
 
 describe("selecting who needs the owner", () => {
-  it("lists the viewed company's rows in the owner's order, other companies grouped in the strip's order, and leaves out working, idle, went-home and offline-Mac employees", () => {
+  it("lists the viewed company's rows longest wait first, other companies grouped in the strip's order, and leaves out working, idle, went-home and offline-Mac employees", () => {
     // Given employees in three companies, two states that never need the owner, and one on an offline Mac
     const rows = [
       session("a", "waitingForYou", { rank: "d" }),
@@ -71,7 +71,7 @@ describe("selecting who needs the owner", () => {
       includeOtherCompanies: true,
     });
 
-    // Then own rows follow the order, other companies follow the strip, and the offline Mac is absent
+    // Then own rows lead with the longest wait, other companies follow the strip, and the offline Mac is absent
     expect(result.own.map((r) => r.sessionId)).toEqual(["b", "d", "a"]);
     expect(
       result.others.map((g) => [g.companyKey, g.rows.map((r) => r.sessionId)]),
@@ -82,29 +82,32 @@ describe("selecting who needs the owner", () => {
     expect(result.total).toBe(5);
   });
 
-  it("keeps an employee's place when it changes from Waiting for you to Review", () => {
-    // Given three placed employees, the middle one waiting for the owner
-    const pick = (middle: SessionDto["state"]) =>
-      selectNeedsYou({
-        sessions: [
-          session("a", "waitingForYou", { rank: "a" }),
-          session("b", middle, {
-            rank: "b",
-            stateSince: "2026-11-01T01:00:00Z",
-          }),
-          session("c", "needsPermission", { rank: "c" }),
-        ],
-        companyOf: () => ({ companyKey: "m1/home", companyName: "home" }),
-        viewedCompany: "m1/home",
-        companyOrder: ["m1/home"],
-        offlineMachineIds: new Set(),
-        includeOtherCompanies: true,
-      }).own.map((r) => r.sessionId);
-    expect(pick("waitingForYou")).toEqual(["a", "b", "c"]);
+  it("puts rows with no time in state after the timed ones, and keeps the owner's order among equal waits", () => {
+    // Given two employees waiting equally long, one older wait, and two from an agent that sends no time
+    const since = (time: string) => ({ stateSince: `2026-11-01T0${time}Z` });
+    const result = selectNeedsYou({
+      sessions: [
+        session("a", "waitingForYou", { rank: "a" }),
+        session("b", "review", { rank: "b", ...since("2:00:00.000") }),
+        session("c", "needsPermission", { rank: "c", ...since("1:00:00.000") }),
+        session("d", "review", { rank: "d" }),
+        session("e", "waitingForYou", { rank: "e", ...since("2:00:00.000") }),
+      ],
+      companyOf: () => ({ companyKey: "m1/home", companyName: "home" }),
+      viewedCompany: "m1/home",
+      companyOrder: ["m1/home"],
+      offlineMachineIds: new Set(),
+      includeOtherCompanies: true,
+    });
 
-    // When it finishes and goes to Review
-    // Then it is still between the other two
-    expect(pick("review")).toEqual(["a", "b", "c"]);
+    // Then the older wait leads, the equal waits follow in the owner's order, and the untimed rows come last in it
+    expect(result.own.map((r) => r.sessionId)).toEqual([
+      "c",
+      "b",
+      "e",
+      "a",
+      "d",
+    ]);
   });
 });
 

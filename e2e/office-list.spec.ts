@@ -1590,6 +1590,69 @@ test.describe("the Needs you section", () => {
       page.getByTestId("list-row").filter({ hasText: "Lab task" }),
     ).toHaveAttribute("aria-current", "true");
   });
+
+  test("puts whoever has waited longest on top, here and inside each other company, while Everyone keeps the owner's order", async ({
+    context,
+    page,
+  }) => {
+    // Given employees whose owner's order is not their waiting order, here and in another company
+    await seedOtherCompanies();
+    const ago = (minutes: number) => new Date(Date.now() - minutes * MIN);
+    await seed([
+      {
+        sessionId: "new",
+        deskName: "Newest",
+        rank: "b",
+        state: "review",
+        stateSince: ago(2),
+      },
+      {
+        sessionId: "old",
+        deskName: "Oldest",
+        rank: "c",
+        state: "needsPermission",
+        stateSince: ago(30),
+      },
+      {
+        sessionId: "mid",
+        deskName: "Middle",
+        rank: "d",
+        state: "waitingForYou",
+        stateSince: ago(10),
+      },
+      ...[
+        { sessionId: "lab-new", deskName: "Lab newest", rank: "b", since: 1 },
+        { sessionId: "lab-old", deskName: "Lab oldest", rank: "c", since: 20 },
+      ].map(({ since, ...row }) => ({
+        ...row,
+        machineId: "m2",
+        machineName: "Zed Mac",
+        cwd: "/Users/q/lab/x",
+        state: "waitingForYou",
+        stateSince: ago(since),
+      })),
+    ]);
+    await signInAsOwner(context);
+    await page.goto("/");
+    await waitForEmployees(page, 3);
+
+    // Then Needs you lists the longest wait first
+    await expect(
+      page.getByTestId("needs-you").getByTestId("needs-row-name"),
+    ).toHaveText(["Oldest", "Middle", "Newest"]);
+
+    // And so does the other company's group
+    await expect(
+      page.getByTestId("other-companies").getByTestId("needs-row-name"),
+    ).toHaveText(["Lab oldest", "Lab newest"]);
+
+    // And Everyone stays in the owner's order
+    await expect(page.getByTestId("list-row-name")).toHaveText([
+      "Newest",
+      "Oldest",
+      "Middle",
+    ]);
+  });
 });
 
 test.describe("a Needs you copy hidden by the repo filter", () => {

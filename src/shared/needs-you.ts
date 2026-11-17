@@ -27,9 +27,9 @@ export interface NeedsYouGroup {
 
 /** Everyone who needs the owner, as the Needs you section lists it. */
 export interface NeedsYou {
-  /** The viewed company's employees in the owner's order. */
+  /** The viewed company's employees, longest wait first. */
   own: SessionDto[];
-  /** Other companies in the strip's order, each in its own order. */
+  /** Other companies in the strip's order, each longest wait first. */
   others: NeedsYouGroup[];
   /** Every listed employee, own and other. */
   total: number;
@@ -46,6 +46,21 @@ interface NeedsYouInput {
   companyOrder: readonly string[];
   offlineMachineIds: ReadonlySet<string>;
   includeOtherCompanies: boolean;
+}
+
+/**
+ * Puts the longest wait first, so nobody old is buried under new arrivals.
+ * @param rows - One company's needing employees.
+ * @returns A new array: oldest `stateSince` first, then rows without one; ties keep the owner's order.
+ */
+function sortByWait(rows: SessionDto[]): SessionDto[] {
+  // A stable sort keeps the owner's order among equal waits
+  return sortByListOrder(rows).sort((a, b) => {
+    if (a.stateSince === b.stateSince) return 0;
+    if (a.stateSince === undefined) return 1;
+    if (b.stateSince === undefined) return -1;
+    return Date.parse(a.stateSince) - Date.parse(b.stateSince);
+  });
 }
 
 /**
@@ -71,7 +86,7 @@ export function selectNeedsYou(input: NeedsYouInput): NeedsYou {
       session,
     ]);
   }
-  const own = sortByListOrder(byCompany.get(input.viewedCompany ?? "") ?? []);
+  const own = sortByWait(byCompany.get(input.viewedCompany ?? "") ?? []);
   // Companies the strip does not list still show, after the listed ones
   const strip = new Map(input.companyOrder.map((key, i) => [key, i]));
   const others = input.includeOtherCompanies
@@ -85,7 +100,7 @@ export function selectNeedsYou(input: NeedsYouInput): NeedsYou {
         .map((key) => ({
           companyKey: key,
           companyName: names.get(key) ?? key,
-          rows: sortByListOrder(byCompany.get(key) ?? []),
+          rows: sortByWait(byCompany.get(key) ?? []),
         }))
     : [];
   const listed = [...own, ...others.flatMap((group) => group.rows)];
