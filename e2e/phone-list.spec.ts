@@ -407,6 +407,46 @@ test("a phone that remembers the Rooms view shows the stacked rooms and the bar'
   await expect(bar.getByRole("button", { name: "Search" })).toHaveCount(0);
 });
 
+/**
+ * Stands in for the iOS keyboard, which no test browser has: like iOS, it shrinks only the visual viewport.
+ * @param page - The page, before it loads.
+ */
+async function fakeKeyboard(page: Page) {
+  await page.addInitScript(() => {
+    const viewport = new EventTarget();
+    let keyboard = 0;
+    Object.defineProperties(viewport, {
+      height: { get: () => window.innerHeight - keyboard },
+      width: { get: () => window.innerWidth },
+      offsetTop: { get: () => 0 },
+      offsetLeft: { get: () => 0 },
+      scale: { get: () => 1 },
+    });
+    Object.defineProperty(window, "visualViewport", { value: viewport });
+    Object.defineProperty(window, "openKeyboard", {
+      value: (height: number) => {
+        keyboard = height;
+        viewport.dispatchEvent(new Event("resize"));
+      },
+    });
+  });
+}
+
+/**
+ * Opens the fake keyboard.
+ * @param page - A page set up with `fakeKeyboard`.
+ * @param height - How much of the screen's bottom it covers, in px.
+ */
+async function openKeyboard(page: Page, height: number) {
+  await page.evaluate(
+    (h) =>
+      (window as unknown as { openKeyboard: (h: number) => void }).openKeyboard(
+        h,
+      ),
+    height,
+  );
+}
+
 /** Types into the phone's search field. */
 async function typeSearch(page: Page, query: string) {
   await page.getByRole("searchbox", { name: "Search employees" }).fill(query);
@@ -466,6 +506,45 @@ test.describe("searching on the phone", () => {
       },
     ]);
   }
+
+  test("with the keyboard up, the last match can still be scrolled above the keyboard", async ({
+    context,
+    page,
+  }) => {
+    // Given more matches than fit the screen
+    await seed(
+      Array.from({ length: 8 }, (_, i) => ({
+        sessionId: `m${i}`,
+        cwd: PERSONAL,
+        startCwd: PERSONAL,
+        deskName: `Obsidian task ${i + 1}`,
+        rank: "bcdefghi"[i],
+      })),
+    );
+    await fakeKeyboard(page);
+    await signInAsOwner(context);
+    await page.goto("/");
+    const list = page.getByTestId("phone-list");
+    await expect(list.getByTestId("list-row")).toHaveCount(8);
+
+    // When the owner searches and the keyboard covers the bottom 340 px
+    await typeSearch(page, "obsidian");
+    await openKeyboard(page, 340);
+
+    // And scrolls the results to their end
+    const scroll = page.getByTestId("phone-list-scroll");
+    await expect
+      .poll(() =>
+        scroll.evaluate((el) => {
+          el.scrollTop = el.scrollHeight;
+          const rows = el.querySelectorAll('[data-testid="list-row"]');
+          const last = rows[rows.length - 1].getBoundingClientRect();
+          return Math.round(window.innerHeight - last.bottom);
+        }),
+      )
+      // Then the last match ends above the keyboard
+      .toBeGreaterThanOrEqual(340);
+  });
 
   test("typing the owner's tab name finds an employee whose name does not hold it, with a Tab name line", async ({
     context,

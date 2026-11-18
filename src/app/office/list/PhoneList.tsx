@@ -4,6 +4,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import type { Ref } from "react";
+import { useKeyboardInset } from "@/office/hooks/useKeyboardInset";
 import { type SessionDto, sessionKey } from "@/shared/session";
 import { DropsHereGap } from "./DropsHereGap";
 import { ListRow } from "./ListRow";
@@ -79,6 +80,7 @@ export function PhoneList({
   search: pool,
 }: PhoneListProps) {
   const search = usePhoneSearch(pool);
+  const keyboardInset = useKeyboardInset();
   // Only the grip drags, after a hold, so a swipe anywhere else scrolls the list.
   const drag = useRowDrag({ employees, touch: true, onDragHover, onMove });
   return (
@@ -119,6 +121,8 @@ export function PhoneList({
       <div
         data-testid="phone-list-scroll"
         className="min-h-0 flex-1 overflow-y-auto"
+        // Room under the last row, so it scrolls above an iOS keyboard drawn over the list
+        style={{ paddingBottom: keyboardInset }}
       >
         {search.result ? (
           <PhoneSearchResults

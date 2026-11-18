@@ -568,7 +568,7 @@ export const MOBILE_PASTE_PROMPT = "Paste into the terminal:";
 /** visualViewport.height within this many px of innerHeight = nothing to
  *  clamp (the two disagree by sub-pixel rounding on some devices). */
 export const VISUAL_VIEWPORT_FULL_EPSILON_PX = 1;
-/** The visual viewport this far below the tallest seen at the current width
- *  (with an editable focused) = the software keyboard is up. Well above an
- *  address bar collapsing (~56 px), well below any on-screen keyboard. */
+/** The visual viewport this far above the page's bottom = the software
+ *  keyboard is up. Well above an address bar collapsing (~56 px), well below
+ *  any on-screen keyboard. */
 export const KEYBOARD_MIN_HEIGHT_PX = 150;
