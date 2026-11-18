@@ -1,0 +1,112 @@
+import type { SessionDto, StepDto } from "@/shared/session";
+
+/** A session as the database stores it. */
+export interface SessionRow {
+  machineId: string;
+  machineName: string;
+  sessionId: string;
+  cwd: string;
+  startCwd?: string;
+  /** `waiting` is the legacy name of the finished-turn state. */
+  state: SessionDto["state"] | "waiting";
+  startedAt: Date;
+  endedAt?: Date;
+  bridgeSessionId?: string;
+  deskName?: string;
+  ownerName?: string;
+  /** The conversation's place in the owner's list. */
+  rank?: string;
+  request?: string;
+  /** The conversation tab's name (its /rename name). */
+  tabName?: string;
+  recentSteps?: Array<Omit<StepDto, "startedAt"> & { startedAt: Date }>;
+  runningSteps?: Array<{ text: string; startedAt: Date }>;
+  currentTodo?: string | null;
+  tags?: Array<{ name: string; key: string; parent?: string }>;
+  hadPrompt?: boolean;
+  stateSince?: Date;
+  /** The `stateSince` of the Review or Waiting for you the owner moved to Idle. */
+  reviewSeenAt?: Date;
+  /** When the owner moved it, by the database clock. */
+  reviewClearedAt?: Date;
+  /** The `stateSince` of the Idle the owner moved to Review. */
+  reviewRaisedAt?: Date;
+  kept?: SessionDto["kept"];
+  notRunning?: true;
+  waitingAtMac?: true;
+  starting?: true;
+  changedAt: Date;
+}
+
+export /**
+ * Converts a stored session to what the browser gets; ended sessions carry no steps.
+ * @param row - The stored session.
+ * @returns The session as sent.
+ */
+function toDto(row: SessionRow): SessionDto {
+  const live = !row.endedAt;
+  // The mark names the Review or Waiting for you it cleared; a later one has another time and shows again.
+  const cleared =
+    (row.state === "review" || row.state === "waitingForYou") &&
+    row.reviewSeenAt !== undefined &&
+    row.reviewSeenAt.getTime() === row.stateSince?.getTime();
+  // The owner moved this very Idle to Review; the next turn gives it another time and ends the move.
+  const raised =
+    row.state === "idle" &&
+    row.reviewRaisedAt !== undefined &&
+    row.reviewRaisedAt.getTime() === row.stateSince?.getTime();
+  const shownSince = cleared ? row.reviewClearedAt : row.stateSince;
+  return {
+    machineId: row.machineId,
+    machineName: row.machineName,
+    sessionId: row.sessionId,
+    cwd: row.cwd,
+    startCwd: row.startCwd ?? row.cwd,
+    state: raised
+      ? "review"
+      : row.state === "waiting" || cleared
+        ? "idle"
+        : row.state,
+    startedAt: row.startedAt.toISOString(),
+    ...(row.endedAt ? { endedAt: row.endedAt.toISOString() } : {}),
+    ...(row.deskName ? { deskName: row.deskName } : {}),
+    ...(row.ownerName ? { ownerName: row.ownerName } : {}),
+    ...(row.rank ? { rank: row.rank } : {}),
+    ...(row.request ? { request: row.request } : {}),
+    ...(row.tabName ? { tabName: row.tabName } : {}),
+    ...(row.bridgeSessionId ? { bridgeSessionId: row.bridgeSessionId } : {}),
+    ...(row.recentSteps?.length
+      ? {
+          recentSteps: row.recentSteps.map((step) => ({
+            ...step,
+            startedAt: step.startedAt.toISOString(),
+          })),
+        }
+      : {}),
+    ...(live && row.runningSteps?.length
+      ? {
+          runningSteps: row.runningSteps.map((step) => ({
+            ...step,
+            startedAt: step.startedAt.toISOString(),
+          })),
+        }
+      : {}),
+    ...(live && row.currentTodo ? { currentTodo: row.currentTodo } : {}),
+    ...(row.tags?.length
+      ? {
+          tags: row.tags.map(({ name, key, parent }) => ({
+            name,
+            key,
+            ...(parent !== undefined ? { parent } : {}),
+          })),
+        }
+      : {}),
+    ...(row.hadPrompt === undefined ? {} : { hadPrompt: row.hadPrompt }),
+    ...(shownSince ? { stateSince: shownSince.toISOString() } : {}),
+    ...(row.kept ? { kept: row.kept } : {}),
+    ...(row.notRunning ? { notRunning: true as const } : {}),
+    ...(row.waitingAtMac ? { waitingAtMac: true as const } : {}),
+    ...(row.starting ? { starting: true as const } : {}),
+    changedAt: row.changedAt.toISOString(),
+  };
+}
