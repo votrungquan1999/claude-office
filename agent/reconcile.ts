@@ -50,13 +50,23 @@ export async function readProcessTable(): Promise<ProcessTable> {
       env: { ...process.env, LC_ALL: "C", TZ: "UTC" },
     },
   );
+  return parseProcessTable(stdout);
+}
+
+/**
+ * Reads the table out of what `ps` printed.
+ * @param stdout - The `ps -o pid=,ppid=,tty=,lstart=,args=` output.
+ * @returns Each pid with its start time and command line.
+ */
+export function parseProcessTable(stdout: string): ProcessTable {
   const table: ProcessTable = new Map();
   for (const line of stdout.split("\n")) {
     const match = PROCESS_LINE.exec(line);
     if (match) {
       table.set(Number(match[1]), {
         ppid: Number(match[2]),
-        tty: match[3],
+        // Linux ps prints `?` for no terminal; one spelling keeps every device check right
+        tty: match[3] === "?" ? "??" : match[3],
         started: normalize(match[4]),
         args: match[5].trim(),
       });
