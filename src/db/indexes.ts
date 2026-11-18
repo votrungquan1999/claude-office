@@ -11,7 +11,9 @@ export async function ensureIndexes(db: Db): Promise<void> {
   // Unique so concurrent upserts from one Mac cannot duplicate a session.
   await sessions.createIndex({ machineId: 1, sessionId: 1 }, { unique: true });
   await sessions.createIndex({ changedAt: 1 });
-  // Ended sessions carry `expireAt`; live ones expire a week after their Mac last vouched for them.
+  // Search reads up to a year of departures newest first
+  await sessions.createIndex({ endedAt: -1, _id: -1 });
+  // Ended sessions carry `expireAt` and no `lastSeenAt`; live ones expire a week after their Mac last vouched for them.
   await sessions.createIndex({ expireAt: 1 }, { expireAfterSeconds: 0 });
   await sessions.createIndex(
     { lastSeenAt: 1 },

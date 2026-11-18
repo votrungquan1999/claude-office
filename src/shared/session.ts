@@ -132,6 +132,18 @@ export function sessionKey(
   return `${session.machineId}/${session.sessionId}`;
 }
 
+/** The office API's answer to a search through employees that went home before today. */
+export const pastDeparturesResponseSchema = z.object({
+  /** Newest departure first. */
+  sessions: z.array(
+    sessionDtoSchema.extend({ state: z.enum(SESSION_STATES).catch("idle") }),
+  ),
+});
+
+export type PastDeparturesResponse = z.infer<
+  typeof pastDeparturesResponseSchema
+>;
+
 /** One page of a session's older steps, newest first. */
 export const stepsPageSchema = z.object({
   steps: z.array(stepDtoSchema),

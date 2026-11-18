@@ -16,9 +16,14 @@ const session = (id: string, extra: Partial<SessionDto> = {}): SessionDto => ({
 });
 
 function open(sessions: SessionDto[], onShow = vi.fn()) {
+  // No earlier departures on the server
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    Response.json({ sessions: [] }),
+  );
   render(
     <SearchPalette
       sessions={sessions}
+      dayStart="2026-11-14T00:00:00.000Z"
       companyNameOf={() => "personal"}
       offlineMachineIds={new Set()}
       onShow={onShow}
@@ -50,7 +55,9 @@ describe("the Cmd+K palette", () => {
     fireEvent.keyDown(input, { key: "Enter", keyCode: 13 });
 
     // Then the match is shown
-    expect(onShow).toHaveBeenCalledWith("m1/a");
+    expect(onShow).toHaveBeenCalledWith(
+      expect.objectContaining({ machineId: "m1", sessionId: "a" }),
+    );
   });
 
   it("writes when a match went home next to its state, as the Went home list does", () => {

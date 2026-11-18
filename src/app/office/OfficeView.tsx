@@ -189,6 +189,8 @@ export function OfficeView() {
   // How far the server's clock is ahead of this browser's, from the latest answer.
   const [serverOffsetMs, setServerOffsetMs] = useState(0);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  /** The last earlier departure picked in the palette. */
+  const [pastPick, setPastPick] = useState<SessionDto | null>(null);
   const seen = useSeenRows();
   // The employee last picked in the office; the list scrolls its row into view.
   const [reveal, setReveal] = useState<{ key: string; token: number } | null>(
@@ -667,8 +669,10 @@ export function OfficeView() {
       Hire
     </button>
   );
+  // An earlier departure the palette found is not in the poll's sessions, so its card reads the palette's copy
   const selectedSession = selectedKey
-    ? (sessions.get(selectedKey) ?? null)
+    ? (sessions.get(selectedKey) ??
+      (pastPick && sessionKey(pastPick) === selectedKey ? pastPick : null))
     : null;
   const wakeSelected = async () => {
     if (!selectedSession) return;
@@ -740,17 +744,17 @@ export function OfficeView() {
   };
   /**
    * Shows any company's employee, for a palette pick.
-   * @param key - The employee to show.
+   * @param session - The employee to show; one that went home on an earlier day is known only to the palette.
    */
-  const showEmployee = (key: string) => {
+  const showEmployee = (session: SessionDto) => {
     palette.closePalette();
+    const key = sessionKey(session);
+    if (!sessions.has(key)) setPastPick(session);
     // Any company's employee opens like a Needs you copy
-    const session = sessions.get(key);
-    if (session)
-      selectNeedsYouRow(
-        key,
-        overview.tree.companyOf(session)?.companyKey ?? null,
-      );
+    selectNeedsYouRow(
+      key,
+      overview.tree.companyOf(session)?.companyKey ?? null,
+    );
   };
   const departures = todaysDepartures([...sessions.values()], now).filter(
     (session) => overview.tree.companyOf(session)?.companyKey === companyKey,
@@ -1084,6 +1088,7 @@ export function OfficeView() {
       {palette.open && (
         <SearchPalette
           sessions={searchableSessions([...sessions.values()], now)}
+          dayStart={dayStartOf(now).toISOString()}
           companyNameOf={(s) => overview.tree.companyOf(s)?.companyName ?? ""}
           offlineMachineIds={offlineIds}
           onShow={showEmployee}

@@ -452,6 +452,76 @@ test("matches are grouped Needs you, Everyone, Went home today, each with its st
   await expect(page.getByTestId("details-panel")).toContainText("Sync gone");
 });
 
+test("an employee that went home on an earlier day is found under Went home earlier with its day, and opens its card in its company", async ({
+  context,
+  page,
+}) => {
+  // Given one match that went home today and one in the other company that went home three days ago at 09:05
+  const today = new Date();
+  const earlier = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate() - 3,
+    9,
+    5,
+  );
+  await seed([
+    {
+      sessionId: "gone",
+      cwd: "/Users/q/personal/app",
+      startCwd: "/Users/q/personal/app",
+      deskName: "Sync gone",
+      state: "wentHome",
+      hadPrompt: true,
+      endedAt: today,
+    },
+    {
+      sessionId: "old",
+      cwd: "/Users/q/work/api",
+      startCwd: "/Users/q/work/api",
+      deskName: "Sync old",
+      state: "wentHome",
+      hadPrompt: true,
+      endedAt: earlier,
+    },
+  ]);
+  await signInAsOwner(context);
+  await page.goto("/");
+  await expect(page.locator('[data-company-name="personal"]')).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+
+  // When the owner searches the shared word
+  await search(page, "sync");
+
+  // Then today's departure and the earlier one sit in their own groups, the earlier one with its day
+  const dialog = page.getByRole("dialog", { name: "Find an employee" });
+  await expect(dialog.getByRole("heading")).toHaveText([
+    "Went home today",
+    "Went home earlier",
+  ]);
+  const matches = page.getByRole("option");
+  await expect(matches).toHaveCount(2);
+  await expect(matches.nth(1)).toContainText("Sync old");
+  const day = earlier.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+  });
+  await expect(matches.nth(1)).toContainText(`Went home ${day} 09:05`);
+
+  // When the owner moves down to it and presses Enter
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
+
+  // Then its company is shown and its card opens
+  await expect(page.locator('[data-company-name="work"]')).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await expect(page.getByTestId("details-panel")).toContainText("Sync old");
+});
+
 test("Enter on a match the repo filter hides clears the filter and opens its card", async ({
   context,
   page,

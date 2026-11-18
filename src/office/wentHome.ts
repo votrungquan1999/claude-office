@@ -62,6 +62,19 @@ export function wentHomeTime(endedAt: string): string {
   });
 }
 
+/**
+ * When a conversation went home on an earlier day, as the palette writes it.
+ * @param endedAt - ISO time it ended.
+ * @returns Local day, short month and HH:MM, e.g. "14 Nov 09:05".
+ */
+export function wentHomeDay(endedAt: string): string {
+  const day = new Date(endedAt).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+  });
+  return `${day} ${wentHomeTime(endedAt)}`;
+}
+
 /** One went-home conversation as the drawer and the lists write it. */
 export interface WentHomeRowData {
   /** Session key, which opens its details. */

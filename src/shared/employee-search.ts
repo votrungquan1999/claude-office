@@ -79,6 +79,58 @@ function fold(text: string): Folded {
   return { text: folded, origin };
 }
 
+/** Every accented Latin letter, by the plain letter it folds to; built on first use. */
+let accented: Map<string, string> | undefined;
+
+/**
+ * The accented letters that fold to a plain one.
+ * @param letter - A folded letter.
+ * @returns Those letters in capitals and small, run together; empty when it has none.
+ */
+function accentedOf(letter: string): string {
+  if (!accented) {
+    accented = new Map();
+    // Latin-1 to Latin Extended-B, and Latin Extended Additional (Vietnamese)
+    for (const [first, last] of [
+      [0xc0, 0x24f],
+      [0x1e00, 0x1eff],
+    ]) {
+      for (let code = first; code <= last; code++) {
+        const char = String.fromCodePoint(code);
+        const plain = fold(char).text;
+        if (plain.length === 1 && plain !== char) {
+          accented.set(plain, (accented.get(plain) ?? "") + char);
+        }
+      }
+    }
+  }
+  return accented.get(letter) ?? "";
+}
+
+/**
+ * Splits a query into the folded words search looks for.
+ * @param query - What the owner typed.
+ * @returns Its words, without accents or capitals.
+ */
+export function queryWords(query: string): string[] {
+  return fold(query).text.split(/\s+/).filter(Boolean);
+}
+
+/**
+ * A regular expression that finds a query word anywhere fold would, for a database to narrow rows before `matchEmployee` decides.
+ * @param word - One of `queryWords`.
+ * @returns The pattern; looser than `matchEmployee`, since it ignores where words start.
+ */
+export function wordPattern(word: string): string {
+  return [...word]
+    .map((letter) => {
+      const letters = `${letter}${letter.toUpperCase()}${accentedOf(letter)}`;
+      // Text written with separate accent marks keeps them after the letter
+      return `[${letters.replace(/[\]\\^-]/g, "\\$&")}][\u0300-\u036f]*`;
+    })
+    .join("");
+}
+
 /**
  * Whether a word may start at a position: after punctuation or a space, or at a capital inside a camel-case word.
  * @param text - The original text.
@@ -154,7 +206,7 @@ export function matchEmployee(
   query: string,
   fields: SearchFields,
 ): EmployeeMatch | null {
-  const words = fold(query).text.split(/\s+/).filter(Boolean);
+  const words = queryWords(query);
   if (words.length === 0) return null;
   const candidates: Array<[MatchField, string]> = [
     ...fields.names.map((name): [MatchField, string] => ["name", name]),

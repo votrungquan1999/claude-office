@@ -1,14 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 import { remoteControlOf } from "@/office/remoteControl";
-import { wentHomeTime } from "@/office/wentHome";
+import { wentHomeDay, wentHomeTime } from "@/office/wentHome";
 import { employeeName } from "@/shared/employee-name";
 import { fieldsOf, matchEmployee, rankMatches } from "@/shared/employee-search";
 import { NEEDS_YOU_STATES } from "@/shared/needs-you";
 import { type SessionDto, sessionKey } from "@/shared/session";
 import { bandOf } from "../rowText";
 import { MatchWhy } from "./MatchWhy";
+import { usePastDepartures } from "./usePastDepartures";
 
-const GROUPS = ["Needs you", "Everyone", "Went home today"] as const;
+const GROUPS = [
+  "Needs you",
+  "Everyone",
+  "Went home today",
+  "Went home earlier",
+] as const;
 
 /**
  * The palette group an employee belongs to.
@@ -28,12 +34,14 @@ function groupOf(
 interface SearchPaletteProps {
   /** Every employee of every company, went-home ones of today included. */
   sessions: SessionDto[];
+  /** The browser's local midnight as ISO; earlier departures are searched on the server. */
+  dayStart: string;
   /** The name of the company a session belongs to. */
   companyNameOf: (session: SessionDto) => string;
   /** The Macs that are offline. */
   offlineMachineIds: ReadonlySet<string>;
   /** Shows the employee in the office. */
-  onShow: (key: string) => void;
+  onShow: (session: SessionDto) => void;
   onClose: () => void;
 }
 
@@ -44,6 +52,7 @@ interface SearchPaletteProps {
  */
 export function SearchPalette({
   sessions,
+  dayStart,
   companyNameOf,
   offlineMachineIds,
   onShow,
@@ -67,6 +76,7 @@ export function SearchPalette({
     document.addEventListener("keydown", onEscape, true);
     return () => document.removeEventListener("keydown", onEscape, true);
   }, []);
+  const past = usePastDepartures(query, dayStart);
   const found = [...sessions].flatMap((session) => {
     const match = matchEmployee(query, fieldsOf(session));
     const offline = offlineMachineIds.has(session.machineId);
@@ -74,9 +84,26 @@ export function SearchPalette({
       ? [{ session, match, offline, group: groupOf(session, offline) }]
       : [];
   });
+  // The server can be a poll ahead of the browser; an employee the palette already lists shows once
+  const known = new Set(sessions.map(sessionKey));
+  const foundEarlier = past.sessions.flatMap((session) => {
+    const match = matchEmployee(query, fieldsOf(session));
+    return match && !known.has(sessionKey(session))
+      ? [
+          {
+            session,
+            match,
+            offline: false,
+            group: "Went home earlier" as const,
+          },
+        ]
+      : [];
+  });
   const groups = GROUPS.map((name) => ({
     name,
-    hits: rankMatches(found.filter((hit) => hit.group === name)),
+    hits: rankMatches(
+      [...found, ...foundEarlier].filter((hit) => hit.group === name),
+    ),
   })).filter((group) => group.hits.length > 0);
   // Arrow keys walk the groups top to bottom
   const matches = groups.flatMap((group) => group.hits);
@@ -116,7 +143,7 @@ export function SearchPalette({
             } else if (event.key === "Enter" && matches[active]) {
               const { session } = matches[active];
               if (!(event.metaKey || event.ctrlKey)) {
-                onShow(sessionKey(session));
+                onShow(session);
                 return;
               }
               const url = remoteControlOf(session);
@@ -139,7 +166,7 @@ export function SearchPalette({
                 {group.name}
               </h3>
               {group.hits.map((hit) => {
-                const { session, match, offline } = hit;
+                const { session, match, offline, group: hitGroup } = hit;
                 const index = matches.indexOf(hit);
                 const key = sessionKey(session);
                 return (
@@ -150,7 +177,7 @@ export function SearchPalette({
                     role="option"
                     tabIndex={-1}
                     aria-selected={index === active}
-                    onClick={() => onShow(key)}
+                    onClick={() => onShow(session)}
                     onMouseMove={() => setActive(index)}
                     ref={
                       index === active
@@ -171,7 +198,7 @@ export function SearchPalette({
                     <span className="shrink-0 text-xs text-text-muted">
                       {bandOf(session, offline).text}
                       {session.state === "wentHome" && session.endedAt
-                        ? ` ${wentHomeTime(session.endedAt)}`
+                        ? ` ${hitGroup === "Went home earlier" ? wentHomeDay(session.endedAt) : wentHomeTime(session.endedAt)}`
                         : ""}
                     </span>
                     <span className="shrink-0 bg-accent/30 px-4 text-xs">
@@ -183,6 +210,13 @@ export function SearchPalette({
             </div>
           ))}
         </div>
+        {(past.searching || past.failed) && (
+          <p role="status" className="px-12 py-6 text-xs text-text-muted">
+            {past.failed
+              ? "Could not search earlier days"
+              : "Searching earlier days…"}
+          </p>
+        )}
         <p className="flex flex-wrap gap-x-16 border-t-2 border-border px-12 py-6 text-xs text-text-muted">
           <span>↑ ↓ move</span>
           <span>Enter show in the office</span>
