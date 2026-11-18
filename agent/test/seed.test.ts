@@ -195,21 +195,23 @@ describe("an agent that starts while sessions are already running", () => {
       state: "working",
       startedAt: new Date(lastSeenAt.getTime() - 3_600_000),
       changedAt: new Date(lastSeenAt),
+      lastSeenAt: new Date(lastSeenAt),
       hadPrompt: true,
     });
 
     // When the Mac starts again and its agent finds the session gone
     await setUpMac("machine-air", "Quan's MacBook Air");
 
-    // Then it ended when the Mac was last seen, and expires a week after that
+    // Then it ended when the Mac was last seen, and expires a year after that
     const stored = await db
       .collection("sessions")
       .findOne({ sessionId: "overnight" });
     expect(stored?.state).toBe("wentHome");
     expect(stored?.endedAt).toEqual(lastSeenAt);
     expect(stored?.expireAt).toEqual(
-      new Date(lastSeenAt.getTime() + 7 * 86_400_000),
+      new Date(lastSeenAt.getTime() + 365 * 86_400_000),
     );
+    expect(stored?.lastSeenAt).toBeUndefined();
   }, 60_000);
 
   /** Stores `states` for sessions that run again with a finished-turn transcript, starts the agent and returns each session's state. */

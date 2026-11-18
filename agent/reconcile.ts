@@ -12,7 +12,7 @@ import {
 } from "./registry";
 import type { ProcessProbe, SessionTracker, TagDoc } from "./tracker";
 import { readTranscriptSeed } from "./transcript";
-import { EXPIRY_DAYS } from "./writer";
+import { SESSION_EXPIRY_DAYS } from "./writer";
 
 const run = promisify(execFile);
 
@@ -279,8 +279,12 @@ export async function seedRunningSessions(options: SeedOptions): Promise<void> {
         state: "wentHome",
         stateSince: endedAt,
         endedAt,
-        expireAt: new Date(endedAt.getTime() + EXPIRY_DAYS * 86_400_000),
+        expireAt: new Date(
+          endedAt.getTime() + SESSION_EXPIRY_DAYS * 86_400_000,
+        ),
       },
+      // Its last-seen time would expire it in a week, before `expireAt`
+      $unset: { lastSeenAt: "" },
       $currentDate: { changedAt: true },
     },
   );

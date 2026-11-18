@@ -81,7 +81,10 @@ interface Slot {
   writing?: boolean;
 }
 
-export const EXPIRY_DAYS = 7;
+/** How long a went-home session stays searchable. */
+export const SESSION_EXPIRY_DAYS = 365;
+/** The full step log is far bigger than the sessions, so it keeps only a week. */
+const STEP_EXPIRY_DAYS = 7;
 const RECENT_STEPS = 5;
 
 /**
@@ -270,7 +273,9 @@ export class SessionWriter {
     const entries = this.batch;
     this.batch = [];
     if (entries.length === 0) return;
-    const expireAt = new Date(this.options.now() + EXPIRY_DAYS * 86_400_000);
+    const expireAt = new Date(
+      this.options.now() + STEP_EXPIRY_DAYS * 86_400_000,
+    );
     const steps = entries.flatMap((entry) => entry.insertSteps);
     const write = Promise.allSettled([
       this.sessions.bulkWrite(
@@ -367,14 +372,17 @@ function toUpdate(doc: SessionDoc, steps: StepDoc[]): AnyBulkWriteOperation {
     ...(endedAt
       ? {
           endedAt,
-          expireAt: new Date(endedAt.getTime() + EXPIRY_DAYS * 86_400_000),
+          expireAt: new Date(
+            endedAt.getTime() + SESSION_EXPIRY_DAYS * 86_400_000,
+          ),
         }
       : {}),
   };
   const filter = { machineId, sessionId };
   // A session that no longer reports an id must lose the stored one, or the link points at a dead session.
   const absent = [
-    ...(endedAt ? [] : ["endedAt", "expireAt"]),
+    // An ended session drops its last-seen time, whose week-long expiry would delete it before `expireAt`.
+    ...(endedAt ? ["lastSeenAt"] : ["endedAt", "expireAt"]),
     ...(doc.bridgeSessionId ? [] : ["bridgeSessionId"]),
     // A removed card with no fallback name must not leave its old title on the desk.
     ...(doc.deskName ? [] : ["deskName"]),
@@ -395,7 +403,9 @@ function toUpdate(doc: SessionDoc, steps: StepDoc[]): AnyBulkWriteOperation {
           ...(absent.length
             ? { $unset: Object.fromEntries(absent.map((key) => [key, ""])) }
             : {}),
-          $currentDate: { changedAt: true, lastSeenAt: true },
+          $currentDate: endedAt
+            ? { changedAt: true }
+            : { changedAt: true, lastSeenAt: true },
         } as Document,
         upsert: true,
       },
@@ -420,7 +430,7 @@ function toUpdate(doc: SessionDoc, steps: StepDoc[]): AnyBulkWriteOperation {
             ),
             startedAt: { $ifNull: ["$startedAt", { $literal: startedAt }] },
             changedAt: "$$NOW",
-            lastSeenAt: "$$NOW",
+            ...(endedAt ? {} : { lastSeenAt: "$$NOW" }),
             // The session keeps its five latest-started finished steps so the office poll stays one query.
             recentSteps: {
               $slice: [

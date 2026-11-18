@@ -6,7 +6,7 @@ import { pause, runHook } from "./run-hook";
 describe("a closed session goes home", () => {
   const { setUpMac } = useMacHarness();
 
-  it("records the end with a week's expiry, reopens on resume, and flags a session that never got a prompt; /clear sends the old one home and a new one arrives", async () => {
+  it("records the end with a year's expiry, reopens on resume, and flags a session that never got a prompt; /clear sends the old one home and a new one arrives", async () => {
     // Given a Mac with three sessions
     const { fake, agent } = await setUpMac("machine-air", "Quan's MacBook Air");
     for (const sessionId of ["s1", "s2", "s3"]) {
@@ -31,12 +31,14 @@ describe("a closed session goes home", () => {
     await send("s1", { hook_event_name: "SessionEnd", reason: "other" });
     const ended = await stored("s1");
 
-    // Then it has gone home, stamped with an end time, expires in a week and had a prompt
+    // Then it has gone home, stamped with an end time, expires in a year and had a prompt
     expect(ended?.state).toBe("wentHome");
     expect(ended?.endedAt).toBeInstanceOf(Date);
-    const week = 7 * 86_400_000;
-    expect(ended?.expireAt.getTime() - ended?.endedAt.getTime()).toBe(week);
+    const year = 365 * 86_400_000;
+    expect(ended?.expireAt.getTime() - ended?.endedAt.getTime()).toBe(year);
     expect(ended?.hadPrompt).toBe(true);
+    // And no last-seen time, whose week-long expiry would delete it first
+    expect(ended?.lastSeenAt).toBeUndefined();
 
     // When a kanban card appears for it, so the agent publishes the session again
     fake.writeKanban("s1", { cardId: "c1", summary: "Late card" });
@@ -46,6 +48,7 @@ describe("a closed session goes home", () => {
     // Then the end time is the one it first got, though the session was written again
     expect(republished?.state).toBe("wentHome");
     expect(republished?.endedAt).toEqual(ended?.endedAt);
+    expect(republished?.lastSeenAt).toBeUndefined();
     expect(republished?.changedAt.getTime()).toBeGreaterThan(
       ended?.changedAt.getTime(),
     );
@@ -58,6 +61,7 @@ describe("a closed session goes home", () => {
     expect(resumed?.state).toBe("idle");
     expect(resumed?.endedAt).toBeUndefined();
     expect(resumed?.expireAt).toBeUndefined();
+    expect(resumed?.lastSeenAt).toBeInstanceOf(Date);
     expect(resumed?.hadPrompt).toBe(true);
 
     // When /clear ends it and a new session starts, and another session starts and ends without a prompt
