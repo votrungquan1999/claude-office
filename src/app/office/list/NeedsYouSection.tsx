@@ -124,7 +124,8 @@ export function NeedsYouSection({
     <section
       aria-label={label}
       data-testid={prefix}
-      className={`flex shrink-0 flex-col border-b-2 border-border ${phone ? "" : "max-h-[45%]"}`}
+      // On a desktop it gives up height first, down to its header, so Everyone below is never squashed; its rows scroll
+      className={`flex flex-col border-b-2 border-border ${phone ? "shrink-0" : "max-h-[45%] min-h-42"}`}
     >
       <div
         className={`flex shrink-0 items-center gap-8 px-12 ${phone ? "min-h-44" : "h-40"}`}

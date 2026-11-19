@@ -169,7 +169,11 @@ export function ListPanel({
         open={fold.folds.otherCompanies}
         onToggle={() => fold.toggle("otherCompanies")}
       />
-      <section aria-label="Everyone" className="flex min-h-0 flex-1 flex-col">
+      {/* Open, it keeps its header and about two rows however full Needs you is */}
+      <section
+        aria-label="Everyone"
+        className={`flex flex-1 flex-col ${fold.folds.everyone ? "min-h-160" : "min-h-40"}`}
+      >
         <button
           type="button"
           aria-expanded={fold.folds.everyone}

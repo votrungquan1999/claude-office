@@ -1485,6 +1485,61 @@ test.afterEach(async () => {
 test.describe("the Needs you section", () => {
   test.use({ viewport: { width: 1280, height: 800 }, hasTouch: false });
 
+  test("on a short window with full Needs you sections, Everyone keeps its header clear of Went home today and shows its rows", async ({
+    context,
+    page,
+  }) => {
+    // Given a short window, six needing employees here, four in another company and seven idle ones here
+    await page.setViewportSize({ width: 1280, height: 620 });
+    await seedOtherCompanies();
+    const needing = (prefix: string, count: number) =>
+      Array.from({ length: count }, (_, i) => ({
+        sessionId: `${prefix}${i}`,
+        deskName: `${prefix} task ${i}`,
+        state: "waitingForYou",
+        stateSince: new Date(Date.now() - (i + 1) * MIN),
+      }));
+    await seed([
+      ...needing("here", 6),
+      ...needing("lab", 4).map((row) => ({
+        ...row,
+        machineId: "m2",
+        machineName: "Zed Mac",
+        cwd: "/Users/q/lab/x",
+      })),
+      ...Array.from({ length: 7 }, (_, i) => ({
+        sessionId: `idle${i}`,
+        deskName: `Idle task ${i}`,
+        rank: String.fromCharCode(97 + i),
+        state: "idle",
+      })),
+    ]);
+    await signInAsOwner(context);
+    await page.goto("/");
+    await waitForEmployees(page, 13);
+    await expect(page.getByTestId("other-companies-count")).toHaveText("4");
+
+    // Then the Everyone header sits wholly above the Went home today header
+    const everyone = await page
+      .getByRole("button", { name: /^Everyone/ })
+      .boundingBox();
+    const wentHome = await page
+      .getByRole("button", { name: /Went home today/ })
+      .boundingBox();
+    expect(everyone).not.toBeNull();
+    expect(wentHome).not.toBeNull();
+    expect((everyone?.y ?? 0) + (everyone?.height ?? 0)).toBeLessThanOrEqual(
+      wentHome?.y ?? 0,
+    );
+
+    // And its list has room for at least one whole row, which is in view
+    const list = await page.getByTestId("list-everyone").boundingBox();
+    const firstRow = page.getByTestId("list-row").first();
+    const row = await firstRow.boundingBox();
+    expect(list?.height ?? 0).toBeGreaterThanOrEqual(row?.height ?? 1);
+    await expect(firstRow).toBeInViewport({ ratio: 1 });
+  });
+
   test("copies everyone who needs the owner above Everyone, four per company then 'and N more', other companies in their own 'In other companies' section, leaves out an offline Mac, and a click opens the original in its company", async ({
     context,
     page,
