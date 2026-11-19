@@ -65,7 +65,6 @@ export function useListModel({
   const needsYou = needsYouOtherCompanies ? everywhere : needsYouOf(false);
   const listFold = useListFolds(
     new Set(needsYou.own.map(sessionKey)),
-    new Set(needsYou.others.flatMap((g) => g.rows).map(sessionKey)),
     new Set(
       [...everywhere.own, ...everywhere.others.flatMap((g) => g.rows)].map(
         sessionKey,

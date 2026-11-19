@@ -118,14 +118,16 @@ test("the phone shows a search field, Needs you, Everyone in the owner's order w
     "Foxtrot other",
   ]);
 
-  // And folding "In other companies" leaves Needs you open, each with its own count
-  await list.getByRole("button", { name: "In other companies" }).click();
+  // And "In other companies" starts folded while Needs you is open, each with its own count
   await expect(
     list.getByTestId("needs-row").locator("visible=true"),
   ).toHaveCount(2);
   await expect(list.getByTestId("needs-count")).toHaveText("2");
   await expect(list.getByTestId("other-companies-count")).toHaveText("1");
   await list.getByRole("button", { name: "In other companies" }).click();
+  await expect(
+    list.getByTestId("needs-row").locator("visible=true"),
+  ).toHaveCount(3);
 
   // And Everyone lists the company in the owner's order with a grip on every row and none on Needs you
   await expect(list.getByTestId("list-row-name")).toHaveText([
@@ -1203,6 +1205,7 @@ test.describe("the phone's settings", () => {
     const others = page.getByTestId("other-companies");
     await expect(others).toContainText("Their review");
     await expect(needs).not.toContainText("Their review");
+    await page.getByRole("button", { name: "In other companies" }).click();
     await expect(
       others.getByRole("button", { name: "Move to Idle" }),
     ).toBeVisible();

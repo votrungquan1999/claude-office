@@ -10,7 +10,8 @@ export interface ListFolds {
 
 const DEFAULT_FOLDS: ListFolds = {
   needsYou: true,
-  otherCompanies: true,
+  // Secondary: the owner opens it when wanted
+  otherCompanies: false,
   everyone: true,
   wentHome: false,
 };

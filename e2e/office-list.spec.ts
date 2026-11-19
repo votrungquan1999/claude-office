@@ -1589,22 +1589,23 @@ test.describe("the Needs you section", () => {
       "Task D",
     ]);
 
-    // And the other company's copy sits in its own section below, counted there
+    // And the other company's copy sits in its own section below, counted there and folded to begin with
     await expect(
       page.getByRole("region", { name: "In other companies" }),
     ).toBeVisible();
     await expect(page.getByTestId("other-companies-count")).toHaveText("1");
-    await expect(others.getByTestId("needs-row-name")).toHaveText(["Lab task"]);
-    await expect(others.getByTestId("needs-row-company")).toHaveText("lab");
-    await expect(page.getByText("Old task")).toHaveCount(0);
-
-    // And folding "In other companies" leaves Needs you open
-    await page.getByRole("button", { name: "In other companies" }).click();
     await expect(
       others.getByTestId("needs-row").locator("visible=true"),
     ).toHaveCount(0);
     await expect(needs.getByTestId("needs-row")).toHaveCount(4);
+
+    // When the owner opens "In other companies"
     await page.getByRole("button", { name: "In other companies" }).click();
+
+    // Then its copy shows with its company, and the offline Mac's is left out
+    await expect(others.getByTestId("needs-row-name")).toHaveText(["Lab task"]);
+    await expect(others.getByTestId("needs-row-company")).toHaveText("lab");
+    await expect(page.getByText("Old task")).toHaveCount(0);
 
     // And the originals stay in Everyone
     await expect(page.getByTestId("list-row-name")).toHaveText([
@@ -1839,6 +1840,7 @@ test.describe("Needs you with Review employees", () => {
     const others = page.getByTestId("other-companies");
     await expect(needs.getByTestId("needs-row")).toHaveCount(2);
     await expect(others.getByTestId("needs-row")).toHaveCount(1);
+    await page.getByRole("button", { name: "In other companies" }).click();
 
     // Then neither section offers a Move all, and every Review copy has its Idle button
     await expect(page.getByRole("button", { name: /Move all/ })).toHaveCount(0);

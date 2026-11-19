@@ -159,6 +159,7 @@ test("turning other companies off removes the In other companies section, and th
   const panel = page.getByTestId("list-panel");
   const others = panel.getByRole("region", { name: "In other companies" });
   await expect(others).toBeVisible();
+  await panel.getByRole("button", { name: "In other companies" }).click();
   await expect(
     others.getByRole("button", { name: "Move to Idle" }),
   ).toBeVisible();

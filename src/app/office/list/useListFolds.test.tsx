@@ -10,23 +10,16 @@ const keys = (...list: string[]) => new Set(list);
 
 interface Lists {
   listed: Set<string>;
-  others?: Set<string>;
   existing: Set<string>;
 }
 
-/** A loaded list whose Needs you and In other companies the owner folded. */
-function foldedList(
-  listed: Set<string>,
-  existing: Set<string>,
-  others: Set<string> = keys(),
-) {
+/** A loaded list whose Needs you the owner folded; In other companies starts folded. */
+function foldedList(listed: Set<string>, existing: Set<string>) {
   const hook = renderHook(
-    (props: Lists) =>
-      useListFolds(props.listed, props.others ?? keys(), props.existing, true),
-    { initialProps: { listed, others, existing } as Lists },
+    (props: Lists) => useListFolds(props.listed, props.existing, true),
+    { initialProps: { listed, existing } as Lists },
   );
   act(() => hook.result.current.toggle("needsYou"));
-  act(() => hook.result.current.toggle("otherCompanies"));
   expect(hook.result.current.folds.needsYou).toBe(false);
   expect(hook.result.current.folds.otherCompanies).toBe(false);
   return hook;
@@ -86,38 +79,28 @@ describe("reopening Needs you for an arrival", () => {
     expect(result.current.folds.needsYou).toBe(false);
   });
 
-  it("reopens only the section that the arrival is in", () => {
+  it("never reopens In other companies, which the owner opens by hand, for an arrival in another company", () => {
     // Given both sections folded, a here and x in another company
-    const { result, rerender } = foldedList(
-      keys("a"),
-      keys("a", "x"),
-      keys("x"),
-    );
+    const { result, rerender } = foldedList(keys("a"), keys("a", "x"));
 
     // When another company's employee y starts to wait on the owner
     rerender({
       listed: keys("a"),
-      others: keys("x", "y"),
       existing: keys("a", "x", "y"),
     });
 
-    // Then only In other companies reopens
-    expect(result.current.folds.otherCompanies).toBe(true);
+    // Then both sections stay folded
+    expect(result.current.folds.otherCompanies).toBe(false);
     expect(result.current.folds.needsYou).toBe(false);
   });
 
   it("does not reopen In other companies for an arrival in this company", () => {
     // Given both sections folded
-    const { result, rerender } = foldedList(
-      keys("a"),
-      keys("a", "x"),
-      keys("x"),
-    );
+    const { result, rerender } = foldedList(keys("a"), keys("a", "x"));
 
     // When an employee of this company starts to wait on the owner
     rerender({
       listed: keys("a", "b"),
-      others: keys("x"),
       existing: keys("a", "b", "x"),
     });
 
