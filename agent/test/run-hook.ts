@@ -33,8 +33,10 @@ export function startHook(
   { holdStdin = false }: { holdStdin?: boolean } = {},
 ): RunningHook {
   const startedAt = Date.now();
+  // Tests run inside a Claude Code session with Remote Control must not hand its id to the hook
+  const { CLAUDE_CODE_BRIDGE_SESSION_ID: _outer, ...outerEnv } = process.env;
   const child = spawn(process.execPath, [HOOK_PATH], {
-    env: { ...process.env, HOME: home, ...env },
+    env: { ...outerEnv, HOME: home, ...env },
   });
   let stdout = "";
   let stderr = "";

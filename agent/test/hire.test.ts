@@ -328,6 +328,8 @@ describe("hiring an employee from the office", () => {
       ),
     ).toBe(false);
     expect(await orderOf(next)).toMatchObject({ status: "done" });
+    // The desk is written in the background after the order is handled
+    await mac.agent.flush();
     expect((await officeSessions()).map((d) => d.sessionId)).toEqual([
       sessionOf(next),
     ]);

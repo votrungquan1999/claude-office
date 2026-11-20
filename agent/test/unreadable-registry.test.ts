@@ -45,6 +45,8 @@ describe("a window the office opened when the registry cannot be read", () => {
     // Given a hire whose window opened and a registry that then becomes unreadable
     const mac = await setUpMac("machine-air", "Air");
     const { folder, sessionId } = await hireOnto(mac);
+    // The desk is written in the background after the order is handled
+    await mac.agent.flush();
     expect((await officeSessions())[0]).toMatchObject({ waitingAtMac: true });
     loseRegistry(mac);
 

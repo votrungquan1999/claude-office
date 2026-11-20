@@ -112,6 +112,8 @@ describe("a window the office opened that never starts Claude Code", () => {
     const time = clock();
     const mac = await setUpMac("machine-air", "Air", { now: time.now });
     const { sessionId } = await hireOnto(mac);
+    // The desk is stored before the restart, as it is long before a real one
+    await mac.agent.flush();
     time.advance(20 * MINUTE);
     await mac.agent.stop();
     const restarted = await setUpMac("machine-air", "Air", {
